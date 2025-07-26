@@ -4,6 +4,11 @@ struct AuthView: View {
     @State private var isSignUp = false
     @State private var email = ""
     @State private var password = ""
+    @State private var name = ""
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+
+    @StateObject private var authManager = AuthManager()
 
     var body: some View {
         VStack {
@@ -21,17 +26,23 @@ struct AuthView: View {
 
             Form {
                 Section(header: Text(isSignUp ? "Create an account" : "Sign in to your account")) {
+                    if isSignUp {
+                        TextField("Name", text: $name)
+                            .autocapitalization(.words)
+                    }
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                     SecureField("Password", text: $password)
                 }
             }
-            .frame(height: 180)
+            .frame(height: isSignUp ? 230 : 180)
 
 
             Button(action: {
-                // Auth logic will go here
+                Task {
+                    await authenticate()
+                }
             }) {
                 Text(isSignUp ? "Sign Up" : "Sign In")
                     .fontWeight(.bold)
@@ -46,6 +57,37 @@ struct AuthView: View {
             Spacer()
         }
         .padding()
+        .alert(isPresented: $showingAlert) {
+            Alert(title: Text("Authentication Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        }
+    }
+
+    private func authenticate() async {
+        let result = isSignUp
+            ? await authManager.signUp(email: email, password: password, name: name)
+            : await authManager.signIn(email: email, password: password)
+
+        switch result {
+        case .success:
+            // Navigate to main content view
+            print("Authentication successful")
+        case .failure(let error):
+            handle(error)
+        }
+    }
+
+    private func handle(_ error: AuthManager.AuthError) {
+        switch error {
+        case .invalidEmail:
+            alertMessage = "Please use a valid .edu email address."
+        case .signUpFailed(let underlyingError):
+            alertMessage = "Sign up failed: \(underlyingError.localizedDescription)"
+        case .signInFailed(let underlyingError):
+            alertMessage = "Sign in failed: \(underlyingError.localizedDescription)"
+        case .profileUpdateFailed(let underlyingError):
+            alertMessage = "Could not update profile: \(underlyingError.localizedDescription)"
+        }
+        showingAlert = true
     }
 }
 
