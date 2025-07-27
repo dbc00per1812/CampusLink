@@ -13,4 +13,26 @@
 - **Completed**: Initialized Supabase client in `CampusLinkTestApp.swift`.
 
 #### s3: Configure Auth & Database in Supabase (users, listings, messages tables)
-- Instructed the user to create `users`, `listings`, and `messages` tables in the Supabase dashboard as per the schema in `Plan.md`. Waiting for user to complete this step. 
+- Instructed the user to create `users`, `listings`, and `messages` tables in the Supabase dashboard as per the schema in `Plan.md`. Waiting for user to complete this step.
+- **Completed**: Database tables and triggers set up successfully.
+
+### p2: Auth & Profiles
+
+#### s1: Implement Supabase auth (signup/login with email & password)
+- **Completed**: Full authentication flow implemented with reactive session management.
+
+#### s2: Restrict to .edu emails
+- **Completed**: Email validation ensures only .edu addresses can sign up.
+
+#### s3: Create basic profile screen (name, email, profile picture upload)
+- **Completed**: Comprehensive profile customization page with photo upload to Supabase Storage.
+
+## Current Status
+- ✅ **Authentication System**: Complete sign-up/sign-in flow with automatic redirect
+- ✅ **Profile Management**: Users can edit name, bio, and upload profile pictures
+- ✅ **Security**: RLS policies, .edu email validation, secure credential storage
+- ✅ **Navigation**: Reactive UI that responds to authentication state changes
+- ✅ **Database Integration**: Automatic profile creation via triggers
+
+## Next Steps
+Ready to move on to **p3: Marketplace Listings** - building the core marketplace functionality for buying and selling items on campus. 

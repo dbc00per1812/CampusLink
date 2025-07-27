@@ -21,6 +21,16 @@ struct CampusLinkTestApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(authManager)
+                .onOpenURL { url in
+                    Task {
+                        do {
+                            try await supabase.auth.session(from: url)
+                            print("✅ Successfully handled auth URL: \(url)")
+                        } catch {
+                            print("❌ Failed to handle auth URL: \(error)")
+                        }
+                    }
+                }
         }
     }
 }

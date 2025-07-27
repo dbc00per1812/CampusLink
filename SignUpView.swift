@@ -12,72 +12,80 @@ struct SignUpView: View {
     @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
-        VStack {
-            HStack {
-                Button(action: {
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    Image(systemName: "chevron.left")
-                        .font(.title)
-                        .foregroundColor(Color.primary)
+        NavigationView {
+            VStack {
+                HStack {
+                    Button(action: {
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.title)
+                            .foregroundColor(Color.primary)
+                    }
+                    Spacer()
                 }
-                Spacer()
-            }
-            .padding()
+                .padding()
 
-            Text("Sign Up")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .padding(.bottom, 40)
-
-            VStack(spacing: 20) {
-                TextField("Full Name", text: $name)
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(10)
-                    .autocapitalization(.words)
-
-                TextField("E-mail Address", text: $email)
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(10)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-
-                SecureField("Password", text: $password)
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(10)
-            }
-            .padding(.horizontal)
-
-            Spacer()
-
-            Button(action: {
-                Task {
-                    await authenticate()
-                }
-            }) {
-                Text("Create Account")
+                Text("Sign Up")
+                    .font(.largeTitle)
                     .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color("ThemeColor"))
-                    .cornerRadius(10)
+                    .padding(.bottom, 40)
+
+                VStack(spacing: 20) {
+                    TextField("Full Name", text: $name)
+                        .padding()
+                        .background(Color(UIColor.systemGray6))
+                        .cornerRadius(10)
+                        .autocapitalization(.words)
+
+                    TextField("E-mail Address", text: $email)
+                        .padding()
+                        .background(Color(UIColor.systemGray6))
+                        .cornerRadius(10)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+
+                    SecureField("Password", text: $password)
+                        .padding()
+                        .background(Color(UIColor.systemGray6))
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal)
+
+                Spacer()
+
+                Button(action: {
+                    Task {
+                        await authenticate()
+                    }
+                }) {
+                    Text("Create Account")
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color("ThemeColor"))
+                        .cornerRadius(10)
+                }
+                .padding()
             }
-            .padding()
-        }
-        .navigationBarHidden(true)
-        .alert(isPresented: $showingAlert) {
-            Alert(title: Text("Sign Up Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+            .navigationBarHidden(true)
+            .alert(isPresented: $showingAlert) {
+                Alert(title: Text("Sign Up Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+            }
         }
     }
     
     private func authenticate() async {
+        print("🔄 Starting sign-up process...")
         let result = await authManager.signUp(email: email, password: password, name: name)
         
-        if case .failure(let error) = result {
+        switch result {
+        case .success:
+            print("✅ Sign-up successful!")
+            // User will be automatically redirected via AuthManager session change
+        case .failure(let error):
+            print("❌ Sign-up failed: \(error)")
             handle(error)
         }
     }
@@ -91,7 +99,7 @@ struct SignUpView: View {
         case .profileUpdateFailed(let underlyingError):
             alertMessage = "Could not update profile: \(underlyingError.localizedDescription)"
         case .signInFailed:
-             // This case is not applicable here but is needed for the switch to be exhaustive.
+            // This case is not applicable here but is needed for the switch to be exhaustive.
             break
         case .signOutFailed:
             // This case is not applicable here but is needed for the switch to be exhaustive.
