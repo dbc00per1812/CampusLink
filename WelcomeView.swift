@@ -29,25 +29,27 @@ struct WelcomeView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .padding(.vertical, 16)
+                        .padding(.horizontal, 24)
                         .background(Color("ThemeColor"))
-                        .cornerRadius(10)
+                        .cornerRadius(25)
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 40)
 
                 NavigationLink(destination: SignUpView().environmentObject(authManager)) {
                     Text("Sign Up")
                         .fontWeight(.bold)
                         .foregroundColor(Color("ThemeColor"))
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .padding(.vertical, 16)
+                        .padding(.horizontal, 24)
                         .background(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 25)
                                 .stroke(Color("ThemeColor"), lineWidth: 2)
                         )
                 }
-                .padding(.horizontal)
-                .padding(.top, 10)
+                .padding(.horizontal, 40)
+                .padding(.top, 12)
                 
                 Spacer().frame(height: 50)
             }
