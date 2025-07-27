@@ -2,13 +2,13 @@
 //  CampusLinkTestApp.swift
 //  CampusLinkTest
 //
-//  Created by Eileen Murphy on 7/26/25.
+//  Created by Eileen Murphy on o   7/26/25.
 //
 
 import SwiftUI
 import Supabase
 
-let supabase = SupabaseClient(
+let supabase = SupabaseClient(  
   supabaseURL: Secrets.supabaseURL,
   supabaseKey: Secrets.supabaseKey
 )

@@ -7,35 +7,35 @@ struct MainTabView: View {
             HomeTabView()
                 .tabItem {
                     Image(systemName: "house.fill")
-                    Text("Home")
+                        .font(.system(size: 40))
                 }
             
             // Search Tab
             SearchView()
                 .tabItem {
                     Image(systemName: "magnifyingglass")
-                    Text("Search")
+                        .font(.system(size: 40))
                 }
             
             // Post Tab
             PostView()
                 .tabItem {
                     Image(systemName: "plus.circle.fill")
-                    Text("Post")
+                        .font(.system(size: 40))
                 }
             
-            // Payments Tab
+            // My Listings Tab
             PaymentsView()
                 .tabItem {
-                    Image(systemName: "dollarsign.circle.fill")
-                    Text("Payments")
+                    Image(systemName: "list.bullet.rectangle.fill")
+                        .font(.system(size: 40))
                 }
             
             // Profile Tab
             ProfileTabView()
                 .tabItem {
                     Image(systemName: "person.circle.fill")
-                    Text("Profile")
+                        .font(.system(size: 40))
                 }
         }
         .accentColor(Color("ThemeColor"))
