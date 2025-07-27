@@ -8,7 +8,7 @@ struct WelcomeView: View {
             VStack {
                 Spacer()
                 
-                Image(systemName: "flame.fill")
+                Image(systemName: "graduationcap.circle.fill")
                     .font(.system(size: 80))
                     .foregroundColor(Color("ThemeColor"))
                     .padding(.bottom, 20)
