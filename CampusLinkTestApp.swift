@@ -15,9 +15,12 @@ let supabase = SupabaseClient(
 
 @main
 struct CampusLinkTestApp: App {
+    @StateObject private var authManager = AuthManager()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(authManager)
         }
     }
 }

@@ -8,13 +8,22 @@
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var authManager: AuthManager
+
     var body: some View {
-        AuthView()
+        Group {
+            if authManager.session != nil {
+                HomeView()
+            } else {
+                WelcomeView()
+            }
+        }
     }
 }
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+            .environmentObject(AuthManager())
     }
 }
