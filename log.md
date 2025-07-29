@@ -27,6 +27,16 @@
 #### s3: Create basic profile screen (name, email, profile picture upload)
 - **Completed**: Comprehensive profile customization page with photo upload to Supabase Storage.
 
+## Repository Maintenance
+
+### Git Reset (Current Session)
+- **Action**: Reset repository to last commit (origin/main) due to unfixable state
+- **Commands executed**:
+  - `git reset --hard origin/main` - Reset to HEAD commit 28ab6e0
+  - `git clean -fd` - Removed untracked files (InputValidation.swift, PaginationHelper.swift, audit.md)
+- **Result**: Repository restored to clean state matching remote main branch
+- **Next**: User to reopen Xcode project
+
 ## Current Status
 - ✅ **Authentication System**: Complete sign-up/sign-in flow with automatic redirect
 - ✅ **Profile Management**: Users can edit name, bio, and upload profile pictures
