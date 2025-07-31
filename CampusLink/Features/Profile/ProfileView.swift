@@ -145,7 +145,7 @@ struct ProfileView: View {
     }
     
     private func loadUserProfile() async {
-        guard let userId = authManager.session?.user.id else { return }
+        guard let userId = authManager.session?.user.id.uuidString else { return }
         
         do {
             let response: [UserProfile] = try await supabase
@@ -199,7 +199,7 @@ struct ProfileView: View {
     }
     
     private func saveProfile() async {
-        guard let userId = authManager.session?.user.id else { return }
+        guard let userId = authManager.session?.user.id.uuidString else { return }
         
         await MainActor.run {
             isLoading = true
@@ -272,10 +272,12 @@ struct UserProfile: Codable {
     let bio: String?
     let profilePic: String?
     let email: String?
+    let createdAt: Date
     
     enum CodingKeys: String, CodingKey {
         case id, name, bio, email
         case profilePic = "profile_pic"
+        case createdAt = "created_at"
     }
 }
 

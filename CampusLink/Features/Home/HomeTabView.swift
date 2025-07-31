@@ -56,7 +56,10 @@ struct HomeTabView: View {
                     ScrollView {
                         LazyVStack(spacing: 16) {
                             ForEach(listings) { listing in
-                                ListingCard(listing: listing)
+                                NavigationLink(destination: ListingDetailView(listing: listing)) {
+                                    ListingCard(listing: listing)
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                         .padding()
@@ -83,7 +86,7 @@ struct HomeTabView: View {
                     *,
                     user:users(*)
                 """)
-                .eq("users.email", value: "%@\(domain)")
+                .like("user.email", pattern: "%@\(domain)")
                 .order("created_at", ascending: false)
                 .execute()
                 .value

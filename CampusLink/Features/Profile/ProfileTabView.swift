@@ -148,7 +148,7 @@ struct ProfileTabView: View {
     
     // Include all the existing profile functions from ProfileView
     private func loadUserProfile() async {
-        guard let userId = authManager.session?.user.id else { return }
+        guard let userId = authManager.session?.user.id.uuidString else { return }
         
         do {
             let response: [UserProfile] = try await supabase
@@ -201,7 +201,7 @@ struct ProfileTabView: View {
     }
     
     private func saveProfile() async {
-        guard let userId = authManager.session?.user.id else { return }
+        guard let userId = authManager.session?.user.id.uuidString else { return }
         
         await MainActor.run {
             isLoading = true

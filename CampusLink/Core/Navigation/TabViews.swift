@@ -28,6 +28,10 @@ struct PostView: View {
     @State private var description = ""
     @State private var price = ""
     @State private var selectedCategory = "Electronics"
+    @State private var selectedListingType = ListingType.product
+    @State private var serviceDuration = ""
+    @State private var selectedServiceLocation = ServiceLocation.onCampus
+    @State private var serviceAvailability = ""
     @State private var selectedImage: PhotosPickerItem?
     @State private var listingImage: UIImage?
     @State private var isLoading = false
@@ -91,7 +95,7 @@ struct PostView: View {
                             Text("Title")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                            TextField("What are you selling?", text: $title)
+                            TextField(selectedListingType == .product ? "What are you selling?" : "What service are you offering?", text: $title)
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
@@ -101,11 +105,63 @@ struct PostView: View {
                             Text("Description")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                            TextField("Describe your item...", text: $description, axis: .vertical)
+                            TextField(selectedListingType == .product ? "Describe your item..." : "Describe your service...", text: $description, axis: .vertical)
                                 .lineLimit(4...8)
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
+                        }
+                        
+                        // Listing Type Selection
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Type")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                            Picker("Listing Type", selection: $selectedListingType) {
+                                ForEach(ListingType.allCases, id: \.self) { type in
+                                    Text(type.displayName).tag(type)
+                                }
+                            }
+                            .pickerStyle(SegmentedPickerStyle())
+                        }
+                        
+                        // Service-Specific Fields
+                        if selectedListingType == .service {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Service Duration")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                                TextField("e.g., 1 hour, 2-3 hours, Half day", text: $serviceDuration)
+                                    .padding()
+                                    .background(Color(UIColor.systemGray6))
+                                    .cornerRadius(12)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Service Location")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                                Picker("Location", selection: $selectedServiceLocation) {
+                                    ForEach(ServiceLocation.allCases, id: \.self) { location in
+                                        Text(location.displayName).tag(location)
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .padding()
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(12)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Availability")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                                TextField("e.g., Mon-Fri 9AM-5PM, Weekends only, Flexible schedule", text: $serviceAvailability, axis: .vertical)
+                                    .lineLimit(2...4)
+                                    .padding()
+                                    .background(Color(UIColor.systemGray6))
+                                    .cornerRadius(12)
+                            }
                         }
                         
                         HStack(spacing: 16) {
@@ -239,7 +295,11 @@ struct PostView: View {
                 description: description,
                 price: priceValue,
                 category: selectedCategory,
-                photo: photoURL
+                photo: photoURL,
+                listingType: selectedListingType,
+                serviceDuration: selectedListingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
+                serviceLocation: selectedListingType == .service ? selectedServiceLocation : nil,
+                serviceAvailability: selectedListingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil
             )
             
             try await supabase
@@ -267,6 +327,10 @@ struct PostView: View {
         description = ""
         price = ""
         selectedCategory = "Electronics"
+        selectedListingType = .product
+        serviceDuration = ""
+        selectedServiceLocation = .onCampus
+        serviceAvailability = ""
         listingImage = nil
         selectedImage = nil
     }
@@ -394,6 +458,10 @@ struct PaymentsView: View {
                         category: listing.category,
                         photo: listing.photo,
                         isSold: !listing.isSold,
+                        listingType: listing.listingType,
+                        serviceDuration: listing.serviceDuration,
+                        serviceLocation: listing.serviceLocation,
+                        serviceAvailability: listing.serviceAvailability,
                         createdAt: listing.createdAt
                     )
                 }
