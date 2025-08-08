@@ -44,25 +44,32 @@ Audience: AI agents and developers. Copy any task line under each section into y
 
 ## 3) Payments Backend (Supabase Edge Functions)
 
-- TASK 3.1 — Create Edge Function: `create_payment_intent`
+- TASK 3.1 — Create Edge Function: `create_payment_intent` — COMPLETED
   - **Human Explanation:** This is the first step of a purchase. When a user clicks "Buy", this secure backend function creates a payment session with Stripe and records a new transaction in our database. It returns a secret key for the app to securely load the payment UI.
   - **IDE Steps (Prompt):** Implement Supabase Edge Function `create_payment_intent`. It takes a `listing_id`, finds the listing's price and seller, creates a Stripe PaymentIntent with manual capture, inserts a new `payments` record, and returns the PaymentIntent's `client_secret`.
   - **External Steps:** Use the Supabase CLI (`supabase functions new`, `supabase deploy`) to create and deploy the Edge Function. You will need your Stripe secret key available.
 
-- TASK 3.2 — Create Edge Function: `capture_payment`
+- TASK 3.2 — Create Edge Function: `capture_payment` — COMPLETED
   - **Human Explanation:** After a buyer confirms they've received their item, this function tells Stripe to actually move the money from the buyer's account to the seller's. It's a manual capture process that acts like an escrow service, protecting both parties.
   - **IDE Steps (Prompt):** Implement Supabase Edge Function `capture_payment`. It takes a `payment_intent_id` and calls the Stripe API to capture the payment. Ensure it's securely callable.
   - **External Steps:** Deploy the function via the Supabase CLI or dashboard.
 
-- TASK 3.3 — Create Edge Function: `stripe_webhook`
+- TASK 3.3 — Create Edge Function: `stripe_webhook` — COMPLETED
   - **Human Explanation:** This function is a listener for automatic updates from Stripe. Stripe calls this function to notify our app about events like a successful payment, a failed payment, or a dispute. This keeps our database in sync with what's happening at Stripe.
   - **IDE Steps (Prompt):** Implement a Supabase Edge Function to act as a Stripe webhook. It should handle events like `payment_intent.succeeded` and `charge.dispute.created` and update the corresponding row in the `payments` table.
   - **External Steps:** After deploying the function, you must take its URL and add it to your Stripe Dashboard under "Webhooks".
 
-- TASK 3.4 — Secure functions and set secrets
-  - **Human Explanation:** We must store our secret Stripe API keys securely in our Supabase project's settings, not in our code. This task is to ensure those keys are set up correctly as environment variables.
+- TASK 3.4 — Secure functions and set secrets — ACTION REQUIRED
+  - **Human Explanation:** Provide secrets to the Edge Functions runtime. Never store keys in code.
   - **IDE Steps:** None.
-  - **External Steps:** Go to the Supabase project dashboard -> Settings -> Secrets and add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. The Edge Functions will then have secure access to them.
+  - **External Steps:**
+    - Set secrets via CLI (replace values):
+      - `supabase secrets set STRIPE_SECRET_KEY=sk_test_...`
+      - `supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...`
+    - Verify secrets in Dashboard: Settings -> Secrets.
+    - Add Webhook endpoint in Stripe (Test mode):
+      - URL: `https://vnmzijluyctlufnzxast.functions.supabase.co/stripe_webhook`
+      - Events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `payment_intent.amount_capturable_updated`, `charge.dispute.created`
 
 ---
 
