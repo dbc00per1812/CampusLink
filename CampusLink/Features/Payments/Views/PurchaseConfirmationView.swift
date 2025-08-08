@@ -51,7 +51,7 @@ struct PurchaseConfirmationView: View {
         }
         switch result {
         case .completed:
-            return "Your purchase of \"\(listing.title)\" for $\(listing.price, specifier: "%.2f") has been completed successfully.\n\nThe seller has been notified and will contact you about delivery."
+            return "Your purchase of \"\(listing.title)\" for $\(String(format: "%.2f", listing.price)) has been completed successfully.\n\nThe seller has been notified and will contact you about delivery."
         case .canceled:
             return "You canceled the payment process. No charges were made to your account."
         case .failed(let error):
