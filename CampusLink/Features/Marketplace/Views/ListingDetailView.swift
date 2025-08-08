@@ -4,8 +4,12 @@ struct ListingDetailView: View {
     let listing: ListingWithUser
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authManager: AuthManager
+    @StateObject private var paymentService = PaymentService.shared
     @State private var isContactingSeller = false
     @State private var isPrimaryActionLoading = false
+    @State private var showPurchaseConfirmation = false
+    @State private var purchaseError: String?
+    @State private var showErrorAlert = false
     
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { return false }
@@ -224,6 +228,26 @@ struct ListingDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $showPurchaseConfirmation) {
+            PurchaseConfirmationView(
+                listing: listing,
+                paymentResult: paymentService.paymentResult,
+                onDismiss: {
+                    showPurchaseConfirmation = false
+                    // If payment was successful, dismiss the detail view too
+                    if case .completed = paymentService.paymentResult {
+                        dismiss()
+                    }
+                }
+            )
+        }
+        .alert("Payment Error", isPresented: $showErrorAlert) {
+            Button("OK") {
+                purchaseError = nil
+            }
+        } message: {
+            Text(purchaseError ?? "An unknown error occurred")
+        }
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -255,15 +279,34 @@ struct ListingDetailView: View {
         
         isPrimaryActionLoading = true
         
-        // Simulate network delay for future implementation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            isPrimaryActionLoading = false
-            
-            if listing.listingType == .product {
-                // TODO: Navigate to purchase flow (P2.1)
-                print("💰 Buy now: \(listing.title) for $\(listing.price)")
-            } else {
-                // TODO: Navigate to booking flow (P2.2)
+        if listing.listingType == .product {
+            // Handle product purchase
+            Task {
+                do {
+                    // Configure PaymentSheet with the listing
+                    try await paymentService.configurePaymentSheet(for: listing.id.uuidString)
+                    
+                    // TODO: After adding Stripe SDK, present the PaymentSheet
+                    // For now, show confirmation that payment intent was created
+                    await MainActor.run {
+                        isPrimaryActionLoading = false
+                        showPurchaseConfirmation = true
+                        print("✅ Payment intent created for listing: \(listing.title)")
+                    }
+                } catch {
+                    await MainActor.run {
+                        isPrimaryActionLoading = false
+                        purchaseError = error.localizedDescription
+                        showErrorAlert = true
+                        print("❌ Failed to create payment intent: \(error)")
+                    }
+                }
+            }
+        } else {
+            // Handle service booking
+            // Simulate network delay for future implementation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isPrimaryActionLoading = false
                 print("📅 Book service: \(listing.title)")
                 if let duration = listing.serviceDuration {
                     print("   Duration: \(duration)")
@@ -271,6 +314,7 @@ struct ListingDetailView: View {
                 if let location = listing.serviceLocation {
                     print("   Location: \(location.displayName)")
                 }
+                // TODO: Navigate to booking flow for services
             }
         }
     }

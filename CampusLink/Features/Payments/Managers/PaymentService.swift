@@ -1,14 +1,34 @@
 import Foundation
 import Supabase
+// TODO: After adding Stripe SDK via SPM (Task 4.1), uncomment the following line:
+// import StripePaymentSheet
+import UIKit  // Needed for UIViewController
+
+// Temporary type definitions until Stripe SDK is added
+// TODO: Remove these after adding Stripe SDK
+#if !canImport(StripePaymentSheet)
+struct PaymentSheet {}
+enum PaymentSheetResult {
+    case completed
+    case canceled
+    case failed(Error)
+}
+#endif
 
 /// A thin service responsible for calling Supabase Edge Functions involved in the payment flow.
 /// - It uses the current Supabase auth session to authorize requests via Bearer token.
 /// - It communicates with the deployed functions: `create_payment_intent` and `capture_payment`.
 @MainActor
-final class PaymentService {
+final class PaymentService: ObservableObject {
     static let shared = PaymentService()
-
-    private init() {}
+    
+    @Published var paymentSheet: PaymentSheet?
+    @Published var paymentResult: PaymentSheetResult?
+    
+    private init() {
+        // TODO: After adding Stripe SDK, uncomment to configure Stripe
+        // STPAPIClient.shared.publishableKey = Secrets.stripePublishableKey
+    }
 
     // MARK: - Public API
 
@@ -44,6 +64,58 @@ final class PaymentService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try ensureSuccess(response: response, data: data)
         _ = data // no-op; server returns status JSON which we do not currently need
+    }
+    
+    /// Prepares and configures the Stripe PaymentSheet for a listing purchase.
+    /// - Parameter listingId: The identifier of the listing to purchase.
+    func configurePaymentSheet(for listingId: String) async throws {
+        // Get the client secret from our Edge Function
+        let clientSecret = try await preparePaymentSheet(listingId: listingId)
+        
+        // TODO: After adding Stripe SDK, uncomment this block:
+        /*
+        // Configure the PaymentSheet
+        var configuration = PaymentSheet.Configuration()
+        configuration.merchantDisplayName = "CampusLink"
+        configuration.allowsDelayedPaymentMethods = false
+        
+        // Initialize PaymentSheet
+        self.paymentSheet = PaymentSheet(
+            paymentIntentClientSecret: clientSecret,
+            configuration: configuration
+        )
+        */
+        
+        // For now, just store the client secret for testing
+        print("✅ PaymentService: Got client secret for listing \(listingId)")
+        print("   Client secret: \(clientSecret.prefix(20))...")
+    }
+    
+    /// Presents the Stripe PaymentSheet UI.
+    /// - Parameter presentingViewController: The view controller to present from.
+    func presentPaymentSheet(from presentingViewController: UIViewController) {
+        // TODO: After adding Stripe SDK, uncomment this block:
+        /*
+        guard let paymentSheet = paymentSheet else {
+            print("❌ PaymentService: PaymentSheet not configured")
+            return
+        }
+        
+        paymentSheet.present(from: presentingViewController) { [weak self] paymentResult in
+            self?.paymentResult = paymentResult
+            
+            switch paymentResult {
+            case .completed:
+                print("✅ Payment completed successfully")
+            case .canceled:
+                print("⚠️ Payment canceled by user")
+            case .failed(let error):
+                print("❌ Payment failed: \(error.localizedDescription)")
+            }
+        }
+        */
+        
+        print("⚠️ PaymentService: Stripe SDK not yet integrated. Add via SPM first.")
     }
 
     // MARK: - Helpers
