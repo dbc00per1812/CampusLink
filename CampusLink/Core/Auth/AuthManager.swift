@@ -50,44 +50,13 @@ class AuthManager: ObservableObject {
                     self.session = session
                 }
                 
-                // If user just signed in/confirmed email, ensure profile exists
-                if let session = session {
-                    await ensureProfileExists(for: session)
-                }
+                // Profile creation is now handled by database trigger automatically
+                // No manual profile creation needed
             }
         }
     }
     
-    private func ensureProfileExists(for session: Session) async {
-        do {
-            // Check if profile already exists
-            let existingProfile: [UserProfile] = try await supabase
-                .from("users")
-                .select()
-                .eq("id", value: session.user.id)
-                .execute()
-                .value
-            
-            // If no profile exists, create one from user metadata
-            if existingProfile.isEmpty {
-                let name = session.user.userMetadata["name"]?.stringValue ?? ""
-                let newProfile = UserProfileCreate(
-                    id: session.user.id.uuidString,
-                    email: session.user.email ?? "",
-                    name: name
-                )
-                
-                try await supabase
-                    .from("users")
-                    .insert(newProfile, returning: .minimal)
-                    .execute()
-                
-                print("✅ AuthManager: Created profile for confirmed user")
-            }
-        } catch {
-            print("❌ AuthManager: Failed to ensure profile exists: \(error)")
-        }
-    }
+
 
     deinit {
         authTask?.cancel()
