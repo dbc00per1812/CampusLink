@@ -248,6 +248,11 @@ struct ListingDetailView: View {
         } message: {
             Text(purchaseError ?? "An unknown error occurred")
         }
+        .onReceive(paymentService.$paymentResult) { result in
+            if result != nil {
+                showPurchaseConfirmation = true
+            }
+        }
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -286,12 +291,15 @@ struct ListingDetailView: View {
                     // Configure PaymentSheet with the listing
                     try await paymentService.configurePaymentSheet(for: listing.id.uuidString)
                     
-                    // TODO: After adding Stripe SDK, present the PaymentSheet
-                    // For now, show confirmation that payment intent was created
+                    // Present the Stripe PaymentSheet
                     await MainActor.run {
                         isPrimaryActionLoading = false
-                        showPurchaseConfirmation = true
-                        print("✅ Payment intent created for listing: \(listing.title)")
+                        
+                        // Present the PaymentSheet from the current view controller
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let rootViewController = windowScene.windows.first?.rootViewController {
+                            paymentService.presentPaymentSheet(from: rootViewController)
+                        }
                     }
                 } catch {
                     await MainActor.run {
