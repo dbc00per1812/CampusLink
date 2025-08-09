@@ -79,11 +79,11 @@ async function getAuthenticatedUserId(req: Request): Promise<string> {
   return data.user.id;
 }
 
-async function fetchListing(listingId: string): Promise<{ id: string; price: number; seller_id: string }> {
+async function fetchListing(listingId: string): Promise<{ id: string; price: number; user_id: string }> {
   const supabase = getSupabaseServiceClient();
   const { data, error } = await supabase
     .from("listings")
-    .select("id, price, seller_id")
+    .select("id, price, user_id")
     .eq("id", listingId)
     .single();
 
@@ -92,7 +92,7 @@ async function fetchListing(listingId: string): Promise<{ id: string; price: num
   }
 
   // Expect price to be in the smallest currency unit (e.g., cents). If not, adjust before calling Stripe.
-  return data as { id: string; price: number; seller_id: string };
+  return data as { id: string; price: number; user_id: string };
 }
 
 async function createPaymentIntent(amountInCents: number, metadata: Record<string, string>): Promise<Stripe.Response<Stripe.PaymentIntent>> {
@@ -143,11 +143,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const listing = await fetchListing(listingId);
-    if (listing.seller_id === userId) {
+    if (listing.user_id === userId) {
       return jsonResponse(400, { error: "Sellers cannot purchase their own listings" });
     }
 
-    const amountInCents = Math.round(Number(listing.price));
+    // Convert price from dollars to cents (Stripe expects cents)
+    const amountInCents = Math.round(Number(listing.price) * 100);
     if (!Number.isFinite(amountInCents) || amountInCents <= 0) {
       return jsonResponse(400, { error: "Listing price is invalid" });
     }
@@ -155,12 +156,12 @@ Deno.serve(async (req: Request) => {
     const paymentIntent = await createPaymentIntent(amountInCents, {
       listing_id: listing.id,
       buyer_id: userId,
-      seller_id: listing.seller_id,
+      seller_id: listing.user_id,
     });
 
     await insertPaymentRow({
       buyerId: userId,
-      sellerId: listing.seller_id,
+      sellerId: listing.user_id,
       amountInCents,
       paymentIntentId: paymentIntent.id,
     });

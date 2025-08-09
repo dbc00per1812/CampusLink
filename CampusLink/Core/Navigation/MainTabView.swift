@@ -10,10 +10,10 @@ struct MainTabView: View {
                         .font(.system(size: 40))
                 }
             
-            // Search Tab
-            SearchView()
+            // Messages Tab
+            ConversationListView()
                 .tabItem {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: "message.fill")
                         .font(.system(size: 40))
                 }
             
