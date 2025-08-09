@@ -134,24 +134,35 @@ struct ChatView: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 10) {
                     ForEach(viewModel.messages) { message in
-                        MessageBubble(
-                            message: message,
-                            isFromCurrentUser: message.isSentByCurrentUser(userId: currentUserId)
-                        )
-                        .id(message.id)
+                        let isMe = message.isSentByCurrentUser(userId: currentUserId)
+                        if isMe {
+                            // Current user message on the right
+                            HStack(alignment: .bottom, spacing: 8) {
+                                Spacer()
+                                MessageBubble(message: message, isFromCurrentUser: true)
+                                    .id(message.id)
+                            }
+                            .padding(.horizontal, 8)
+                        } else {
+                            // Sender message on the left (with avatar)
+                            HStack(alignment: .bottom, spacing: 8) {
+                                AvatarView(user: message.sender)
+                                MessageBubble(message: message, isFromCurrentUser: false)
+                                    .id(message.id)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 8)
+                        }
                     }
                 }
-                .padding()
+                .padding(.top, 8)
+                .padding(.bottom, 6)
             }
-            .onAppear {
-                scrollToBottom(proxy: proxy)
-            }
+            .onAppear { scrollToBottom(proxy: proxy) }
             .onChange(of: viewModel.messages.count) { _ in
-                withAnimation {
-                    scrollToBottom(proxy: proxy)
-                }
+                withAnimation { scrollToBottom(proxy: proxy) }
             }
         }
     }
@@ -208,27 +219,43 @@ struct MessageBubble: View {
     }
     
     var body: some View {
-        HStack {
-            if isFromCurrentUser { Spacer() }
-            
-            VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
-                Text(message.content)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(isFromCurrentUser ? Color("ThemeColor") : Color(UIColor.systemGray5))
-                    )
-                    .foregroundColor(isFromCurrentUser ? .white : .primary)
-                
-                Text(timeString)
-                    .font(.caption2)
+        VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
+            Text(message.content)
+                .font(.body)
+                .foregroundColor(isFromCurrentUser ? .primary : .white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(isFromCurrentUser ? Color(UIColor.systemGray5) : Color.blue)
+                )
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.72, alignment: isFromCurrentUser ? .trailing : .leading)
+
+            Text(timeString)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(isFromCurrentUser ? .trailing : .leading, 6)
+        }
+    }
+}
+
+// MARK: - Avatar
+
+private struct AvatarView: View {
+    let user: UserProfile?
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color(UIColor.systemGray5))
+            if let user = user, let first = user.name?.first?.uppercased() ?? user.email?.first?.uppercased() {
+                Text(first)
+                    .font(.caption)
+                    .fontWeight(.semibold)
                     .foregroundColor(.secondary)
             }
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.7, alignment: isFromCurrentUser ? .trailing : .leading)
-            
-            if !isFromCurrentUser { Spacer() }
         }
+        .frame(width: 28, height: 28)
     }
 }
 

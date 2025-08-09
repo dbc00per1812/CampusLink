@@ -71,9 +71,9 @@ struct Message: Codable, Identifiable {
         case sender
     }
     
-    /// Check if message was sent by current user
+    /// Check if message was sent by current user (case-insensitive id compare)
     func isSentByCurrentUser(userId: String) -> Bool {
-        return senderId == userId
+        return senderId.lowercased() == userId.lowercased()
     }
 }
 
