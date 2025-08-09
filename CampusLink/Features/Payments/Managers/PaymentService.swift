@@ -65,6 +65,8 @@ final class PaymentService: ObservableObject {
         configuration.merchantDisplayName = "CampusLink"
         configuration.allowsDelayedPaymentMethods = false
         
+        // Enable Apple Pay
+        configuration.applePay = .init(merchantId: "merchant.campuslink.com.campuslink", merchantCountryCode: "US")
         // Initialize PaymentSheet
         self.paymentSheet = PaymentSheet(
             paymentIntentClientSecret: clientSecret,

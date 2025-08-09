@@ -5,11 +5,14 @@ struct ListingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authManager: AuthManager
     @StateObject private var paymentService = PaymentService.shared
+    @StateObject private var conversationViewModel = ConversationListViewModel()
     @State private var isContactingSeller = false
     @State private var isPrimaryActionLoading = false
     @State private var showPurchaseConfirmation = false
     @State private var purchaseError: String?
     @State private var showErrorAlert = false
+    @State private var activeConversation: Conversation?
+    @State private var showingChat = false
     
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { return false }
@@ -248,6 +251,9 @@ struct ListingDetailView: View {
         } message: {
             Text(purchaseError ?? "An unknown error occurred")
         }
+        .sheet(item: $activeConversation) { conversation in
+            ChatView(conversation: conversation)
+        }
         .onReceive(paymentService.$paymentResult) { result in
             if result != nil {
                 showPurchaseConfirmation = true
@@ -269,11 +275,34 @@ struct ListingDetailView: View {
         
         isContactingSeller = true
         
-        // Simulate network delay for future implementation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            isContactingSeller = false
-            // TODO: Navigate to messaging view (P3.1)
-            print("🔗 Contact seller: \(listing.user.name ?? "Unknown") for '\(listing.title)'")
+        Task {
+            // Initialize view model with user ID if needed
+            if let userId = authManager.session?.user.id.uuidString {
+                await conversationViewModel.initialize(userId: userId)
+                
+                // Create or find conversation for this listing
+                if let conversation = await conversationViewModel.getOrCreateConversation(for: listing) {
+                    await MainActor.run {
+                        isContactingSeller = false
+                        activeConversation = conversation
+                        showingChat = true
+                        print("✅ Opening chat for listing: \(listing.title)")
+                    }
+                } else {
+                    await MainActor.run {
+                        isContactingSeller = false
+                        purchaseError = "Failed to start conversation. Please try again."
+                        showErrorAlert = true
+                        print("❌ Failed to create/find conversation for listing: \(listing.title)")
+                    }
+                }
+            } else {
+                await MainActor.run {
+                    isContactingSeller = false
+                    purchaseError = "You must be logged in to contact the seller."
+                    showErrorAlert = true
+                }
+            }
         }
     }
     

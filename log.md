@@ -45,4 +45,75 @@
 - ✅ **Database Integration**: Automatic profile creation via triggers
 
 ## Next Steps
-Ready to move on to **p3: Marketplace Listings** - building the core marketplace functionality for buying and selling items on campus. 
+Ready to move on to **p3: Marketplace Listings** - building the core marketplace functionality for buying and selling items on campus.
+
+## Phase 5: Messaging (Realtime) Implementation
+
+### Database Setup
+- **Completed**: Converted conversation participant IDs from text to UUID with proper foreign keys
+- **Completed**: Added unique constraint on (buyer_id, seller_id, listing_id) to prevent duplicate conversations
+- **Completed**: Added index on messages (conversation_id, created_at) for performance
+- **Completed**: Enabled Row Level Security with participant-only access policies
+- **Completed**: Enabled Realtime publication for messages table
+- **Completed**: Added trigger to update conversation timestamps on new messages
+
+### iOS Implementation
+
+#### Task 5.1: Swift Models
+- **Completed**: Created `MessagingModels.swift` with Conversation and Message structs
+- **Features**: 
+  - Full Codable/Identifiable conformance for Supabase integration
+  - Helper methods for participant identification
+  - Display name and preview text generation
+
+#### Task 5.2: ViewModels
+- **Completed**: Created `ConversationListViewModel` for managing conversations
+  - Fetches all conversations for current user
+  - Implements getOrCreateConversation for starting new chats
+  - Handles both RPC and fallback manual creation
+- **Completed**: Created `ChatViewModel` for individual chat management
+  - Loads messages for conversation
+  - Sends new messages with optimistic UI updates
+  - Implements Supabase Realtime subscription for live updates
+  - Proper cleanup of subscriptions on deinit
+
+#### Task 5.3: UI Views
+- **Completed**: Built `ConversationListView` with:
+  - List of all user conversations
+  - Empty state for no conversations
+  - Pull-to-refresh functionality
+  - Navigation to individual chats
+- **Completed**: Built `ChatView` with:
+  - Message bubbles with sender differentiation
+  - Listing info bar showing item details
+  - Real-time message updates
+  - Auto-scrolling to latest messages
+  - Message input with send button
+
+#### Task 5.4: Integration
+- **Completed**: Wired "Contact Seller" button in `ListingDetailView`
+  - Creates or finds existing conversation
+  - Opens ChatView in sheet presentation
+  - Handles errors gracefully
+- **Completed**: Added Messages tab to `MainTabView`
+  - Replaced unused Search tab with Messages
+  - Users can now access all conversations from main navigation
+
+#### Task 5.5: Realtime Features
+- **Completed**: Implemented Supabase Realtime subscriptions
+  - Live message updates in active chats
+  - Automatic UI refresh on new messages
+  - Proper subscription cleanup to prevent memory leaks
+
+### Technical Highlights
+- **Architecture**: MVVM pattern with clear separation of concerns
+- **Security**: All operations respect RLS policies, sender_id enforced as auth.uid()
+- **Performance**: Optimistic UI updates, indexed queries, pagination-ready
+- **UX**: Haptic feedback, loading states, error handling, empty states
+
+### Ready for Testing
+The messaging system is fully implemented and ready for end-to-end testing. Users can:
+1. Contact sellers from listing detail pages
+2. View all conversations in the Messages tab
+3. Send and receive messages in real-time
+4. See listing context within conversations 

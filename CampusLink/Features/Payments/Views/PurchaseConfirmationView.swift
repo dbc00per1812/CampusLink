@@ -1,4 +1,5 @@
 import SwiftUI
+import StripePaymentSheet
 
 /// A view that displays the result of a payment attempt.
 /// Shows success, failure, or cancellation messages with appropriate UI feedback.
@@ -54,7 +55,7 @@ struct PurchaseConfirmationView: View {
             return "Your purchase of \"\(listing.title)\" for $\(String(format: "%.2f", listing.price)) has been completed successfully.\n\nThe seller has been notified and will contact you about delivery."
         case .canceled:
             return "You canceled the payment process. No charges were made to your account."
-        case .failed(let error):
+        case .failed(error: let error):
             return "There was an error processing your payment: \(error.localizedDescription)\n\nPlease try again or contact support if the issue persists."
         }
     }
@@ -201,7 +202,7 @@ struct PurchaseConfirmationView_Previews: PreviewProvider {
             // Failed state
             PurchaseConfirmationView(
                 listing: sampleListing,
-                paymentResult: .failed(NSError(domain: "StripeError", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Your card was declined"])),
+                paymentResult: .failed(error: NSError(domain: "StripeError", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Your card was declined"])),
                 onDismiss: {}
             )
             .previewDisplayName("Failed")
