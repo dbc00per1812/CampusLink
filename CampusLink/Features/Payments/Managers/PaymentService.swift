@@ -102,7 +102,9 @@ final class PaymentService: ObservableObject {
 
     /// Builds the Functions base URL from the configured `Secrets.supabaseURL`.
     /// Example: https://vnmzijluyctlufnzxast.supabase.co -> https://vnmzijluyctlufnzxast.functions.supabase.co/
-    private func functionsBaseURL() throws -> URL {
+    /// Exposed for testing so that the URL construction logic can be
+    /// validated without making network requests.
+    func functionsBaseURL() throws -> URL {
         let base = Secrets.supabaseURL.absoluteString
         guard base.hasPrefix("https://"), base.hasSuffix(".supabase.co") else {
             throw PaymentServiceError.invalidSupabaseURL

@@ -10,4 +10,6 @@ xcuserdata/
 DerivedData/
 
 # Secrets
-Secrets.swift 
+# Previously Secrets.swift was ignored to avoid committing credentials.
+# The project now includes a placeholder version for testing, so it
+# should be tracked in git.
