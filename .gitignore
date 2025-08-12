@@ -1,0 +1,20 @@
+# Xcode
+.DS_Store
+/build
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+
+# Swift
+.swiftpm/
+DerivedData/
+
+# Secrets
+Secrets.swift 
+# Build artifacts
+.DerivedData/
+CampusLink/App/Secrets.swift
+
+# Build artifacts
+.DerivedData/
+
