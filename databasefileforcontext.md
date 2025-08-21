@@ -9,9 +9,9 @@ CREATE TABLE public.conversations (
   last_message_at timestamp with time zone DEFAULT now(),
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
-  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT conversations_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
-  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.listings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -38,8 +38,8 @@ CREATE TABLE public.messages (
   message_type character varying DEFAULT 'text'::character varying,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT messages_pkey PRIMARY KEY (id),
-  CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id),
-  CONSTRAINT messages_sender_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id)
+  CONSTRAINT messages_sender_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id),
+  CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
 CREATE TABLE public.payments (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -58,9 +58,24 @@ CREATE TABLE public.payments (
   dispute_reason text,
   dispute_notes text,
   CONSTRAINT payments_pkey PRIMARY KEY (id),
-  CONSTRAINT payments_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
-  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
+  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT payments_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  reporter_id uuid NOT NULL,
+  reported_user_id uuid,
+  reported_listing_id uuid,
+  report_type text NOT NULL CHECK (report_type = ANY (ARRAY['inappropriate_content'::text, 'scam'::text, 'harassment'::text, 'spam'::text, 'fake_profile'::text, 'other'::text])),
+  description text NOT NULL,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'reviewing'::text, 'resolved'::text, 'dismissed'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone,
+  CONSTRAINT reports_pkey PRIMARY KEY (id),
+  CONSTRAINT reports_reported_user_id_fkey FOREIGN KEY (reported_user_id) REFERENCES auth.users(id),
+  CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES auth.users(id),
+  CONSTRAINT reports_reported_listing_id_fkey FOREIGN KEY (reported_listing_id) REFERENCES public.listings(id)
 );
 CREATE TABLE public.service_bookings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

@@ -132,4 +132,20 @@ The messaging system is fully implemented and ready for end-to-end testing. User
 - Fixed duplicate `SignUpView.swift` issue and ensured exhaustive error handling.
 - Verified UX: on successful deletion, app signs out and returns to `WelcomeView` via session change in `ContentView`.
 
-Status: Completed and deployed. Ready for review and push. 
+Status: Completed and deployed. Ready for review and push.
+
+### Task 7.2 — Add basic Report User UI
+- Created `ReportModels.swift` with comprehensive report types and status enums
+- Implemented `ReportUserView` with:
+  - Report type selection (inappropriate content, scam, harassment, spam, fake profile, other)
+  - Detailed description field with validation (minimum 10 characters)
+  - Clear display of what's being reported (user and/or listing)
+  - Important information about anonymous reporting and review timeframes
+  - Success/error handling with user feedback
+- Added report buttons to:
+  - `ListingDetailView`: Flag icon in toolbar for reporting listings/sellers (hidden for own listings)
+  - `ChatView`: Flag icon in toolbar for reporting users in conversations
+- Both views present `ReportUserView` as a sheet with proper context
+- Reports are submitted to Supabase `reports` table with reporter ID, reported user/listing, type, and description
+
+Status: Completed. Database table already exists in Supabase. 

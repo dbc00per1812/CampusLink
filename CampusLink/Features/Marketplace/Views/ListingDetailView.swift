@@ -13,6 +13,7 @@ struct ListingDetailView: View {
     @State private var showErrorAlert = false
     @State private var activeConversation: Conversation?
     @State private var showingChat = false
+    @State private var showingReportSheet = false
     
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { return false }
@@ -226,10 +227,31 @@ struct ListingDetailView: View {
         .navigationBarBackButtonHidden(false)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    dismiss()
+                HStack(spacing: 16) {
+                    // Report button (only show if not own listing)
+                    if !isOwnListing {
+                        Button(action: {
+                            showingReportSheet = true
+                        }) {
+                            Image(systemName: "flag")
+                                .foregroundColor(.red)
+                        }
+                    }
+                    
+                    Button("Done") {
+                        dismiss()
+                    }
                 }
             }
+        }
+        .sheet(isPresented: $showingReportSheet) {
+            ReportUserView(
+                userId: listing.user.id,
+                userName: listing.user.name ?? "Unknown User",
+                listingId: listing.id.uuidString,
+                listingTitle: listing.title
+            )
+            .environmentObject(authManager)
         }
         .sheet(isPresented: $showPurchaseConfirmation) {
             PurchaseConfirmationView(

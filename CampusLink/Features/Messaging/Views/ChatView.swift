@@ -6,6 +6,7 @@ struct ChatView: View {
     @EnvironmentObject private var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextFieldFocused: Bool
+    @State private var showingReportSheet = false
     
     init(conversation: Conversation) {
         self.conversation = conversation
@@ -20,63 +21,73 @@ struct ChatView: View {
         conversation.otherParticipant(currentUserId: currentUserId)
     }
     
+    @ViewBuilder
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Listing info bar if available
-                if let listing = conversation.listing {
-                    listingInfoBar(listing: listing)
-                }
-                
-                // Messages list
-                if viewModel.isLoading && viewModel.messages.isEmpty {
-                    Spacer()
-                    ProgressView("Loading messages...")
-                    Spacer()
-                } else {
-                    messagesList
-                }
-                
-                // Message input
-                messageInputBar
+            chatContent
+        }
+    }
+    
+    @ViewBuilder
+    private var chatContent: some View {
+        VStack(spacing: 0) {
+            // Listing info bar if available
+            if let listing = conversation.listing {
+                listingInfoBar(listing: listing)
             }
-            .navigationTitle(conversation.displayName(currentUserId: currentUserId))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if let otherUser = otherUser {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(Color("ThemeColor").opacity(0.2))
-                                .frame(width: 32, height: 32)
-                                .overlay(
-                                    Text(otherUser.name?.first?.uppercased() ?? "?")
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(Color("ThemeColor"))
-                                )
-                        }
-                    }
+            
+            // Messages list
+            if viewModel.isLoading && viewModel.messages.isEmpty {
+                Spacer()
+                ProgressView("Loading messages...")
+                Spacer()
+            } else {
+                messagesList
+            }
+            
+            // Message input
+            messageInputBar
+        }
+        .navigationTitle(conversation.displayName(currentUserId: currentUserId))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Close") {
+                    dismiss()
                 }
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") {
-                    viewModel.errorMessage = nil
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingReportSheet = true
+                }) {
+                    Image(systemName: "flag")
+                        .foregroundColor(.red)
                 }
-            } message: {
-                Text(viewModel.errorMessage ?? "")
             }
-            .onAppear {
-                if let userId = authManager.session?.user.id.uuidString {
-                    Task {
-                        await viewModel.initialize(userId: userId)
-                    }
+        }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+        .sheet(isPresented: $showingReportSheet) {
+            if let otherParticipant = conversation.otherParticipant(currentUserId: currentUserId) {
+                ReportUserView(
+                    userId: otherParticipant.id,
+                    userName: otherParticipant.name ?? "Unknown User",
+                    listingId: conversation.listing?.id.uuidString,
+                    listingTitle: conversation.listing?.title
+                )
+                .environmentObject(authManager)
+            }
+        }
+        .onAppear {
+            if let userId = authManager.session?.user.id.uuidString {
+                Task {
+                    await viewModel.initialize(userId: userId)
                 }
             }
         }
