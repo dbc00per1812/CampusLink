@@ -11,6 +11,7 @@ struct ProfileTabView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationView {
@@ -118,29 +119,26 @@ struct ProfileTabView: View {
                                         .stroke(Color("ThemeColor"), lineWidth: 2)
                                 )
                         }
-
-                        // Sign Out Button
-                        Button(action: {
-                            Task {
-                                await authManager.signOut()
-                            }
-                        }) {
-                            Text("Sign Out")
-                                .fontWeight(.bold)
-                                .foregroundColor(Color("ThemeColor"))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 25)
-                                        .stroke(Color("ThemeColor"), lineWidth: 2)
-                                )
-                        }
                     }
                     .padding(.horizontal)
                 }
                 .padding()
             }
             .navigationTitle("Profile")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "gearshape.fill")
+                            .foregroundColor(Color("ThemeColor"))
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+                    .environmentObject(authManager)
+            }
             .onAppear {
                 Task {
                     await loadUserProfile()
@@ -277,6 +275,37 @@ struct ProfileTabView: View {
             }
         }
     }
+}
+
+struct UserProfile: Codable {
+    let id: String
+    let name: String?
+    let bio: String?
+    let profilePic: String?
+    let email: String?
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, bio, email
+        case profilePic = "profile_pic"
+        case createdAt = "created_at"
+    }
+}
+
+struct UserProfileUpdate: Codable {
+    let name: String
+    let bio: String
+    let profilePic: String
+    
+    enum CodingKeys: String, CodingKey {
+        case name, bio
+        case profilePic = "profile_pic"
+    }
+}
+
+struct UserProfileUpdateWithoutPic: Codable {
+    let name: String
+    let bio: String
 }
 
 struct ProfileTabView_Previews: PreviewProvider {

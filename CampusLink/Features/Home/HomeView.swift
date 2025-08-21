@@ -8,7 +8,7 @@ struct HomeView: View {
             VStack {
                 HStack {
                     Spacer()
-                    NavigationLink(destination: ProfileView().environmentObject(authManager)) {
+                    NavigationLink(destination: ProfileTabView().environmentObject(authManager)) {
                         Image(systemName: "person.circle")
                             .font(.title)
                             .foregroundColor(Color("ThemeColor"))

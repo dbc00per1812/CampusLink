@@ -98,6 +98,8 @@ struct SignUpView: View {
             alertMessage = "Sign up failed: \(underlyingError.localizedDescription)"
         case .profileUpdateFailed(let underlyingError):
             alertMessage = "Could not update profile: \(underlyingError.localizedDescription)"
+        case .deleteFailed(let underlyingError):
+            alertMessage = "Delete account failed: \(underlyingError.localizedDescription)"
         case .signInFailed:
             // This case is not applicable here but is needed for the switch to be exhaustive.
             break

@@ -117,3 +117,19 @@ The messaging system is fully implemented and ready for end-to-end testing. User
 2. View all conversations in the Messages tab
 3. Send and receive messages in real-time
 4. See listing context within conversations 
+
+## Phase 7: Compliance & Settings
+
+### Task 7.1 — Implement Delete Account flow
+- Implemented `SettingsView` with Sign Out and Delete Account actions behind a gear button in `ProfileTabView`.
+- Refactored `AuthManager.deleteCurrentUser()` to call Supabase Edge Function `delete_user` with Bearer token; removed body user_id.
+- Created secure Edge Function `supabase/functions/delete_user/index.ts`:
+  - Verifies caller using `SUPABASE_ANON_KEY` and the provided JWT.
+  - Allows only self-deletion (uses token's `sub`).
+  - Uses service role client solely to `admin.auth.admin.deleteUser()` and to clean up `users` table rows.
+  - Robust error handling and consistent JSON responses.
+- Deleted obsolete `ProfileView.swift`; consolidated profile UI into `ProfileTabView.swift` and migrated needed models.
+- Fixed duplicate `SignUpView.swift` issue and ensured exhaustive error handling.
+- Verified UX: on successful deletion, app signs out and returns to `WelcomeView` via session change in `ContentView`.
+
+Status: Completed and deployed. Ready for review and push. 
