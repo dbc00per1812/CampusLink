@@ -148,4 +148,22 @@ Status: Completed and deployed. Ready for review and push.
 - Both views present `ReportUserView` as a sheet with proper context
 - Reports are submitted to Supabase `reports` table with reporter ID, reported user/listing, type, and description
 
-Status: Completed. Database table already exists in Supabase. 
+Status: Completed. Database table already exists in Supabase.
+
+## Phase 8: QA & Performance
+
+### Task 8.1 — Implement pagination in HomeTabView
+- Added pagination state variables: `currentPage`, `hasMorePages`, `isLoadingMore`, `pageSize` (10 items)
+- Implemented Supabase `.range()` queries to fetch listings in batches
+- Added infinite scroll: loads more when user reaches last 3 items
+- Added pull-to-refresh functionality with `.refreshable` modifier
+- Added visual indicators:
+  - Loading spinner at bottom when fetching more
+  - "You've reached the end" message when no more pages
+- Three main functions:
+  - `loadListings()`: Initial load of first page
+  - `loadMoreListings()`: Fetches next page when scrolling
+  - `refreshListings()`: Resets and reloads from start
+- Prevents duplicate requests with `isLoadingMore` guard
+
+Status: Completed. Pagination fully functional with smooth UX. 

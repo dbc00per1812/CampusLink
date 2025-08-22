@@ -4,6 +4,11 @@ struct HomeTabView: View {
     @EnvironmentObject private var authManager: AuthManager
     @State private var listings: [ListingWithUser] = []
     @State private var isLoading = true
+    @State private var isLoadingMore = false
+    @State private var hasMorePages = true
+    @State private var currentPage = 0
+    
+    private let pageSize = 10
 
     var body: some View {
         NavigationView {
@@ -60,9 +65,42 @@ struct HomeTabView: View {
                                     ListingCard(listing: listing)
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                                .onAppear {
+                                    // Load more when we reach the last few items
+                                    if listing.id == listings.suffix(3).first?.id {
+                                        Task {
+                                            await loadMoreListings()
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Loading indicator at the bottom
+                            if isLoadingMore {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                        .padding()
+                                    Spacer()
+                                }
+                            }
+                            
+                            // End of list indicator
+                            if !hasMorePages && !listings.isEmpty {
+                                HStack {
+                                    Spacer()
+                                    Text("You've reached the end")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .padding()
+                                    Spacer()
+                                }
                             }
                         }
                         .padding()
+                    }
+                    .refreshable {
+                        await refreshListings()
                     }
                 }
             }
@@ -79,7 +117,16 @@ struct HomeTabView: View {
         guard let userEmail = authManager.session?.user.email,
               let domain = userEmail.components(separatedBy: "@").last else { return }
         
+        await MainActor.run {
+            isLoading = true
+            currentPage = 0
+            hasMorePages = true
+        }
+        
         do {
+            let from = 0
+            let to = pageSize - 1
+            
             let response: [ListingWithUser] = try await supabase
                 .from("listings")
                 .select("""
@@ -88,12 +135,15 @@ struct HomeTabView: View {
                 """)
                 .like("user.email", pattern: "%@\(domain)")
                 .order("created_at", ascending: false)
+                .range(from: from, to: to)
                 .execute()
                 .value
             
             await MainActor.run {
                 self.listings = response
                 self.isLoading = false
+                self.currentPage = 1
+                self.hasMorePages = response.count == pageSize
             }
             
         } catch {
@@ -101,6 +151,82 @@ struct HomeTabView: View {
             await MainActor.run {
                 self.isLoading = false
             }
+        }
+    }
+    
+    private func loadMoreListings() async {
+        guard !isLoadingMore, hasMorePages else { return }
+        guard let userEmail = authManager.session?.user.email,
+              let domain = userEmail.components(separatedBy: "@").last else { return }
+        
+        await MainActor.run {
+            isLoadingMore = true
+        }
+        
+        do {
+            let from = currentPage * pageSize
+            let to = from + pageSize - 1
+            
+            let response: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("""
+                    *,
+                    user:users(*)
+                """)
+                .like("user.email", pattern: "%@\(domain)")
+                .order("created_at", ascending: false)
+                .range(from: from, to: to)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.listings.append(contentsOf: response)
+                self.currentPage += 1
+                self.hasMorePages = response.count == pageSize
+                self.isLoadingMore = false
+            }
+            
+        } catch {
+            print("Failed to load more listings: \(error)")
+            await MainActor.run {
+                self.isLoadingMore = false
+            }
+        }
+    }
+    
+    private func refreshListings() async {
+        guard let userEmail = authManager.session?.user.email,
+              let domain = userEmail.components(separatedBy: "@").last else { return }
+        
+        await MainActor.run {
+            currentPage = 0
+            hasMorePages = true
+        }
+        
+        do {
+            let from = 0
+            let to = pageSize - 1
+            
+            let response: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("""
+                    *,
+                    user:users(*)
+                """)
+                .like("user.email", pattern: "%@\(domain)")
+                .order("created_at", ascending: false)
+                .range(from: from, to: to)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.listings = response
+                self.currentPage = 1
+                self.hasMorePages = response.count == pageSize
+            }
+            
+        } catch {
+            print("Failed to refresh listings: \(error)")
         }
     }
 }
