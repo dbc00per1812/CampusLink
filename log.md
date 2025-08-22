@@ -166,4 +166,23 @@ Status: Completed. Database table already exists in Supabase.
   - `refreshListings()`: Resets and reloads from start
 - Prevents duplicate requests with `isLoadingMore` guard
 
-Status: Completed. Pagination fully functional with smooth UX. 
+Status: Completed. Pagination fully functional with smooth UX.
+
+### Task 8.2 — Implement client-side image resizing
+- Created `UIImage+Resize.swift` extension with smart resizing methods
+- Resizing maintains aspect ratio and applies appropriate compression
+- Three preset methods:
+  - `resizedForUpload()`: Max 1080px for listings (reduces file size ~60-80%)
+  - `resizedForProfile()`: Max 500px for profile pictures
+  - `resizedForThumbnail()`: Max 200px for small previews
+- Applied resizing to all image uploads:
+  - Profile pictures in `ProfileTabView`
+  - Listing images in `PostView` (TabViews.swift)
+  - Dispute evidence in `ReportDisputeView` (max 800px)
+- Benefits:
+  - Faster upload times (smaller files)
+  - Reduced storage costs
+  - Better performance when loading images
+  - Reduced bandwidth usage
+
+Status: Completed. All image uploads now automatically resize before uploading. 

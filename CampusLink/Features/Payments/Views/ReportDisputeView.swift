@@ -93,7 +93,7 @@ struct ReportDisputeView: View {
         if !selectedImages.isEmpty {
             do {
                 for image in selectedImages {
-                    if let data = image.jpegData(compressionQuality: 0.7) {
+                    if let data = image.resizedForUpload(maxDimension: 800, compressionQuality: 0.7) {
                         let path = "\(transaction.id.uuidString)/\(UUID().uuidString).jpg"
                         try await supabase.storage.from("disputes").upload(path, data: data)
                         let url = try supabase.storage.from("disputes").getPublicURL(path: path).absoluteString

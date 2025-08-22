@@ -264,7 +264,7 @@ struct PostView: View {
         
         // Upload photo if one was selected
         if let listingImage = listingImage,
-           let imageData = listingImage.jpegData(compressionQuality: 0.8) {
+           let imageData = listingImage.resizedForUpload() {
             
             do {
                 let fileName = "\(UUID())_listing.jpg"

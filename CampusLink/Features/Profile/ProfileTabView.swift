@@ -221,7 +221,7 @@ struct ProfileTabView: View {
         var profilePicURL: String? = nil
         
         if let profileImage = profileImage,
-           let imageData = profileImage.jpegData(compressionQuality: 0.8) {
+           let imageData = profileImage.resizedForProfile() {
             
             do {
                 let fileName = "\(userId)_profile.jpg"
