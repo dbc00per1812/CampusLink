@@ -19,6 +19,11 @@ struct UserProfileCreate: Codable {
 class AuthManager: ObservableObject {
     
     @Published var session: Session?
+    
+    // Expose current user id for convenience in views
+    var currentUserId: String? {
+        session?.user.id.uuidString
+    }
 
     private var authTask: Task<Void, Never>? = nil
 
@@ -58,7 +63,7 @@ class AuthManager: ObservableObject {
     }
     
 
-
+    
     deinit {
         authTask?.cancel()
     }
