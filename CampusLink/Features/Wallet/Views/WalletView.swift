@@ -26,13 +26,19 @@ struct WalletView: View {
             .refreshable { await viewModel.refreshData() }
         }
         .task { await viewModel.loadWalletData() }
-        .sheet(isPresented: $viewModel.showWithdrawSheet) { withdrawSheet }
-        .sheet(item: $viewModel.onboardingLink) { link in
+        .sheet(isPresented: $viewModel.showWithdrawSheet, onDismiss: { viewModel.showWithdrawSheet = false }) { withdrawSheet }
+        .sheet(item: $viewModel.onboardingLink, onDismiss: { viewModel.onboardingLink = nil }) { link in
             SafariView(url: link.url).ignoresSafeArea()
         }
         .alert("Wallet", isPresented: $viewModel.isShowingError) {
             Button("OK") { viewModel.errorMessage = nil }
         } message: { Text(viewModel.errorMessage ?? "") }
+        .onDisappear {
+            // Ensure no overlays linger when switching tabs
+            viewModel.showWithdrawSheet = false
+            viewModel.onboardingLink = nil
+            viewModel.errorMessage = nil
+        }
     }
     
     // MARK: - Balance Card
