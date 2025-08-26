@@ -66,7 +66,9 @@ class ConversationListViewModel: ObservableObject {
             isLoading = false
             
         } catch {
+            #if DEBUG
             print("Failed to load conversations: \(error)")
+            #endif
             errorMessage = "Failed to load conversations"
             isLoading = false
         }
@@ -104,7 +106,9 @@ class ConversationListViewModel: ObservableObject {
             
         } catch {
             // If RPC doesn't exist, fall back to manual create/find
+            #if DEBUG
             print("RPC failed, trying manual approach: \(error)")
+            #endif
             
             // First, try to find existing conversation
             do {
@@ -143,7 +147,9 @@ class ConversationListViewModel: ObservableObject {
                 return created
                 
             } catch {
+                #if DEBUG
                 print("Failed to create/find conversation: \(error)")
+                #endif
                 errorMessage = "Failed to start conversation"
                 return nil
             }
@@ -168,7 +174,9 @@ class ConversationListViewModel: ObservableObject {
             conversations.removeAll { $0.id == conversation.id }
             
         } catch {
+            #if DEBUG
             print("Failed to delete conversation: \(error)")
+            #endif
             errorMessage = "Failed to delete conversation"
         }
     }

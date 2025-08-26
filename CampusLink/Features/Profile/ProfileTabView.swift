@@ -14,10 +14,25 @@ struct ProfileTabView: View {
     @State private var showSettings = false
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Profile Header
+        ScrollView {
+            VStack(spacing: 24) {
+                // Title and Settings Button
+                HStack {
+                    Text("Profile")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                    Spacer()
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title2)
+                            .foregroundColor(Color("ThemeColor"))
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Profile Header
                     VStack(spacing: 16) {
                         if let profileImage = profileImage {
                             Image(uiImage: profileImage)
@@ -123,37 +138,25 @@ struct ProfileTabView: View {
                     .padding(.horizontal)
                 }
                 .padding()
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(authManager)
+        }
+        .onAppear {
+            Task {
+                await loadUserProfile()
             }
-            .navigationTitle("Profile")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showSettings = true
-                    }) {
-                        Image(systemName: "gearshape.fill")
-                            .foregroundColor(Color("ThemeColor"))
-                    }
+        }
+        .onChange(of: selectedImage) { oldValue, newValue in
+            Task {
+                if let newValue = newValue {
+                    await loadImage(from: newValue)
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-                    .environmentObject(authManager)
-            }
-            .onAppear {
-                Task {
-                    await loadUserProfile()
-                }
-            }
-            .onChange(of: selectedImage) { oldValue, newValue in
-                Task {
-                    if let newValue = newValue {
-                        await loadImage(from: newValue)
-                    }
-                }
-            }
-            .alert(isPresented: $showingAlert) {
-                Alert(title: Text("Profile Update"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
-            }
+        }
+        .alert(isPresented: $showingAlert) {
+            Alert(title: Text("Profile Update"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }
     }
     
@@ -198,7 +201,9 @@ struct ProfileTabView: View {
                 }
             }
         } catch {
+            #if DEBUG
             print("Failed to load profile image: \(error)")
+            #endif
         }
     }
     

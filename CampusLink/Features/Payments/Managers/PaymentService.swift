@@ -73,14 +73,18 @@ final class PaymentService: ObservableObject {
             configuration: configuration
         )
         
+        #if DEBUG
         print("✅ PaymentService: PaymentSheet configured for listing \(listingId)")
+        #endif
     }
     
     /// Presents the Stripe PaymentSheet UI.
     /// - Parameter presentingViewController: The view controller to present from.
     func presentPaymentSheet(from presentingViewController: UIViewController) {
         guard let paymentSheet = paymentSheet else {
+            #if DEBUG
             print("❌ PaymentService: PaymentSheet not configured")
+            #endif
             return
         }
         
@@ -89,11 +93,17 @@ final class PaymentService: ObservableObject {
             
             switch paymentResult {
             case .completed:
+                #if DEBUG
                 print("✅ Payment completed successfully")
+                #endif
             case .canceled:
+                #if DEBUG
                 print("⚠️ Payment canceled by user")
+                #endif
             case .failed(let error):
+                #if DEBUG
                 print("❌ Payment failed: \(error.localizedDescription)")
+                #endif
             }
         }
     }

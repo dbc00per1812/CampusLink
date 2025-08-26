@@ -7,46 +7,49 @@ struct ConversationListView: View {
     @State private var showingChat = false
     
     var body: some View {
-        NavigationView {
-            VStack {
-                if viewModel.isLoading && viewModel.conversations.isEmpty {
-                    Spacer()
-                    ProgressView("Loading conversations...")
-                    Spacer()
-                } else if viewModel.conversations.isEmpty {
-                    emptyStateView
-                } else {
-                    conversationsList
-                }
-            }
-            .navigationTitle("Messages")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        Task {
-                            await viewModel.loadConversations()
-                        }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-            }
-            .sheet(item: $selectedConversation) { conversation in
-                ChatView(conversation: conversation)
-            }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") {
-                    viewModel.errorMessage = nil
-                }
-            } message: {
-                Text(viewModel.errorMessage ?? "")
-            }
-            .onAppear {
-                if let userId = authManager.session?.user.id.uuidString {
+        VStack {
+            // Title Bar
+            HStack {
+                Text("Messages")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Spacer()
+                Button(action: {
                     Task {
-                        await viewModel.initialize(userId: userId)
+                        await viewModel.loadConversations()
                     }
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(Color("ThemeColor"))
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top)
+            
+            if viewModel.isLoading && viewModel.conversations.isEmpty {
+                Spacer()
+                ProgressView("Loading conversations...")
+                Spacer()
+            } else if viewModel.conversations.isEmpty {
+                emptyStateView
+            } else {
+                conversationsList
+            }
+        }
+        .sheet(item: $selectedConversation) { conversation in
+            ChatView(conversation: conversation)
+        }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+        .onAppear {
+            if let userId = authManager.session?.user.id.uuidString {
+                Task {
+                    await viewModel.initialize(userId: userId)
                 }
             }
         }

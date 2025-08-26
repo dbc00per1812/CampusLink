@@ -12,13 +12,16 @@ struct ContentView: View {
     @StateObject private var router = AppRouter.shared
 
     var body: some View {
-        RouterView(router: router) {
+        Group {
             if authManager.session != nil {
                 MainTabView()
             } else {
                 WelcomeView()
             }
         }
+        // Animate and force view reload on session change
+        .id(authManager.session?.user.id.uuidString ?? "loggedOut")
+        .animation(.easeInOut, value: authManager.session != nil)
     }
 }
 

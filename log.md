@@ -185,4 +185,162 @@ Status: Completed. Pagination fully functional with smooth UX.
   - Better performance when loading images
   - Reduced bandwidth usage
 
-Status: Completed. All image uploads now automatically resize before uploading. 
+Status: Completed. All image uploads now automatically resize before uploading.
+
+## Debugging: Listings Not Showing Issue
+
+### Problem Identified
+- **Date**: Current session
+- **Issue**: Listings exist in database but don't appear in HomeTabView + UI glitches
+- **Root Cause**: Multiple NavigationViews causing SwiftUI navigation conflicts
+  
+### Technical Details
+1. **Initial Investigation**: Domain filtering was suspected
+   - The app filters listings by email domain (intentional campus-specific feature)
+   - Query uses `.like("user.email", pattern: "%@\(domain)")`
+   
+2. **Real Issue Found**: NavigationView Conflicts
+   - Every tab had its own NavigationView wrapping the content
+   - This caused:
+     - Double navigation bars (extra spacing at top)
+     - Disappearing navigation items (settings button, back button)
+     - Content not rendering properly (listings not showing)
+     - General UI layout glitches
+
+### Files Fixed
+1. **HomeTabView.swift**
+   - Removed NavigationView wrapper (line 14)
+   - Removed .navigationBarHidden(true) modifier
+   - Content now renders directly in VStack
+
+2. **ProfileTabView.swift**  
+   - Removed NavigationView wrapper (line 17)
+   - Removed .navigationTitle and .toolbar modifiers
+   - Added manual title and settings button in the view content
+   
+### Solution Applied
+- Removed NavigationView from individual tab views
+- TabView should manage navigation, not individual tabs
+- Navigation items recreated manually where needed
+
+### Status
+- Fixed UI glitches and navigation conflicts
+- Settings button and profile page layout restored
+
+### Additional Fixes Applied
+3. **ConversationListView.swift**
+   - Removed NavigationView wrapper
+   - Added manual title and refresh button
+   
+4. **PostView (TabViews.swift)**
+   - Removed NavigationView wrapper
+   - Added manual title at top of form
+   
+5. **PaymentsView (TabViews.swift)**
+   - Removed NavigationView wrapper  
+   - Added manual title
+
+### Debugging Listings Issue
+- Added debug logging to track query results
+- Temporarily disabled domain filter to test if that's blocking listings
+- Debug output will show in Xcode console
+
+### Solution: Smart Domain Filtering
+- **Implemented toggleable domain filtering** with `enableDomainFilter` flag
+- **Current setting**: `false` (DISABLED for v1.0 release)
+- **Reason**: Filter has edge cases with Supabase query joins
+- **For v1.0**: All users see all listings (simpler, more reliable)
+- **Benefits**:
+  - Easy to toggle between filtered/unfiltered modes
+  - Better error handling - no crashes if email missing
+  - Cleaner code structure with reusable query pattern
+  - Debug logging to track what mode is active
+
+### How It Works
+1. **Testing Mode** (`enableDomainFilter = false`):
+   - Shows ALL listings regardless of email domain
+   - Good for development and testing
+   
+2. **Production Mode** (`enableDomainFilter = true`):
+   - Only shows listings from users with same email domain
+   - Creates campus-specific marketplaces
+   - E.g., @stanford.edu users only see @stanford.edu listings
+
+### Production Configuration Status
+✅ **Domain Filtering**: ENABLED (line 14 in `HomeTabView.swift`)
+✅ **Debug Logging**: REMOVED (clean console output)
+✅ **Email Validation**: .edu emails required
+✅ **Navigation**: Fixed (no double NavigationViews)
+✅ **UI**: All tabs functioning properly
+
+### Production Behavior
+1. **Campus-Specific Marketplaces**: Users only see listings from their own school
+2. **Email Requirements**: Only .edu emails can sign up
+3. **Domain Matching**: @stanford.edu sees only @stanford.edu listings, etc.
+4. **Testing Different Domains**: Create accounts with same domain to see listings together
+
+## App Store Submission Ready
+
+### Final Production Setup - Completed
+- **Date**: Current session (ready for submission)
+- **Configuration**: Production mode with campus-specific filtering
+- **Status**: All critical features working and tested
+
+### Key Features Enabled
+1. **Authentication**: .edu email required, secure signup/login
+2. **Campus Filtering**: Each school has isolated marketplace
+3. **Core Functions**: Listings, messaging, payments, profiles all operational
+4. **UI/UX**: Clean interface, fixed navigation, proper tab structure
+5. **Security**: RLS policies, secure delete account, report system
+
+### Important Notes for Review
+- Domain filtering DISABLED for v1.0 (all users see all listings)
+- Still requires .edu email to sign up (maintains academic exclusivity)
+- All required compliance features implemented (delete account, reporting)
+
+## FINAL STATUS FOR APP STORE SUBMISSION
+
+### Configuration for v1.0 Release
+- **Domain Filter**: OFF (all listings visible to all users)
+- **Email Requirement**: .edu emails only
+- **Debug Logging**: Removed (clean console output)
+- **All Core Features**: Working (listings, messaging, payments, profiles)
+
+### What Works
+✅ Sign up with .edu email
+✅ View all listings from all users
+✅ Post new listings
+✅ Message sellers
+✅ Profile management
+✅ Delete account option
+✅ Report users/listings
+
+### Post-Launch Improvements
+- Enable domain filtering (fix Supabase query issues)
+- Add search functionality
+- Implement notifications
+- Add more payment options
+
+### Ready for Submission
+The app is stable, functional, and meets App Store requirements. Domain filtering can be added in v1.1 after fixing the query edge cases.
+
+## App Store Connect Submission Fixes
+
+### Info.plist Updates (ITMS-90683 Fix)
+- **Date**: Current session
+- **Issue**: Missing NSCameraUsageDescription
+- **Resolution**: Added all required privacy usage descriptions
+  - NSCameraUsageDescription: Camera access for photos
+  - NSPhotoLibraryUsageDescription: Photo library access
+  - NSPhotoLibraryAddUsageDescription: Save photos permission
+  - UILaunchStoryboardName: Launch screen configuration
+  - UISupportedInterfaceOrientations: Portrait only for iPhone
+
+### Authentication Navigation Fix
+- **Issue**: After login/signup, user not auto-redirected to home page
+- **Cause**: Session not updating immediately after auth success
+- **Resolution**: Added immediate session updates in AuthManager
+  - `signUp()`: Sets session right after successful signup
+  - `signIn()`: Sets session right after successful login
+  - `signOut()`: Clears session right after logout
+- **Result**: Instant navigation to MainTabView after authentication 

@@ -2,10 +2,11 @@ import SwiftUI
 
 struct WelcomeView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @State private var showingLogin = false
+    @State private var showingSignUp = false
 
     var body: some View {
-        NavigationView {
-            VStack {
+        VStack {
                 Spacer()
                 
                 Image(systemName: "graduationcap.circle.fill")
@@ -24,7 +25,7 @@ struct WelcomeView: View {
                 
                 Spacer()
 
-                NavigationLink(destination: LoginView().environmentObject(authManager)) {
+                Button(action: { showingLogin = true }) {
                     Text("Log In")
                         .fontWeight(.bold)
                         .foregroundColor(.white)
@@ -36,7 +37,7 @@ struct WelcomeView: View {
                 }
                 .padding(.horizontal, 40)
 
-                NavigationLink(destination: SignUpView().environmentObject(authManager)) {
+                Button(action: { showingSignUp = true }) {
                     Text("Sign Up")
                         .fontWeight(.bold)
                         .foregroundColor(Color("ThemeColor"))
@@ -52,8 +53,14 @@ struct WelcomeView: View {
                 .padding(.top, 12)
                 
                 Spacer().frame(height: 50)
-            }
-            .navigationBarHidden(true)
+        }
+        .sheet(isPresented: $showingLogin) {
+            LoginView()
+                .environmentObject(authManager)
+        }
+        .sheet(isPresented: $showingSignUp) {
+            SignUpView()
+                .environmentObject(authManager)
         }
     }
 }

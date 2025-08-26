@@ -179,20 +179,28 @@ struct ActionButton_Previews: PreviewProvider {
         VStack(spacing: 20) {
             // Individual button examples
             ActionButton(type: .contactSeller) {
+                #if DEBUG
                 print("Contact seller")
+                #endif
             }
             
             ActionButton(type: .buyNow) {
+                #if DEBUG
                 print("Buy now")
+                #endif
             }
             
             ActionButton(type: .bookService) {
+                #if DEBUG
                 print("Book service")
+                #endif
             }
             
             // Disabled button
             ActionButton(type: .buyNow, isEnabled: false) {
+                #if DEBUG
                 print("Disabled")
+                #endif
             }
             
             // Button row example
@@ -215,8 +223,16 @@ struct ActionButton_Previews: PreviewProvider {
                 isOwnListing: false,
                 isContactingLoading: false,
                 isPrimaryActionLoading: false,
-                onContactSeller: { print("Contact") },
-                onPrimaryAction: { print("Buy") }
+                onContactSeller: { 
+                    #if DEBUG
+                    print("Contact")
+                    #endif
+                },
+                onPrimaryAction: { 
+                    #if DEBUG
+                    print("Buy")
+                    #endif
+                }
             )
         }
         .padding()

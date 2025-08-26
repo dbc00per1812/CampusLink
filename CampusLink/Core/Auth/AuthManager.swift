@@ -82,6 +82,11 @@ class AuthManager: ObservableObject {
                 password: password
             )
             
+            // Update session immediately
+            await MainActor.run {
+                self.session = signInResponse
+            }
+            
             return .success(())
         } catch {
             return .failure(.signUpFailed(error))
@@ -90,7 +95,13 @@ class AuthManager: ObservableObject {
 
     func signIn(email: String, password: String) async -> Result<Void, AuthError> {
         do {
-            try await supabase.auth.signIn(email: email, password: password)
+            let response = try await supabase.auth.signIn(email: email, password: password)
+            
+            // Update session immediately
+            await MainActor.run {
+                self.session = response
+            }
+            
             return .success(())
         } catch {
             return .failure(.signInFailed(error))
@@ -100,6 +111,12 @@ class AuthManager: ObservableObject {
     func signOut() async -> Result<Void, AuthError> {
         do {
             try await supabase.auth.signOut()
+            
+            // Clear session immediately
+            await MainActor.run {
+                self.session = nil
+            }
+            
             return .success(())
         } catch {
             return .failure(.signOutFailed(error))

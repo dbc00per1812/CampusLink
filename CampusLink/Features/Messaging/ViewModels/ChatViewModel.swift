@@ -57,7 +57,9 @@ class ChatViewModel: ObservableObject {
             isLoading = false
             
         } catch {
+            #if DEBUG
             print("Failed to load messages: \(error)")
+            #endif
             errorMessage = "Failed to load messages"
             isLoading = false
         }
@@ -111,7 +113,9 @@ class ChatViewModel: ObservableObject {
             isSending = false
             
         } catch {
+            #if DEBUG
             print("Failed to send message: \(error)")
+            #endif
             errorMessage = "Failed to send message"
             messageText = content // Restore text so user can retry
             isSending = false
@@ -163,7 +167,9 @@ class ChatViewModel: ObservableObject {
                     }
                     
                 } catch {
+                    #if DEBUG
                     print("Failed to parse realtime message: \(error)")
+                    #endif
                 }
             }
         }
@@ -174,7 +180,9 @@ class ChatViewModel: ObservableObject {
         // Store reference for cleanup
         self.realtimeChannel = channel
         
+        #if DEBUG
         print("✅ Realtime subscription setup for conversation: \(conversation.id)")
+        #endif
     }
     
     /// Clean up realtime subscription
@@ -183,7 +191,9 @@ class ChatViewModel: ObservableObject {
         if let channel = realtimeChannel {
             await channel.unsubscribe()
             realtimeChannel = nil
+            #if DEBUG
             print("🧹 Cleaned up realtime subscription for conversation: \(conversation.id)")
+            #endif
         }
     }
     

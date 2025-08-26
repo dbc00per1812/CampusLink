@@ -180,6 +180,18 @@ Audience: AI agents and developers. Copy any task line under each section into y
 
 ## 9) App Store Readiness
 
+- TASK 9.0 — Xcode project readiness (IDE) — Recommended
+  - **Human Explanation:** Ensure the project builds cleanly for Release and includes settings that streamline App Store review (export compliance, privacy, signing). This reduces review back-and-forth and failures during archive/upload.
+  - **IDE Steps:**
+    - Set versioning: `CFBundleShortVersionString` (e.g., 1.0.0) and `CFBundleVersion` (e.g., 1)
+    - App metadata: Display Name, Minimum iOS, supported orientations
+    - Signing: Enable “Automatically manage signing”; verify Release signing team/profile
+    - Info.plist: add `ITSAppUsesNonExemptEncryption` = `NO` (false)
+    - Privacy manifest: add minimal `PrivacyInfo.xcprivacy` (no tracking; essential data use only)
+    - UI: Settings/About version label reads from bundle (no hardcoded version)
+    - Build: Clean Debug and Release; ensure no debug logging in Release
+  - **External Steps:** None.
+
 - TASK 9.1 — Prepare all App Store Connect metadata.
   - **Human Explanation:** This involves writing the app's description, taking screenshots, and preparing all the other materials required for the App Store listing.
   - **IDE Steps:** None.

@@ -3,20 +3,17 @@ import PhotosUI
 
 struct SearchView: View {
     var body: some View {
-        NavigationView {
-            VStack {
-                Text("Search")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text("Search for items on campus")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-                    .padding()
-                
-                Spacer()
-            }
-            .navigationTitle("Search")
+        VStack {
+            Text("Search")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+            
+            Text("Search for items on campus")
+                .font(.headline)
+                .foregroundColor(.secondary)
+                .padding()
+            
+            Spacer()
         }
     }
 }
@@ -41,9 +38,15 @@ struct PostView: View {
     let categories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Other"]
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Title
+                Text("Create Listing")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                
                     // Photo Section
                     VStack(spacing: 12) {
                         if let listingImage = listingImage {
@@ -224,9 +227,8 @@ struct PostView: View {
                     .padding(.horizontal)
                 }
                 .padding()
-            }
-            .navigationTitle("Create Listing")
-            .onChange(of: selectedImage) { oldValue, newValue in
+        }
+        .onChange(of: selectedImage) { oldValue, newValue in
                 Task {
                     if let newValue = newValue {
                         await loadImage(from: newValue)
@@ -240,7 +242,6 @@ struct PostView: View {
                     }
                 })
             }
-        }
     }
     
     private func loadImage(from item: PhotosPickerItem) async {
@@ -349,8 +350,15 @@ struct PaymentsView: View {
     @State private var isLoading = true
 
     var body: some View {
-        NavigationView {
-            VStack {
+        VStack {
+            // Title
+            Text("My Listings")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top)
+            
                 if isLoading {
                     Spacer()
                     ProgressView("Loading your listings...")
@@ -388,12 +396,10 @@ struct PaymentsView: View {
                         .padding()
                     }
                 }
-            }
-            .navigationTitle("My Listings")
-            .onAppear {
-                Task {
-                    await loadMyListings()
-                }
+        }
+        .onAppear {
+            Task {
+                await loadMyListings()
             }
         }
     }
@@ -416,7 +422,9 @@ struct PaymentsView: View {
             }
             
         } catch {
+            #if DEBUG
             print("Failed to load my listings: \(error)")
+            #endif
             await MainActor.run {
                 self.isLoading = false
             }
@@ -435,7 +443,9 @@ struct PaymentsView: View {
                 myListings.removeAll { $0.id == listing.id }
             }
         } catch {
+            #if DEBUG
             print("Failed to delete listing: \(error)")
+            #endif
         }
     }
     
@@ -467,7 +477,9 @@ struct PaymentsView: View {
                 }
             }
         } catch {
+            #if DEBUG
             print("Failed to update listing: \(error)")
+            #endif
         }
     }
 }

@@ -107,7 +107,9 @@ struct PurchaseConfirmationView: View {
                         
                         Button(action: {
                             // TODO: Navigate to messaging with seller
+                            #if DEBUG
                             print("📱 Contact seller about delivery")
+                            #endif
                             onDismiss()
                         }) {
                             Text("Contact Seller")

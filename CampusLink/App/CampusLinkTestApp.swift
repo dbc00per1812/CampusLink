@@ -25,9 +25,13 @@ struct CampusLinkTestApp: App {
                     Task {
                         do {
                             try await supabase.auth.session(from: url)
+                            #if DEBUG
                             print("✅ Successfully handled auth URL: \(url)")
+                            #endif
                         } catch {
+                            #if DEBUG
                             print("❌ Failed to handle auth URL: \(error)")
+                            #endif
                         }
                     }
                 }

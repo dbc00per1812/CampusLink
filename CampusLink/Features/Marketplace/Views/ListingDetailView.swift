@@ -311,14 +311,18 @@ struct ListingDetailView: View {
                         isContactingSeller = false
                         activeConversation = conversation
                         showingChat = true
+                        #if DEBUG
                         print("✅ Opening chat for listing: \(listing.title)")
+                        #endif
                     }
                 } else {
                     await MainActor.run {
                         isContactingSeller = false
                         purchaseError = "Failed to start conversation. Please try again."
                         showErrorAlert = true
+                        #if DEBUG
                         print("❌ Failed to create/find conversation for listing: \(listing.title)")
+                        #endif
                     }
                 }
             } else {
@@ -360,7 +364,9 @@ struct ListingDetailView: View {
                         isPrimaryActionLoading = false
                         purchaseError = error.localizedDescription
                         showErrorAlert = true
+                        #if DEBUG
                         print("❌ Failed to create payment intent: \(error)")
+                        #endif
                     }
                 }
             }
@@ -369,6 +375,7 @@ struct ListingDetailView: View {
             // Simulate network delay for future implementation
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 isPrimaryActionLoading = false
+                #if DEBUG
                 print("📅 Book service: \(listing.title)")
                 if let duration = listing.serviceDuration {
                     print("   Duration: \(duration)")
@@ -376,6 +383,7 @@ struct ListingDetailView: View {
                 if let location = listing.serviceLocation {
                     print("   Location: \(location.displayName)")
                 }
+                #endif
                 // TODO: Navigate to booking flow for services
             }
         }

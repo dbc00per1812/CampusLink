@@ -77,15 +77,21 @@ struct SignUpView: View {
     }
     
     private func authenticate() async {
+        #if DEBUG
         print("🔄 Starting sign-up process...")
+        #endif
         let result = await authManager.signUp(email: email, password: password, name: name)
         
         switch result {
         case .success:
+            #if DEBUG
             print("✅ Sign-up successful!")
+            #endif
             // User will be automatically redirected via AuthManager session change
         case .failure(let error):
+            #if DEBUG
             print("❌ Sign-up failed: \(error)")
+            #endif
             handle(error)
         }
     }

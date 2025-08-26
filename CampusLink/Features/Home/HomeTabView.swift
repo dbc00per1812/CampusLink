@@ -1,5 +1,10 @@
 import SwiftUI
 
+// Simple struct just for fetching email
+private struct UserEmailFetch: Codable {
+    let email: String?
+}
+
 struct HomeTabView: View {
     @EnvironmentObject private var authManager: AuthManager
     @State private var listings: [ListingWithUser] = []
@@ -9,10 +14,14 @@ struct HomeTabView: View {
     @State private var currentPage = 0
     
     private let pageSize = 10
+    
+    // Domain filtering - DISABLED for App Store submission
+    // The filter has issues with the current Supabase query structure
+    // TODO: Fix post-launch with proper RPC function
+    private let enableDomainFilter = false  // Disabled for v1.0 release
 
     var body: some View {
-        NavigationView {
-            VStack {
+        VStack {
                 // Header
                 VStack(spacing: 8) {
                     HStack {
@@ -103,19 +112,15 @@ struct HomeTabView: View {
                         await refreshListings()
                     }
                 }
-            }
-            .navigationBarHidden(true)
-            .onAppear {
-                Task {
-                    await loadListings()
-                }
+        }
+        .onAppear {
+            Task {
+                await loadListings()
             }
         }
     }
     
     private func loadListings() async {
-        guard let userEmail = authManager.session?.user.email,
-              let domain = userEmail.components(separatedBy: "@").last else { return }
         
         await MainActor.run {
             isLoading = true
@@ -127,13 +132,46 @@ struct HomeTabView: View {
             let from = 0
             let to = pageSize - 1
             
-            let response: [ListingWithUser] = try await supabase
+            // Build query based on whether domain filtering is enabled
+            var query = supabase
                 .from("listings")
                 .select("""
                     *,
                     user:users(*)
                 """)
-                .like("user.email", pattern: "%@\(domain)")
+            
+            // Apply domain filter if enabled (currently disabled for v1.0)
+            if enableDomainFilter {
+                // Try to get email from session first
+                var userEmail: String? = authManager.session?.user.email
+                
+                // If no email in session, fetch from database
+                if userEmail == nil, let userId = authManager.session?.user.id.uuidString {
+                    do {
+                        let userResponse: [UserEmailFetch] = try await supabase
+                            .from("users")
+                            .select("email")
+                            .eq("id", value: userId)
+                            .execute()
+                            .value
+                        
+                        if let profile = userResponse.first {
+                            userEmail = profile.email
+                        }
+                    } catch {
+                        // Silently fail and show all listings
+                    }
+                }
+                
+                // Apply filter if we have an email
+                if let email = userEmail,
+                   let domain = email.components(separatedBy: "@").last {
+                    query = query.ilike("user.email", pattern: "%@\(domain)")
+                }
+            }
+            
+            // Apply ordering and pagination
+            let response: [ListingWithUser] = try await query
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -147,7 +185,9 @@ struct HomeTabView: View {
             }
             
         } catch {
+            #if DEBUG
             print("Failed to load listings: \(error)")
+            #endif
             await MainActor.run {
                 self.isLoading = false
             }
@@ -156,8 +196,6 @@ struct HomeTabView: View {
     
     private func loadMoreListings() async {
         guard !isLoadingMore, hasMorePages else { return }
-        guard let userEmail = authManager.session?.user.email,
-              let domain = userEmail.components(separatedBy: "@").last else { return }
         
         await MainActor.run {
             isLoadingMore = true
@@ -167,13 +205,18 @@ struct HomeTabView: View {
             let from = currentPage * pageSize
             let to = from + pageSize - 1
             
-            let response: [ListingWithUser] = try await supabase
+            // Build query based on whether domain filtering is enabled
+            var query = supabase
                 .from("listings")
                 .select("""
                     *,
                     user:users(*)
                 """)
-                .like("user.email", pattern: "%@\(domain)")
+            
+            // Domain filter disabled for v1.0
+            // Future: Add domain filtering in v1.1
+            
+            let response: [ListingWithUser] = try await query
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -187,7 +230,9 @@ struct HomeTabView: View {
             }
             
         } catch {
+            #if DEBUG
             print("Failed to load more listings: \(error)")
+            #endif
             await MainActor.run {
                 self.isLoadingMore = false
             }
@@ -195,9 +240,6 @@ struct HomeTabView: View {
     }
     
     private func refreshListings() async {
-        guard let userEmail = authManager.session?.user.email,
-              let domain = userEmail.components(separatedBy: "@").last else { return }
-        
         await MainActor.run {
             currentPage = 0
             hasMorePages = true
@@ -207,13 +249,18 @@ struct HomeTabView: View {
             let from = 0
             let to = pageSize - 1
             
-            let response: [ListingWithUser] = try await supabase
+            // Build query based on whether domain filtering is enabled
+            var query = supabase
                 .from("listings")
                 .select("""
                     *,
                     user:users(*)
                 """)
-                .like("user.email", pattern: "%@\(domain)")
+            
+            // Domain filter disabled for v1.0
+            // Future: Add domain filtering in v1.1
+            
+            let response: [ListingWithUser] = try await query
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -226,7 +273,9 @@ struct HomeTabView: View {
             }
             
         } catch {
+            #if DEBUG
             print("Failed to refresh listings: \(error)")
+            #endif
         }
     }
 }
