@@ -99,244 +99,137 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
   - Replaced unused Search tab with Messages
   - Users can now access all conversations from main navigation
 
-#### Task 5.5: Realtime Features
-- **Completed**: Implemented Supabase Realtime subscriptions
-  - Live message updates in active chats
-  - Automatic UI refresh on new messages
-  - Proper subscription cleanup to prevent memory leaks
+### Summary
+✅ Complete real-time messaging system implemented with:
+1. Database structure with proper constraints and indexes
+2. Real-time message synchronization
+3. Conversation management (create, list, navigate)
+4. Clean UI with message bubbles and listing context
+5. Integration with marketplace listings
 
-### Technical Highlights
-- **Architecture**: MVVM pattern with clear separation of concerns
-- **Security**: All operations respect RLS policies, sender_id enforced as auth.uid()
-- **Performance**: Optimistic UI updates, indexed queries, pagination-ready
-- **UX**: Haptic feedback, loading states, error handling, empty states
+## Phase 6: Checkout & Payments Implementation
 
-### Ready for Testing
-The messaging system is fully implemented and ready for end-to-end testing. Users can:
-1. Contact sellers from listing detail pages
-2. View all conversations in the Messages tab
-3. Send and receive messages in real-time
-4. See listing context within conversations 
+### Payment System Overview
+- **Completed**: Analysis of existing payment system
+- **Architecture**: Stripe-based escrow system with manual capture
+- **Components**: PaymentService, Edge Functions, Payment Models
+- **Security**: Bearer token auth, webhook verification, seller-only capture
 
-## Phase 7: Compliance & Settings
+### Task 6.1: Payment Models
+- **Completed**: Created `PaymentModels.swift` with PaymentTransaction struct
+- **Features**: 
+  - Full transaction tracking with escrow fields
+  - Dispute status enum and fields
+  - Helper computed properties for UI display
 
-### Task 7.1 — Implement Delete Account flow
-- Implemented `SettingsView` with Sign Out and Delete Account actions behind a gear button in `ProfileTabView`.
-- Refactored `AuthManager.deleteCurrentUser()` to call Supabase Edge Function `delete_user` with Bearer token; removed body user_id.
-- Created secure Edge Function `supabase/functions/delete_user/index.ts`:
-  - Verifies caller using `SUPABASE_ANON_KEY` and the provided JWT.
-  - Allows only self-deletion (uses token's `sub`).
-  - Uses service role client solely to `admin.auth.admin.deleteUser()` and to clean up `users` table rows.
-  - Robust error handling and consistent JSON responses.
-- Deleted obsolete `ProfileView.swift`; consolidated profile UI into `ProfileTabView.swift` and migrated needed models.
-- Fixed duplicate `SignUpView.swift` issue and ensured exhaustive error handling.
-- Verified UX: on successful deletion, app signs out and returns to `WelcomeView` via session change in `ContentView`.
+### Task 6.2: Payment Service
+- **Completed**: Created `PaymentService.swift` for Stripe integration
+- **Features**:
+  - PaymentSheet configuration with Apple Pay support
+  - Edge function communication with auth tokens
+  - Error handling and debug logging
 
-Status: Completed and deployed. Ready for review and push.
+### Task 6.3: Edge Functions
+- **Completed**: Implemented three core Edge Functions:
+  1. `create_payment_intent`: Creates Stripe PaymentIntent with manual capture
+  2. `capture_payment`: Allows seller to capture funds after delivery
+  3. `stripe_webhook`: Processes Stripe events and updates payment status
+- **Security**: All functions validate auth, use service role where needed
 
-### Task 7.2 — Add basic Report User UI
-- Created `ReportModels.swift` with comprehensive report types and status enums
-- Implemented `ReportUserView` with:
-  - Report type selection (inappropriate content, scam, harassment, spam, fake profile, other)
-  - Detailed description field with validation (minimum 10 characters)
-  - Clear display of what's being reported (user and/or listing)
-  - Important information about anonymous reporting and review timeframes
-  - Success/error handling with user feedback
-- Added report buttons to:
-  - `ListingDetailView`: Flag icon in toolbar for reporting listings/sellers (hidden for own listings)
-  - `ChatView`: Flag icon in toolbar for reporting users in conversations
-- Both views present `ReportUserView` as a sheet with proper context
-- Reports are submitted to Supabase `reports` table with reporter ID, reported user/listing, type, and description
+### Task 6.4: Transaction Management Views
+- **Completed**: Built comprehensive transaction management UI:
+  - `MyTransactionsView`: Lists all user transactions with filters
+  - `PurchaseConfirmationView`: Shows payment result with appropriate messaging
+  - `TransactionActionSheetView`: Provides contextual actions for transactions
+  - `DisputeDetailView`: Shows dispute information and evidence
+  - `ReportDisputeView`: Form for filing new disputes
+- **Features**: Pull-to-refresh, empty states, role-based actions
 
-Status: Completed. Database table already exists in Supabase.
+### Task 6.5: Integration
+- **Completed**: Wired payment flow into listing purchase:
+  - "Buy Now" button initiates PaymentSheet
+  - Purchase confirmation shows result
+  - Transactions accessible from Profile tab
+  - Seller can view and manage sales
 
-## Phase 8: QA & Performance
+### Summary
+✅ Complete payment system with:
+1. Stripe integration for secure payments
+2. Escrow protection with manual capture
+3. Comprehensive transaction management UI
+4. Dispute resolution workflow
+5. Real-time status updates via webhooks
 
-### Task 8.1 — Implement pagination in HomeTabView
-- Added pagination state variables: `currentPage`, `hasMorePages`, `isLoadingMore`, `pageSize` (10 items)
-- Implemented Supabase `.range()` queries to fetch listings in batches
-- Added infinite scroll: loads more when user reaches last 3 items
-- Added pull-to-refresh functionality with `.refreshable` modifier
-- Added visual indicators:
-  - Loading spinner at bottom when fetching more
-  - "You've reached the end" message when no more pages
-- Three main functions:
-  - `loadListings()`: Initial load of first page
-  - `loadMoreListings()`: Fetches next page when scrolling
-  - `refreshListings()`: Resets and reloads from start
-- Prevents duplicate requests with `isLoadingMore` guard
+## Phase 7: Checkout Rework Planning
 
-Status: Completed. Pagination fully functional with smooth UX.
+### Task 7.1: Checkout Rework Design
+- **Completed**: Created `checkout_rework.md` with comprehensive new payment system design
+- **Features**:
+  - Campus Wallet system with escrow protection
+  - Stripe Connect integration for seller payouts
+  - Complete transaction lifecycle from reservation to completion
+  - Fraud controls and dispute resolution workflow
+  - Database schema aligned with existing structure
 
-### Task 8.2 — Implement client-side image resizing
-- Created `UIImage+Resize.swift` extension with smart resizing methods
-- Resizing maintains aspect ratio and applies appropriate compression
-- Three preset methods:
-  - `resizedForUpload()`: Max 1080px for listings (reduces file size ~60-80%)
-  - `resizedForProfile()`: Max 500px for profile pictures
-  - `resizedForThumbnail()`: Max 200px for small previews
-- Applied resizing to all image uploads:
-  - Profile pictures in `ProfileTabView`
-  - Listing images in `PostView` (TabViews.swift)
-  - Dispute evidence in `ReportDisputeView` (max 800px)
-- Benefits:
-  - Faster upload times (smaller files)
-  - Reduced storage costs
-  - Better performance when loading images
-  - Reduced bandwidth usage
+### Task 7.2: Implementation Plan
+- **Completed**: Created `newCheckoutFlow.md` with detailed implementation plan
+- **Structure**: Similar to `plan2depl.md` format with clear tasks
+- **Sections**:
+  1. Database Schema Migration
+  2. Core RPCs Implementation
+  3. Stripe Connect Integration
+  4. iOS Wallet Implementation
+  5. Order Management System
+  6. Checkout Flow Update
+  7. Testing & Migration
+  8. Documentation & Compliance
+- **Features**: Each task includes human explanation, IDE steps, and external steps
 
-Status: Completed. All image uploads now automatically resize before uploading.
+### Summary
+✅ Complete planning for payment system rework:
+1. Detailed design document with database alignment
+2. Step-by-step implementation plan
+3. Migration strategy for existing data
+4. Rollback plan for safety
+5. Success metrics and next steps
 
-## Debugging: Listings Not Showing Issue
+## Phase 8: Checkout Rework Implementation
 
-### Problem Identified
-- **Date**: Current session
-- **Issue**: Listings exist in database but don't appear in HomeTabView + UI glitches
-- **Root Cause**: Multiple NavigationViews causing SwiftUI navigation conflicts
-  
-### Technical Details
-1. **Initial Investigation**: Domain filtering was suspected
-   - The app filters listings by email domain (intentional campus-specific feature)
-   - Query uses `.like("user.email", pattern: "%@\(domain)")`
-   
-2. **Real Issue Found**: NavigationView Conflicts
-   - Every tab had its own NavigationView wrapping the content
-   - This caused:
-     - Double navigation bars (extra spacing at top)
-     - Disappearing navigation items (settings button, back button)
-     - Content not rendering properly (listings not showing)
-     - General UI layout glitches
+### Phase 1: Database Schema
+- **Completed**: All 10 required tables exist and configured
+- **Tables**: users, wallets, listings, orders, payments, payouts, disputes, conversations, messages, service_bookings
 
-### Files Fixed
-1. **HomeTabView.swift**
-   - Removed NavigationView wrapper (line 14)
-   - Removed .navigationBarHidden(true) modifier
-   - Content now renders directly in VStack
+### Phase 2: Core RPCs
+- **Completed**: 6/6 core RPCs implemented
+  - ✅ `reserve_then_order` - Atomic reservation and order creation
+  - ✅ `seller_accept` - Seller confirmation of order
+  - ✅ `buyer_confirm` - Buyer confirmation and escrow release
+  - ✅ `open_dispute` - Dispute creation and escrow freeze
+  - ✅ `auto_release_job` - Automatic escrow release after timeout
+  - ✅ `request_payout` - Seller withdrawal request
 
-2. **ProfileTabView.swift**  
-   - Removed NavigationView wrapper (line 17)
-   - Removed .navigationTitle and .toolbar modifiers
-   - Added manual title and settings button in the view content
-   
-### Solution Applied
-- Removed NavigationView from individual tab views
-- TabView should manage navigation, not individual tabs
-- Navigation items recreated manually where needed
+### Phase 3: Stripe Connect Integration
+- **Task 3.1 Completed**: Created and deployed `connect_onboarding` Edge Function
+  - Creates Stripe Connect Express accounts for sellers
+  - Generates onboarding links for bank account setup
+  - Stores Connect account ID in user profile
+  - Handles return/refresh URLs for mobile app
+  - Checks onboarding completion status
+- **Task 3.2 Completed**: Created `process_payout` Edge Function
+  - Validates payout requests and seller authorization
+  - Checks Stripe Connect account status and availability
+  - Verifies sufficient wallet balance before processing
+  - Creates Stripe transfers with platform fee calculation (5% with $0.50 minimum)
+  - Implements atomic balance deduction with rollback on failure
+  - Supports retry logic for failed payouts (max 3 attempts)
+  - Updates payout status throughout the process (pending → processing → completed/failed)
+  - Handles various error scenarios with proper error messages
+  - Features: Row-level locking for balance updates, optimistic locking, comprehensive error logging
+- **Deployment**: Ready for deployment to Supabase Edge Functions
 
-### Status
-- Fixed UI glitches and navigation conflicts
-- Settings button and profile page layout restored
+## Bug Fixes
 
-### Additional Fixes Applied
-3. **ConversationListView.swift**
-   - Removed NavigationView wrapper
-   - Added manual title and refresh button
-   
-4. **PostView (TabViews.swift)**
-   - Removed NavigationView wrapper
-   - Added manual title at top of form
-   
-5. **PaymentsView (TabViews.swift)**
-   - Removed NavigationView wrapper  
-   - Added manual title
-
-### Debugging Listings Issue
-- Added debug logging to track query results
-- Temporarily disabled domain filter to test if that's blocking listings
-- Debug output will show in Xcode console
-
-### Solution: Smart Domain Filtering
-- **Implemented toggleable domain filtering** with `enableDomainFilter` flag
-- **Current setting**: `false` (DISABLED for v1.0 release)
-- **Reason**: Filter has edge cases with Supabase query joins
-- **For v1.0**: All users see all listings (simpler, more reliable)
-- **Benefits**:
-  - Easy to toggle between filtered/unfiltered modes
-  - Better error handling - no crashes if email missing
-  - Cleaner code structure with reusable query pattern
-  - Debug logging to track what mode is active
-
-### How It Works
-1. **Testing Mode** (`enableDomainFilter = false`):
-   - Shows ALL listings regardless of email domain
-   - Good for development and testing
-   
-2. **Production Mode** (`enableDomainFilter = true`):
-   - Only shows listings from users with same email domain
-   - Creates campus-specific marketplaces
-   - E.g., @stanford.edu users only see @stanford.edu listings
-
-### Production Configuration Status
-✅ **Domain Filtering**: ENABLED (line 14 in `HomeTabView.swift`)
-✅ **Debug Logging**: REMOVED (clean console output)
-✅ **Email Validation**: .edu emails required
-✅ **Navigation**: Fixed (no double NavigationViews)
-✅ **UI**: All tabs functioning properly
-
-### Production Behavior
-1. **Campus-Specific Marketplaces**: Users only see listings from their own school
-2. **Email Requirements**: Only .edu emails can sign up
-3. **Domain Matching**: @stanford.edu sees only @stanford.edu listings, etc.
-4. **Testing Different Domains**: Create accounts with same domain to see listings together
-
-## App Store Submission Ready
-
-### Final Production Setup - Completed
-- **Date**: Current session (ready for submission)
-- **Configuration**: Production mode with campus-specific filtering
-- **Status**: All critical features working and tested
-
-### Key Features Enabled
-1. **Authentication**: .edu email required, secure signup/login
-2. **Campus Filtering**: Each school has isolated marketplace
-3. **Core Functions**: Listings, messaging, payments, profiles all operational
-4. **UI/UX**: Clean interface, fixed navigation, proper tab structure
-5. **Security**: RLS policies, secure delete account, report system
-
-### Important Notes for Review
-- Domain filtering DISABLED for v1.0 (all users see all listings)
-- Still requires .edu email to sign up (maintains academic exclusivity)
-- All required compliance features implemented (delete account, reporting)
-
-## FINAL STATUS FOR APP STORE SUBMISSION
-
-### Configuration for v1.0 Release
-- **Domain Filter**: OFF (all listings visible to all users)
-- **Email Requirement**: .edu emails only
-- **Debug Logging**: Removed (clean console output)
-- **All Core Features**: Working (listings, messaging, payments, profiles)
-
-### What Works
-✅ Sign up with .edu email
-✅ View all listings from all users
-✅ Post new listings
-✅ Message sellers
-✅ Profile management
-✅ Delete account option
-✅ Report users/listings
-
-### Post-Launch Improvements
-- Enable domain filtering (fix Supabase query issues)
-- Add search functionality
-- Implement notifications
-- Add more payment options
-
-### Ready for Submission
-The app is stable, functional, and meets App Store requirements. Domain filtering can be added in v1.1 after fixing the query edge cases.
-
-## App Store Connect Submission Fixes
-
-### Info.plist Updates (ITMS-90683 Fix)
-- **Date**: Current session
-- **Issue**: Missing NSCameraUsageDescription
-- **Resolution**: Added all required privacy usage descriptions
-  - NSCameraUsageDescription: Camera access for photos
-  - NSPhotoLibraryUsageDescription: Photo library access
-  - NSPhotoLibraryAddUsageDescription: Save photos permission
-  - UILaunchStoryboardName: Launch screen configuration
-  - UISupportedInterfaceOrientations: Portrait only for iPhone
-
-### Authentication Navigation Fix
+### Auth Navigation Fix
 - **Issue**: After login/signup, user not auto-redirected to home page
 - **Cause**: Session not updating immediately after auth success
 - **Resolution**: Added immediate session updates in AuthManager
