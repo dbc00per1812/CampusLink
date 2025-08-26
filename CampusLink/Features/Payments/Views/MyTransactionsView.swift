@@ -11,87 +11,97 @@ struct MyTransactionsView: View {
     enum Segment: String, CaseIterable { case purchases = "Purchases", sales = "Sales" }
 
     var body: some View {
-        VStack(spacing: 12) {
-                Picker("Type", selection: $selection) {
-                    ForEach(Segment.allCases, id: \.self) { seg in
-                        Text(seg.rawValue).tag(seg)
-                    }
+        content
+            .navigationTitle("My Transactions")
+            .onAppear { Task { await loadData() } }
+            .alert(
+                "Error",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { if !$0 { errorMessage = nil } }
+                )
+            ) {
+                Button("OK") { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+            .alert("Confirm Received?", isPresented: $showConfirmAlert) {
+                Button("Cancel", role: .cancel) { pendingCaptureTx = nil }
+                Button("Confirm") {
+                    if let tx = pendingCaptureTx { Task { await confirmReceived(transaction: tx) } }
+                    pendingCaptureTx = nil
                 }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding(.horizontal)
-
-                if isLoading {
-                    Spacer(); ProgressView("Loading transactions..."); Spacer()
-                } else if let errorMessage = errorMessage {
-                    Spacer(); Text(errorMessage).foregroundColor(.secondary); Spacer()
-                } else {
-                    List {
-                        ForEach(selection == .purchases ? purchases : sales) { tx in
-                            TransactionRow(
-                                transaction: tx,
-                                isBuyer: selection == .purchases,
-                                onConfirmReceived: { pendingCaptureTx = tx; showConfirmAlert = true },
-                                onReportProblem: { reportProblem(transaction: tx) },
-                                onMarkDelivered: { pendingDeliveredTx = tx; showDeliveredAlert = true }
-                            )
-                            .contentShape(Rectangle())
-                            .onTapGesture { activeTransaction = tx }
-                        }
-                    }
-                    .listStyle(PlainListStyle())
+            } message: { Text("This will release funds to the seller.") }
+            .alert("Mark as Delivered?", isPresented: $showDeliveredAlert) {
+                Button("Cancel", role: .cancel) { pendingDeliveredTx = nil }
+                Button("Mark Delivered") {
+                    if let tx = pendingDeliveredTx { Task { await markDelivered(tx) } }
+                    pendingDeliveredTx = nil
                 }
-        }
-        .navigationTitle("My Transactions")
-        .onAppear { Task { await loadData() } }
-        .alert(
-            "Error",
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("OK") { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
-        .alert("Confirm Received?", isPresented: $showConfirmAlert) {
-            Button("Cancel", role: .cancel) { pendingCaptureTx = nil }
-            Button("Confirm") {
-                if let tx = pendingCaptureTx { Task { await confirmReceived(transaction: tx) } }
-                pendingCaptureTx = nil
-            }
-        } message: { Text("This will release funds to the seller.") }
-        .alert("Mark as Delivered?", isPresented: $showDeliveredAlert) {
-            Button("Cancel", role: .cancel) { pendingDeliveredTx = nil }
-            Button("Mark Delivered") {
-                if let tx = pendingDeliveredTx { Task { await markDelivered(tx) } }
-                pendingDeliveredTx = nil
-            }
-        } message: { Text("This notifies the buyer and enables capture.") }
-        .sheet(item: $disputeDraft) { draft in
-            ReportDisputeView(transaction: draft.transaction) {
-                Task { await loadData() }
-            }
-            .environmentObject(authManager)
-        }
-        .sheet(item: $disputeToView) { tx in
-            DisputeDetailView(transaction: tx)
-        }
-        .fullScreenCover(item: $activeTransaction) { tx in
-            TransactionActionSheetView(
-                transaction: tx,
-                isBuyer: selection == .purchases,
-                canConfirm: PaymentLogic.canBuyerConfirm(transaction: tx, isBuyer: true),
-                onConfirm: { pendingCaptureTx = tx; showConfirmAlert = true },
-                onContactSeller: { Task { await contactSeller(tx) } },
-                onReportProblem: { reportProblem(transaction: tx) }
-            )
-            .environmentObject(authManager)
-        }
-        .sheet(item: $activeConversation) { convo in
-            ChatView(conversation: convo)
+            } message: { Text("This notifies the buyer and enables capture.") }
+            .sheet(item: $disputeDraft) { draft in
+                ReportDisputeView(transaction: draft.transaction) {
+                    Task { await loadData() }
+                }
                 .environmentObject(authManager)
+            }
+            .sheet(item: $disputeToView) { tx in
+                DisputeDetailView(transaction: tx)
+            }
+            .fullScreenCover(item: $activeTransaction) { tx in
+                TransactionActionSheetView(
+                    transaction: tx,
+                    isBuyer: selection == .purchases,
+                    canConfirm: PaymentLogic.canBuyerConfirm(transaction: tx, isBuyer: true),
+                    onConfirm: { pendingCaptureTx = tx; showConfirmAlert = true },
+                    onContactSeller: { Task { await contactSeller(tx) } },
+                    onReportProblem: { reportProblem(transaction: tx) }
+                )
+                .environmentObject(authManager)
+            }
+            .sheet(item: $activeConversation) { convo in
+                ChatView(conversation: convo)
+                    .environmentObject(authManager)
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        VStack(spacing: 12) {
+            Picker("Type", selection: $selection) {
+                ForEach(Segment.allCases, id: \.self) { seg in
+                    Text(seg.rawValue).tag(seg as Segment)
+                }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.horizontal)
+
+            if isLoading {
+                Spacer(); ProgressView("Loading transactions..."); Spacer()
+            } else if let errorMessage = errorMessage {
+                Spacer(); Text(errorMessage).foregroundColor(.secondary); Spacer()
+            } else {
+                transactionsList
+            }
         }
+    }
+
+    @ViewBuilder
+    private var transactionsList: some View {
+        List {
+            ForEach(selection == .purchases ? purchases : sales) { tx in
+                TransactionRow(
+                    transaction: tx,
+                    isBuyer: selection == .purchases,
+                    onConfirmReceived: { pendingCaptureTx = tx; showConfirmAlert = true },
+                    onReportProblem: { reportProblem(transaction: tx) },
+                    onMarkDelivered: { pendingDeliveredTx = tx; showDeliveredAlert = true }
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { activeTransaction = tx }
+            }
+        }
+        .listStyle(PlainListStyle())
     }
 
     // MARK: - Data
@@ -129,7 +139,7 @@ struct MyTransactionsView: View {
             }
         } catch {
             await MainActor.run {
-                self.errorMessage = "Failed to load transactions"
+                self.errorMessage = error.localizedDescription
                 self.isLoading = false
             }
         }
