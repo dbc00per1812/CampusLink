@@ -4,7 +4,6 @@ import XCTest
 final class WalletServiceTests: XCTestCase {
     func testWalletFormatting() throws {
         let wallet = Wallet(
-            id: UUID(),
             userId: UUID(),
             availableCents: 12345,
             escrowCents: 2500,

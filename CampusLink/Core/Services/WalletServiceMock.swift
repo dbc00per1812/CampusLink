@@ -6,7 +6,6 @@ final class WalletServiceMock {
     private init() {}
     
     private var wallet = Wallet(
-        id: UUID(),
         userId: UUID(),
         availableCents: 12345,
         escrowCents: 2500,
@@ -32,7 +31,6 @@ final class WalletServiceMock {
             paidAt: nil
         )
         wallet = Wallet(
-            id: wallet.id,
             userId: wallet.userId,
             availableCents: max(0, wallet.availableCents - amountCents),
             escrowCents: wallet.escrowCents,

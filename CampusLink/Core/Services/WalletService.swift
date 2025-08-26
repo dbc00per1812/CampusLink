@@ -14,7 +14,7 @@ final class WalletService {
         let wallet: Wallet = try await supabase
             .from("wallets")
             .select()
-            .eq("user_id", userId)
+            .eq("user_id", value: userId)
             .single()
             .execute()
             .value
@@ -26,9 +26,9 @@ final class WalletService {
     func requestPayout(amountCents: Int) async throws -> Payout {
         let response: Payout = try await supabase
             .rpc(
-                fn: "request_payout",
+                "request_payout",
                 params: [
-                    "amount_cents": AnyEncodable(amountCents)
+                    "amount_cents": amountCents
                 ]
             )
             .execute()
@@ -38,9 +38,8 @@ final class WalletService {
     
     // Fallback: directly process an existing payout by ID via Edge Function
     func processPayout(payoutId: UUID) async throws -> Payout {
-        let payload: [String: AnyEncodable] = [
-            "payout_id": AnyEncodable(payoutId.uuidString)
-        ]
+        struct ProcessPayload: Encodable { let payout_id: String }
+        let payload = ProcessPayload(payout_id: payoutId.uuidString)
         let response: Payout = try await supabase.functions.invoke(
             "process_payout",
             options: FunctionInvokeOptions(
@@ -60,7 +59,7 @@ final class WalletService {
             .from("payments")
             .select()
             .or("buyer_id.eq.\(userId),seller_id.eq.\(userId)")
-            .order(column: "created_at", ascending: false)
+            .order("created_at", ascending: false)
             .limit(limit)
             .execute()
             .value

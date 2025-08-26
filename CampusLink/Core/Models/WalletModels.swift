@@ -2,47 +2,28 @@ import Foundation
 
 // MARK: - Wallet Model
 struct Wallet: Codable, Identifiable {
-    let id: UUID // Using user_id as the primary identifier
+    // Database columns
     let userId: UUID
     let availableCents: Int
     let escrowCents: Int
     let updatedAt: Date
     
+    // Identifiable: use userId as id
+    var id: UUID { userId }
+    
     // Computed properties for display
-    var availableBalance: Double {
-        Double(availableCents) / 100.0
-    }
+    var availableBalance: Double { Double(availableCents) / 100.0 }
+    var escrowBalance: Double { Double(escrowCents) / 100.0 }
+    var totalBalance: Double { availableBalance + escrowBalance }
     
-    var escrowBalance: Double {
-        Double(escrowCents) / 100.0
-    }
+    var formattedAvailableBalance: String { String(format: "$%.2f", availableBalance) }
+    var formattedEscrowBalance: String { String(format: "$%.2f", escrowBalance) }
+    var formattedTotalBalance: String { String(format: "$%.2f", totalBalance) }
     
-    var totalBalance: Double {
-        availableBalance + escrowBalance
-    }
-    
-    var formattedAvailableBalance: String {
-        String(format: "$%.2f", availableBalance)
-    }
-    
-    var formattedEscrowBalance: String {
-        String(format: "$%.2f", escrowBalance)
-    }
-    
-    var formattedTotalBalance: String {
-        String(format: "$%.2f", totalBalance)
-    }
-    
-    var hasAvailableBalance: Bool {
-        availableCents > 0
-    }
-    
-    var hasEscrowBalance: Bool {
-        escrowCents > 0
-    }
+    var hasAvailableBalance: Bool { availableCents > 0 }
+    var hasEscrowBalance: Bool { escrowCents > 0 }
     
     enum CodingKeys: String, CodingKey {
-        case id = "user_id"
         case userId = "user_id"
         case availableCents = "available_cents"
         case escrowCents = "escrow_cents"
@@ -65,29 +46,12 @@ struct Payout: Codable, Identifiable {
     let paidAt: Date?
     
     // Computed properties
-    var amount: Double {
-        Double(amountCents) / 100.0
-    }
-    
-    var formattedAmount: String {
-        String(format: "$%.2f", amount)
-    }
-    
-    var isPending: Bool {
-        status == .pending
-    }
-    
-    var isCompleted: Bool {
-        status == .completed || status == .paid
-    }
-    
-    var isFailed: Bool {
-        status == .failed || status == .cancelled
-    }
-    
-    var canRetry: Bool {
-        isFailed && (retryCount ?? 0) < 3
-    }
+    var amount: Double { Double(amountCents) / 100.0 }
+    var formattedAmount: String { String(format: "$%.2f", amount) }
+    var isPending: Bool { status == .pending }
+    var isCompleted: Bool { status == .completed || status == .paid }
+    var isFailed: Bool { status == .failed || status == .cancelled }
+    var canRetry: Bool { isFailed && (retryCount ?? 0) < 3 }
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -116,48 +80,32 @@ enum PayoutStatus: String, Codable, CaseIterable {
     
     var displayName: String {
         switch self {
-        case .pending:
-            return "Pending"
-        case .processing:
-            return "Processing"
-        case .inTransit:
-            return "In Transit"
-        case .completed:
-            return "Completed"
-        case .paid:
-            return "Paid"
-        case .failed:
-            return "Failed"
-        case .cancelled:
-            return "Cancelled"
+        case .pending: return "Pending"
+        case .processing: return "Processing"
+        case .inTransit: return "In Transit"
+        case .completed: return "Completed"
+        case .paid: return "Paid"
+        case .failed: return "Failed"
+        case .cancelled: return "Cancelled"
         }
     }
     
     var icon: String {
         switch self {
-        case .pending:
-            return "clock"
-        case .processing:
-            return "arrow.triangle.2.circlepath"
-        case .inTransit:
-            return "arrow.right.circle"
-        case .completed, .paid:
-            return "checkmark.circle.fill"
-        case .failed:
-            return "xmark.circle.fill"
-        case .cancelled:
-            return "slash.circle"
+        case .pending: return "clock"
+        case .processing: return "arrow.triangle.2.circlepath"
+        case .inTransit: return "arrow.right.circle"
+        case .completed, .paid: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        case .cancelled: return "slash.circle"
         }
     }
     
     var color: String {
         switch self {
-        case .pending, .processing, .inTransit:
-            return "orange"
-        case .completed, .paid:
-            return "green"
-        case .failed, .cancelled:
-            return "red"
+        case .pending, .processing, .inTransit: return "orange"
+        case .completed, .paid: return "green"
+        case .failed, .cancelled: return "red"
         }
     }
 }
@@ -170,25 +118,16 @@ struct WalletTransaction: Codable, Identifiable {
     let amountCents: Int
     let balanceAfterCents: Int
     let description: String
-    let relatedId: UUID? // Could be order_id, payout_id, etc.
+    let relatedId: UUID?
     let createdAt: Date
     
-    var amount: Double {
-        Double(amountCents) / 100.0
-    }
-    
-    var balanceAfter: Double {
-        Double(balanceAfterCents) / 100.0
-    }
-    
+    var amount: Double { Double(amountCents) / 100.0 }
+    var balanceAfter: Double { Double(balanceAfterCents) / 100.0 }
     var formattedAmount: String {
         let prefix = type.isCredit ? "+" : "-"
         return "\(prefix)\(String(format: "$%.2f", abs(amount)))"
     }
-    
-    var formattedBalance: String {
-        String(format: "$%.2f", balanceAfter)
-    }
+    var formattedBalance: String { String(format: "$%.2f", balanceAfter) }
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -213,44 +152,30 @@ enum TransactionType: String, Codable, CaseIterable {
     
     var displayName: String {
         switch self {
-        case .orderPayment:
-            return "Order Payment"
-        case .escrowRelease:
-            return "Escrow Released"
-        case .payout:
-            return "Withdrawal"
-        case .refund:
-            return "Refund"
-        case .fee:
-            return "Platform Fee"
-        case .adjustment:
-            return "Adjustment"
+        case .orderPayment: return "Order Payment"
+        case .escrowRelease: return "Escrow Released"
+        case .payout: return "Withdrawal"
+        case .refund: return "Refund"
+        case .fee: return "Platform Fee"
+        case .adjustment: return "Adjustment"
         }
     }
     
     var isCredit: Bool {
         switch self {
-        case .escrowRelease, .refund, .adjustment:
-            return true
-        case .orderPayment, .payout, .fee:
-            return false
+        case .escrowRelease, .refund, .adjustment: return true
+        case .orderPayment, .payout, .fee: return false
         }
     }
     
     var icon: String {
         switch self {
-        case .orderPayment:
-            return "cart.fill"
-        case .escrowRelease:
-            return "lock.open"
-        case .payout:
-            return "banknote"
-        case .refund:
-            return "arrow.uturn.left.circle"
-        case .fee:
-            return "percent"
-        case .adjustment:
-            return "slider.horizontal.3"
+        case .orderPayment: return "cart.fill"
+        case .escrowRelease: return "lock.open"
+        case .payout: return "banknote"
+        case .refund: return "arrow.uturn.left.circle"
+        case .fee: return "percent"
+        case .adjustment: return "slider.horizontal.3"
         }
     }
 }
@@ -260,9 +185,7 @@ struct PayoutRequest: Codable {
     let amountCents: Int
     let destination: PayoutDestination
     
-    var amount: Double {
-        Double(amountCents) / 100.0
-    }
+    var amount: Double { Double(amountCents) / 100.0 }
     
     enum CodingKeys: String, CodingKey {
         case amountCents = "amount_cents"
@@ -278,17 +201,12 @@ enum PayoutDestination: String, Codable {
     
     var displayName: String {
         switch self {
-        case .stripeConnect:
-            return "Bank Account (via Stripe)"
-        case .bankAccount:
-            return "Bank Account"
-        case .venmo:
-            return "Venmo"
+        case .stripeConnect: return "Bank Account (via Stripe)"
+        case .bankAccount: return "Bank Account"
+        case .venmo: return "Venmo"
         }
     }
     
-    var requiresOnboarding: Bool {
-        self == .stripeConnect
-    }
+    var requiresOnboarding: Bool { self == .stripeConnect }
 }
 
