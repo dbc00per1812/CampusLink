@@ -264,4 +264,20 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
   - `processPayout(payoutId:)` — invokes Edge Function `process_payout`
   - `getTransactionHistory(limit:)` — queries recent `payments`
 - Added `WalletServiceMock.swift` for local testing without backend
-- Added tests `WalletServiceTests.swift` validating formatting and mock flows 
+- Added tests `WalletServiceTests.swift` validating formatting and mock flows
+
+### Task 4.2 Completed — Wallet View UI
+- Created `WalletViewModel.swift` with:
+  - State management for wallet data, transactions, and UI states
+  - `loadWalletData()` — fetches balance and transaction history
+  - `requestPayout()` — handles withdrawal requests with validation
+  - `startStripeOnboarding()` — initiates Stripe Connect setup
+  - Stripe Connect status checking
+- Created `WalletView.swift` with:
+  - Balance card showing available and escrow amounts
+  - Withdraw button with payout flow and amount input
+  - Transaction history list with navigation to full view
+  - Stripe Connect onboarding integration via SafariView
+  - Platform fee calculation display (5% with $0.50 minimum)
+  - Quick amount selection buttons and max withdrawal option
+  - Pull-to-refresh functionality 
