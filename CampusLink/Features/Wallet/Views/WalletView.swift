@@ -5,7 +5,6 @@ struct WalletView: View {
     @StateObject private var viewModel = WalletViewModel()
     @EnvironmentObject private var authManager: AuthManager
     @State private var selectedTransaction: PaymentTransaction?
-    @State private var showingSafari = false
     
     var body: some View {
         NavigationView {
@@ -24,28 +23,16 @@ struct WalletView: View {
             }
             .navigationTitle("Wallet")
             .navigationBarTitleDisplayMode(.large)
-            .refreshable {
-                await viewModel.refreshData()
-            }
+            .refreshable { await viewModel.refreshData() }
         }
-        .task {
-            await viewModel.loadWalletData()
-        }
-        .sheet(isPresented: $viewModel.showWithdrawSheet) {
-            withdrawSheet
-        }
-        .sheet(isPresented: $viewModel.showOnboardingSheet) {
-            if let urlString = viewModel.stripeOnboardingURL,
-               let url = URL(string: urlString) {
-                SafariView(url: url)
-                    .ignoresSafeArea()
-            }
+        .task { await viewModel.loadWalletData() }
+        .sheet(isPresented: $viewModel.showWithdrawSheet) { withdrawSheet }
+        .sheet(item: $viewModel.onboardingURL) { url in
+            SafariView(url: url).ignoresSafeArea()
         }
         .alert("Wallet", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") { viewModel.errorMessage = nil }
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
+        } message: { Text(viewModel.errorMessage ?? "") }
     }
     
     // MARK: - Balance Card
@@ -226,9 +213,6 @@ struct WalletView: View {
         }
         .padding()
         .contentShape(Rectangle())
-        .onTapGesture {
-            selectedTransaction = transaction
-        }
     }
     
     // MARK: - Withdraw Sheet
