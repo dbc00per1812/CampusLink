@@ -8,11 +8,8 @@ final class WalletService {
     
     // Fetch the current user's wallet balance
     func fetchBalance() async throws -> Wallet {
-        // We assume the wallets row is keyed by the current user's UUID
         let session = try await supabase.auth.session
-        guard let userId = session.user.id.uuid else {
-            throw WalletServiceError.missingUserId
-        }
+        let userId: UUID = session.user.id
         
         let wallet: Wallet = try await supabase
             .from("wallets")
@@ -25,12 +22,25 @@ final class WalletService {
         return wallet
     }
     
-    // Request a payout to the seller's connected account via Edge Function
+    // Request a payout via Postgres RPC (preferred)
     func requestPayout(amountCents: Int) async throws -> Payout {
+        let response: Payout = try await supabase
+            .rpc(
+                fn: "request_payout",
+                params: [
+                    "amount_cents": AnyEncodable(amountCents)
+                ]
+            )
+            .execute()
+            .value
+        return response
+    }
+    
+    // Fallback: directly process an existing payout by ID via Edge Function
+    func processPayout(payoutId: UUID) async throws -> Payout {
         let payload: [String: AnyEncodable] = [
-            "amount_cents": AnyEncodable(amountCents)
+            "payout_id": AnyEncodable(payoutId.uuidString)
         ]
-        
         let response: Payout = try await supabase.functions.invoke(
             "process_payout",
             options: FunctionInvokeOptions(
@@ -38,14 +48,13 @@ final class WalletService {
                 body: payload
             )
         )
-        
         return response
     }
     
     // Basic transaction history using payments table for now
     func getTransactionHistory(limit: Int = 50) async throws -> [PaymentTransaction] {
         let session = try await supabase.auth.session
-        let userId = session.user.id.uuid?.uuidString ?? ""
+        let userId = session.user.id.uuidString
         
         let transactions: [PaymentTransaction] = try await supabase
             .from("payments")

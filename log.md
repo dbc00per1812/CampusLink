@@ -250,3 +250,18 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
   - `signIn()`: Sets session right after successful login
   - `signOut()`: Clears session right after logout
 - **Result**: Instant navigation to MainTabView after authentication 
+
+## Phase 4: iOS Wallet Implementation
+
+### Task 4.1 Completed — Wallet models and service
+- Added `WalletModels.swift` with:
+  - `Wallet` (available/escrow balances + formatted properties)
+  - `Payout`, `WalletTransaction`
+  - Enums: `PayoutStatus`, `TransactionType`, `PayoutDestination`
+- Added `WalletService.swift` with:
+  - `fetchBalance()` — reads from `wallets` table
+  - `requestPayout(amountCents:)` — calls RPC `request_payout`
+  - `processPayout(payoutId:)` — invokes Edge Function `process_payout`
+  - `getTransactionHistory(limit:)` — queries recent `payments`
+- Added `WalletServiceMock.swift` for local testing without backend
+- Added tests `WalletServiceTests.swift` validating formatting and mock flows 
