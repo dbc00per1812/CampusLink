@@ -225,6 +225,19 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
   - Updates payout status throughout the process (pending → processing → completed/failed)
   - Handles various error scenarios with proper error messages
   - Features: Row-level locking for balance updates, optimistic locking, comprehensive error logging
+- **Task 3.3 Completed**: Updated `stripe_webhook` to handle Connect events
+  - Added handlers for Stripe Connect transfer events:
+    - `transfer.created`: Updates payout status to processing
+    - `transfer.paid`: Updates payout status to paid with timestamp
+    - `transfer.failed`: Updates status to failed and refunds wallet balance
+  - Added handler for `account.updated` event:
+    - Tracks Connect account onboarding status (payouts_enabled, details_submitted)
+    - Updates user profile with account status changes
+  - Implemented helper functions:
+    - `updatePayoutStatusByTransferId`: Updates payout records based on transfer events
+    - `getPayoutByTransferId`: Retrieves payout details for refund processing
+    - `updateConnectAccountStatus`: Updates user's Connect account status fields
+  - Features: Automatic wallet refund on failed transfers, comprehensive logging, graceful error handling
 - **Deployment**: Ready for deployment to Supabase Edge Functions
 
 ## Bug Fixes

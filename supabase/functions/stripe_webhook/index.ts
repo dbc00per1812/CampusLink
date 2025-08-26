@@ -1,6 +1,7 @@
 // Supabase Edge Function: stripe_webhook
 // - Verifies Stripe signature
 // - Processes relevant events and updates the payments table
+// - Handles Stripe Connect events for payout tracking
 
 import Stripe from "npm:stripe@14.25.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.4";
@@ -46,6 +47,70 @@ async function updatePaymentStatusByIntentId(paymentIntentId: string, status: st
   }
 }
 
+async function updatePayoutStatusByTransferId(transferId: string, status: string, extra: Record<string, unknown> = {}): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  const updateData = { 
+    status, 
+    updated_at: new Date().toISOString(),
+    ...extra 
+  };
+  
+  const { error } = await supabase
+    .from("payouts")
+    .update(updateData)
+    .eq("stripe_transfer_id", transferId);
+    
+  if (error) {
+    // Transfer might not have a corresponding payout yet (in case of automatic transfers)
+    console.warn(`Failed to update payout status for transfer ${transferId}: ${error.message}`);
+  }
+}
+
+async function getPayoutByTransferId(transferId: string): Promise<{ id: string; seller_id: string; amount_cents: number } | null> {
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("payouts")
+    .select("id, seller_id, amount_cents")
+    .eq("stripe_transfer_id", transferId)
+    .single();
+    
+  if (error || !data) {
+    return null;
+  }
+  
+  return data as { id: string; seller_id: string; amount_cents: number };
+}
+
+async function updateConnectAccountStatus(accountId: string, payoutsEnabled: boolean, detailsSubmitted: boolean): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  
+  // Find user by stripe_connect_id
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("stripe_connect_id", accountId)
+    .single();
+    
+  if (userError || !user) {
+    console.warn(`No user found with Stripe Connect ID ${accountId}`);
+    return;
+  }
+  
+  // Update user's Connect account status (could add fields for this if needed)
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({
+      stripe_payouts_enabled: payoutsEnabled,
+      stripe_details_submitted: detailsSubmitted,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+    
+  if (updateError) {
+    console.error(`Failed to update Connect account status for user ${user.id}: ${updateError.message}`);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -84,6 +149,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     switch (event.type) {
+      // Payment Intent Events
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
         await updatePaymentStatusByIntentId(pi.id, "succeeded");
@@ -114,6 +180,8 @@ Deno.serve(async (req: Request) => {
         await updatePaymentStatusByIntentId(pi.id, "requires_capture");
         break;
       }
+      
+      // Charge Events
       case "charge.dispute.created": {
         const charge = event.data.object as Stripe.Charge;
         const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? "";
@@ -122,8 +190,96 @@ Deno.serve(async (req: Request) => {
         }
         break;
       }
+      
+      // Transfer Events (for Stripe Connect payouts)
+      case "transfer.created": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const transferId = transfer.id;
+        
+        // Update payout status to processing
+        await updatePayoutStatusByTransferId(transferId, "processing", {
+          stripe_transfer_amount: transfer.amount,
+          stripe_transfer_currency: transfer.currency,
+        });
+        
+        console.log(`Transfer created: ${transferId}, amount: ${transfer.amount}`);
+        break;
+      }
+      
+      case "transfer.paid": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const transferId = transfer.id;
+        
+        // Update payout status to paid
+        await updatePayoutStatusByTransferId(transferId, "paid", {
+          paid_at: new Date().toISOString(),
+        });
+        
+        console.log(`Transfer paid: ${transferId}, amount: ${transfer.amount}`);
+        break;
+      }
+      
+      case "transfer.failed": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const transferId = transfer.id;
+        
+        // Get the payout record to refund the wallet balance
+        const payout = await getPayoutByTransferId(transferId);
+        
+        if (payout) {
+          // Update payout status to failed
+          await updatePayoutStatusByTransferId(transferId, "failed", {
+            error_message: "Transfer failed - funds will be refunded to wallet",
+          });
+          
+          // Refund the amount back to user's available balance
+          const supabase = getSupabaseServiceClient();
+          const { data: wallet, error: walletError } = await supabase
+            .from("wallets")
+            .select("available_cents")
+            .eq("user_id", payout.seller_id)
+            .single();
+            
+          if (!walletError && wallet) {
+            const { error: refundError } = await supabase
+              .from("wallets")
+              .update({
+                available_cents: wallet.available_cents + payout.amount_cents,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", payout.seller_id);
+              
+            if (refundError) {
+              console.error(`Failed to refund wallet for failed transfer ${transferId}: ${refundError.message}`);
+            } else {
+              console.log(`Refunded ${payout.amount_cents} cents to wallet for user ${payout.seller_id}`);
+            }
+          }
+        }
+        
+        console.log(`Transfer failed: ${transferId}`);
+        break;
+      }
+      
+      // Stripe Connect Account Events
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        const accountId = account.id;
+        
+        // Update user's Connect account status
+        await updateConnectAccountStatus(
+          accountId,
+          account.payouts_enabled ?? false,
+          account.details_submitted ?? false
+        );
+        
+        console.log(`Account updated: ${accountId}, payouts_enabled: ${account.payouts_enabled}, details_submitted: ${account.details_submitted}`);
+        break;
+      }
+      
       default: {
-        // For unhandled events, do nothing but acknowledge
+        // Log unhandled events for debugging
+        console.log(`Unhandled event type: ${event.type}`);
         break;
       }
     }
@@ -131,6 +287,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse(200, { received: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`Webhook error: ${message}`, { event_type: event.type });
     return jsonResponse(400, { error: message });
   }
 });
