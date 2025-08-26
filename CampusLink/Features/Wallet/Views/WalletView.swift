@@ -30,7 +30,7 @@ struct WalletView: View {
         .sheet(item: $viewModel.onboardingLink) { link in
             SafariView(url: link.url).ignoresSafeArea()
         }
-        .alert("Wallet", isPresented: .constant(viewModel.errorMessage != nil)) {
+        .alert("Wallet", isPresented: $viewModel.isShowingError) {
             Button("OK") { viewModel.errorMessage = nil }
         } message: { Text(viewModel.errorMessage ?? "") }
     }

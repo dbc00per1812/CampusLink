@@ -11,15 +11,40 @@ final class WalletService {
         let session = try await supabase.auth.session
         let userId: UUID = session.user.id
         
-        let wallet: Wallet = try await supabase
+        // Fetch as array to gracefully handle 0 rows
+        let rows: [Wallet] = try await supabase
             .from("wallets")
             .select()
             .eq("user_id", value: userId)
-            .single()
+            .limit(1)
             .execute()
             .value
         
-        return wallet
+        if let wallet = rows.first {
+            return wallet
+        }
+        
+        // If no wallet row exists yet, create one and return
+        try await createWalletIfMissing(for: userId)
+        
+        let created: [Wallet] = try await supabase
+            .from("wallets")
+            .select()
+            .eq("user_id", value: userId)
+            .limit(1)
+            .execute()
+            .value
+        if let wallet = created.first { return wallet }
+        throw WalletServiceError.missingUserId
+    }
+    
+    private func createWalletIfMissing(for userId: UUID) async throws {
+        // Attempt insert; if row exists, ignore error
+        struct WalletInsert: Encodable { let user_id: UUID }
+        _ = try? await supabase
+            .from("wallets")
+            .insert(WalletInsert(user_id: userId), returning: .minimal)
+            .execute()
     }
     
     // Request a payout via Postgres RPC (preferred)

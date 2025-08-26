@@ -7,7 +7,8 @@ class WalletViewModel: ObservableObject {
     @Published var wallet: Wallet?
     @Published var transactions: [PaymentTransaction] = []
     @Published var isLoading = false
-    @Published var errorMessage: String?
+    @Published var errorMessage: String? { didSet { isShowingError = errorMessage != nil } }
+    @Published var isShowingError: Bool = false
     @Published var showWithdrawSheet = false
     @Published var withdrawAmount: String = ""
     @Published var isProcessingPayout = false
