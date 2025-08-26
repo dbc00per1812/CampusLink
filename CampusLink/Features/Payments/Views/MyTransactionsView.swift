@@ -55,7 +55,7 @@ struct MyTransactionsView: View {
                     canConfirm: PaymentLogic.canBuyerConfirm(transaction: tx, isBuyer: true),
                     onConfirm: { pendingCaptureTx = tx; showConfirmAlert = true },
                     onContactSeller: { Task { await contactSeller(tx) } },
-                    onReportProblem: { reportProblem(transaction: tx) }
+                    onReport: { reportProblem(transaction: tx) }
                 )
                 .environmentObject(authManager)
             }
