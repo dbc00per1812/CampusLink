@@ -27,8 +27,8 @@ struct WalletView: View {
         }
         .task { await viewModel.loadWalletData() }
         .sheet(isPresented: $viewModel.showWithdrawSheet) { withdrawSheet }
-        .sheet(item: $viewModel.onboardingURL) { url in
-            SafariView(url: url).ignoresSafeArea()
+        .sheet(item: $viewModel.onboardingLink) { link in
+            SafariView(url: link.url).ignoresSafeArea()
         }
         .alert("Wallet", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") { viewModel.errorMessage = nil }

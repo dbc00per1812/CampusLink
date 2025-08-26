@@ -12,8 +12,9 @@ class WalletViewModel: ObservableObject {
     @Published var withdrawAmount: String = ""
     @Published var isProcessingPayout = false
     @Published var hasStripeConnectAccount = false
-    // Use URL item for onboarding sheet; when nil, no sheet is shown
-    @Published var onboardingURL: URL?
+    // Use Identifiable item for onboarding sheet
+    struct OnboardingLink: Identifiable { let url: URL; var id: String { url.absoluteString } }
+    @Published var onboardingLink: OnboardingLink?
     
     private let walletService = WalletService.shared
     
@@ -72,16 +73,16 @@ class WalletViewModel: ObservableObject {
             )
             if res.onboarding_complete == true {
                 hasStripeConnectAccount = true
-                onboardingURL = nil
+                onboardingLink = nil
                 errorMessage = "Your payout account is already set up!"
             } else if let urlStr = res.onboarding_url, let url = URL(string: urlStr) {
-                onboardingURL = url
+                onboardingLink = OnboardingLink(url: url)
             } else {
-                onboardingURL = nil
+                onboardingLink = nil
                 errorMessage = "Unable to start onboarding. Please try again."
             }
         } catch {
-            onboardingURL = nil
+            onboardingLink = nil
             errorMessage = "Failed to start onboarding: \(error.localizedDescription)"
         }
     }
