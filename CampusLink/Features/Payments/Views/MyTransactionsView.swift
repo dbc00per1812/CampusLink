@@ -43,7 +43,13 @@ struct MyTransactionsView: View {
         }
         .navigationTitle("My Transactions")
         .onAppear { Task { await loadData() } }
-        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
@@ -78,7 +84,7 @@ struct MyTransactionsView: View {
                 canConfirm: PaymentLogic.canBuyerConfirm(transaction: tx, isBuyer: true),
                 onConfirm: { pendingCaptureTx = tx; showConfirmAlert = true },
                 onContactSeller: { Task { await contactSeller(tx) } },
-                onReport: { reportProblem(transaction: tx) }
+                onReportProblem: { reportProblem(transaction: tx) }
             )
             .environmentObject(authManager)
         }

@@ -52,27 +52,23 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("Close") {
-                    dismiss()
-                }
+                Button("Close") { dismiss() }
             }
-            
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    showingReportSheet = true
-                }) {
-                    Image(systemName: "flag")
-                        .foregroundColor(.red)
+                Button(action: { showingReportSheet = true }) {
+                    Image(systemName: "flag").foregroundColor(.red)
                 }
             }
         }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-            Button("OK") {
-                viewModel.errorMessage = nil
-            }
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )
+        ) {
+            Button("OK") { viewModel.errorMessage = nil }
+        } message: { Text(viewModel.errorMessage ?? "") }
         .sheet(isPresented: $showingReportSheet) {
             if let otherParticipant = conversation.otherParticipant(currentUserId: currentUserId) {
                 ReportUserView(
@@ -85,11 +81,7 @@ struct ChatView: View {
             }
         }
         .onAppear {
-            if let userId = authManager.session?.user.id.uuidString {
-                Task {
-                    await viewModel.initialize(userId: userId)
-                }
-            }
+            if let userId = authManager.session?.user.id.uuidString { Task { await viewModel.initialize(userId: userId) } }
         }
     }
     
@@ -98,48 +90,21 @@ struct ChatView: View {
             // Listing photo thumbnail
             if let photoURL = listing.photo, let url = URL(string: photoURL) {
                 AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Rectangle()
-                        .fill(Color(UIColor.systemGray5))
-                }
-                .frame(width: 40, height: 40)
-                .cornerRadius(8)
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: { Rectangle().fill(Color(UIColor.systemGray5)) }
+                .frame(width: 40, height: 40).cornerRadius(8)
             } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(UIColor.systemGray5))
-                    .frame(width: 40, height: 40)
+                RoundedRectangle(cornerRadius: 8).fill(Color(UIColor.systemGray5)).frame(width: 40, height: 40)
             }
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(listing.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                
-                Text("$\(listing.price, specifier: "%.2f")")
-                    .font(.caption2)
-                    .foregroundColor(Color("ThemeColor"))
+                Text(listing.title).font(.caption).fontWeight(.medium).lineLimit(1)
+                Text("$\(listing.price, specifier: "%.2f")").font(.caption2).foregroundColor(.secondary)
             }
-            
             Spacer()
-            
-            if listing.isSold {
-                Text("SOLD")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.red)
-                    .foregroundColor(.white)
-                    .cornerRadius(4)
-            }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color(UIColor.systemGray6))
+        .padding(8)
+        .background(Color(UIColor.secondarySystemBackground))
     }
     
     private var messagesList: some View {
