@@ -281,3 +281,8 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
   - Platform fee calculation display (5% with $0.50 minimum)
   - Quick amount selection buttons and max withdrawal option
   - Pull-to-refresh functionality 
+
+### Task 4.3 Completed — Wallet tab in MainTabView
+- Added `WalletView` as a primary tab in `MainTabView`
+- Badge shows available balance in whole dollars when > 0
+- Badge updates via async load on tab render 

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @State private var walletBadge: String?
+    
     var body: some View {
         TabView {
             // Home Tab
@@ -24,12 +26,14 @@ struct MainTabView: View {
                         .font(.system(size: 40))
                 }
             
-            // My Listings Tab
-            PaymentsView()
+            // Wallet Tab
+            WalletView()
                 .tabItem {
-                    Image(systemName: "list.bullet.rectangle.fill")
+                    Image(systemName: "creditcard.fill")
                         .font(.system(size: 40))
                 }
+                .badge(walletBadge)
+                .task { await loadWalletBadge() }
             
             // Profile Tab
             ProfileTabView()
@@ -39,6 +43,16 @@ struct MainTabView: View {
                 }
         }
         .accentColor(Color("ThemeColor"))
+    }
+    
+    private func loadWalletBadge() async {
+        do {
+            let wallet = try await WalletService.shared.fetchBalance()
+            let dollars = Int(Double(wallet.availableCents) / 100.0)
+            walletBadge = dollars > 0 ? "\(dollars)" : nil
+        } catch {
+            walletBadge = nil
+        }
     }
 }
 
