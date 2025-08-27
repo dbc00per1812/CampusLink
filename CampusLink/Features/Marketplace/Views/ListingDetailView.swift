@@ -253,7 +253,12 @@ struct ListingDetailView: View {
             )
             .environmentObject(authManager)
         }
-        .sheet(isPresented: $showPurchaseConfirmation) {
+        .sheet(isPresented: $showPurchaseConfirmation, onDismiss: {
+            // Ensure sheet state is cleared when dismissed
+            showPurchaseConfirmation = false
+            paymentService.paymentResult = nil
+            paymentService.paymentSheet = nil
+        }) {
             PurchaseConfirmationView(
                 listing: listing,
                 paymentResult: paymentService.paymentResult,
@@ -372,7 +377,19 @@ struct ListingDetailView: View {
                         // Present the PaymentSheet from the current view controller
                         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                            let rootViewController = windowScene.windows.first?.rootViewController {
-                            paymentService.presentPaymentSheet(from: rootViewController)
+                            // Monitor for payment result
+                            Task { @MainActor in
+                                paymentService.presentPaymentSheet(from: rootViewController)
+                                // Wait for payment to complete
+                                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                                
+                                // Check if payment completed and show confirmation
+                                if let result = paymentService.paymentResult {
+                                    // Clear result first to prevent re-triggering
+                                    paymentService.paymentResult = nil
+                                    showPurchaseConfirmation = true
+                                }
+                            }
                         }
                     }
                 } catch {
