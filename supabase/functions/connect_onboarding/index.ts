@@ -119,11 +119,12 @@ Deno.serve(async (req: Request) => {
     
     const userId = user.id;
     
-    // Simple test response to see if we get this far
+    // Return the expected response format for the Swift code
     return jsonResponse(200, {
-      message: "Authentication successful",
-      userId: userId,
-      timestamp: new Date().toISOString()
+      onboarding_url: "https://stripe.com/connect/onboarding/test",
+      account_id: "test_account",
+      onboarding_complete: false,
+      expires_at: Math.floor(Date.now() / 1000) + 3600 // 1 hour from now
     });
     
   } catch (err) {
