@@ -118,64 +118,12 @@ Deno.serve(async (req: Request) => {
     }
     
     const userId = user.id;
-    const userProfile = await getUserProfile(userId);
     
-    const returnUrl = body.return_url || "campuslink://settings/payout-success";
-    const refreshUrl = body.refresh_url || "campuslink://settings/payout-refresh";
-
-    const stripe = getStripe();
-    let accountId = userProfile.stripe_connect_id;
-
-    // Create Stripe Connect account if doesn't exist
-    if (!accountId) {
-      const account = await stripe.accounts.create({
-        type: "express",
-        country: "US",
-        email: userProfile.email,
-        capabilities: {
-          transfers: { requested: true },
-        },
-        business_type: "individual",
-        business_profile: {
-          product_description: "Campus marketplace seller",
-        },
-        metadata: {
-          user_id: userId,
-        },
-      });
-      
-      accountId = account.id;
-      
-      // Save the Connect account ID
-      await updateUserStripeConnectId(userId, accountId);
-    } else {
-      // Retrieve existing account to check status
-      const account = await stripe.accounts.retrieve(accountId);
-      
-      // If already onboarded, return success without creating new link
-      if (account.details_submitted && account.payouts_enabled) {
-        return jsonResponse(200, {
-          onboarding_complete: true,
-          account_id: accountId,
-          payouts_enabled: account.payouts_enabled,
-          message: "Account already onboarded",
-        });
-      }
-    }
-
-    // Create account onboarding link
-    const accountLink = await stripe.accountLinks.create({
-      account: accountId,
-      refresh_url: refreshUrl,
-      return_url: returnUrl,
-      type: "account_onboarding",
-    });
-
+    // Simple test response to see if we get this far
     return jsonResponse(200, {
-      onboarding_url: accountLink.url,
-      account_id: accountId,
-      expires_at: accountLink.expires_at,
-      onboarding_complete: false,
+      message: "Authentication successful",
+      userId: userId,
+      timestamp: new Date().toISOString()
     });
     
   } catch (err) {

@@ -78,7 +78,14 @@ class WalletViewModel: ObservableObject {
         struct OnboardingRes: Decodable { let onboarding_url: String?; let account_id: String?; let onboarding_complete: Bool?; let expires_at: Int? }
         
         do {
+            let session = try await supabase.auth.session
+            print("DEBUG: User ID: \(session.user.id)")
+            print("DEBUG: Session expires at: \(session.expiresAt)")
+            
             let accessToken = try await supabase.auth.session.accessToken
+            print("DEBUG: Access token length: \(accessToken.count)")
+            print("DEBUG: Access token starts with: \(String(accessToken.prefix(20)))...")
+            
             let res: OnboardingRes = try await supabase.functions.invoke(
                 "connect_onboarding",
                 options: FunctionInvokeOptions(
