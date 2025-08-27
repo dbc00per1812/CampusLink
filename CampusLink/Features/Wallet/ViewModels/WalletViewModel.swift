@@ -78,10 +78,12 @@ class WalletViewModel: ObservableObject {
         struct OnboardingRes: Decodable { let onboarding_url: String?; let account_id: String?; let onboarding_complete: Bool?; let expires_at: Int? }
         
         do {
+            let accessToken = try await supabase.auth.session.accessToken
             let res: OnboardingRes = try await supabase.functions.invoke(
                 "connect_onboarding",
                 options: FunctionInvokeOptions(
                     method: .post,
+                    headers: ["Authorization": "Bearer \(accessToken)"],
                     body: OnboardingReq()
                 )
             )

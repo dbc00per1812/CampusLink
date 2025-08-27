@@ -180,6 +180,7 @@ Deno.serve(async (req: Request) => {
     
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return jsonResponse(400, { error: message });
+    console.error("Connect onboarding error:", err);
+    return jsonResponse(400, { error: message, details: err instanceof Error ? err.stack : undefined });
   }
 });
