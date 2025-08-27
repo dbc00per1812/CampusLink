@@ -302,4 +302,23 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
 2. Modified purchase confirmation sheet's `onDismiss` to clear state after checking for completion
 3. This prevents the singleton from carrying state across different listing views
 
-This was a simple fix as requested - just clearing the singleton's state at the right moments. 
+This was a simple fix as requested - just clearing the singleton's state at the right moments.
+
+## Deep Fix - Home Tab Navigation & Overlay Issues
+**Time:** 8:25 PM  
+**Issue:** Home tab still had blurred/dimmed appearance with non-interactive listings
+
+**Root Causes Found:**
+1. **Missing NavigationView**: HomeTabView had NavigationLinks but NO NavigationView wrapper
+   - This causes NavigationLinks to malfunction and create phantom overlays
+   - NavigationLinks need a NavigationView/NavigationStack parent to work properly
+
+2. **Persistent activeSheet state**: In ListingDetailView, the activeSheet state could persist
+   - Added explicit clearing of activeSheet in onAppear/onDisappear
+
+**Fix Applied:**
+1. Wrapped HomeTabView content in NavigationView with navigationBarHidden(true)
+2. Added activeSheet = nil in ListingDetailView's onAppear and onDisappear
+3. Ensured sheetDidDismiss() clears all payment state when any sheet closes
+
+The blur was caused by NavigationLink trying to present without a proper navigation container, creating invisible blocking overlays. 

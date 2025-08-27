@@ -8,34 +8,45 @@ final class WalletService {
     
     // Fetch the current user's wallet balance
     func fetchBalance() async throws -> Wallet {
-        let session = try await supabase.auth.session
-        let userId: UUID = session.user.id
-        
-        // Fetch as array to gracefully handle 0 rows
-        let rows: [Wallet] = try await supabase
-            .from("wallets")
-            .select()
-            .eq("user_id", value: userId)
-            .limit(1)
-            .execute()
-            .value
-        
-        if let wallet = rows.first {
-            return wallet
+        do {
+            let session = try await supabase.auth.session
+            let userId: UUID = session.user.id
+            
+            // Fetch as array to gracefully handle 0 rows
+            let rows: [Wallet] = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: userId)
+                .limit(1)
+                .execute()
+                .value
+            
+            if let wallet = rows.first {
+                return wallet
+            }
+            
+            // If no wallet row exists yet, create one and return
+            try await createWalletIfMissing(for: userId)
+            
+            let created: [Wallet] = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: userId)
+                .limit(1)
+                .execute()
+                .value
+            if let wallet = created.first { return wallet }
+            throw WalletServiceError.missingUserId
+        } catch {
+            // Re-throw with better context for debugging
+            if error.localizedDescription.contains("cancelled") {
+                throw WalletServiceError.requestCancelled
+            } else if error.localizedDescription.contains("network") {
+                throw WalletServiceError.networkError
+            } else {
+                throw error
+            }
         }
-        
-        // If no wallet row exists yet, create one and return
-        try await createWalletIfMissing(for: userId)
-        
-        let created: [Wallet] = try await supabase
-            .from("wallets")
-            .select()
-            .eq("user_id", value: userId)
-            .limit(1)
-            .execute()
-            .value
-        if let wallet = created.first { return wallet }
-        throw WalletServiceError.missingUserId
     }
     
     private func createWalletIfMissing(for userId: UUID) async throws {
@@ -77,23 +88,46 @@ final class WalletService {
     
     // Basic transaction history using payments table for now
     func getTransactionHistory(limit: Int = 50) async throws -> [PaymentTransaction] {
-        let session = try await supabase.auth.session
-        let userId = session.user.id.uuidString
-        
-        let transactions: [PaymentTransaction] = try await supabase
-            .from("payments")
-            .select()
-            .or("buyer_id.eq.\(userId),seller_id.eq.\(userId)")
-            .order("created_at", ascending: false)
-            .limit(limit)
-            .execute()
-            .value
-        
-        return transactions
+        do {
+            let session = try await supabase.auth.session
+            let userId = session.user.id.uuidString
+            
+            let transactions: [PaymentTransaction] = try await supabase
+                .from("payments")
+                .select()
+                .or("buyer_id.eq.\(userId),seller_id.eq.\(userId)")
+                .order("created_at", ascending: false)
+                .limit(limit)
+                .execute()
+                .value
+            
+            return transactions
+        } catch {
+            if error.localizedDescription.contains("cancelled") {
+                throw WalletServiceError.requestCancelled
+            } else if error.localizedDescription.contains("network") {
+                throw WalletServiceError.networkError
+            } else {
+                throw error
+            }
+        }
     }
 }
 
 // MARK: - Errors
-enum WalletServiceError: Error {
+enum WalletServiceError: Error, LocalizedError {
     case missingUserId
+    case requestCancelled
+    case networkError
+    
+    var errorDescription: String? {
+        switch self {
+        case .missingUserId:
+            return "User ID not found"
+        case .requestCancelled:
+            return "Request was cancelled"
+        case .networkError:
+            return "Network connection error"
+        }
+    }
 }

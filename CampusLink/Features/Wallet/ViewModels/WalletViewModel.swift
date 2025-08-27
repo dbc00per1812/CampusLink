@@ -28,7 +28,14 @@ class WalletViewModel: ObservableObject {
             transactions = try await walletService.getTransactionHistory(limit: 50)
             try await checkStripeConnectStatus()
         } catch {
-            errorMessage = "Failed to load wallet data: \(error.localizedDescription)"
+            // Handle specific error types for better user experience
+            if error.localizedDescription.contains("cancelled") {
+                errorMessage = "Request was cancelled. Please try again."
+            } else if error.localizedDescription.contains("network") {
+                errorMessage = "Network error. Please check your connection and try again."
+            } else {
+                errorMessage = "Failed to load wallet data: \(error.localizedDescription)"
+            }
         }
         
         isLoading = false

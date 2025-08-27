@@ -139,9 +139,17 @@ Deno.serve(async (req: Request) => {
 
   const payload = await req.text();
 
+  // Use async verification for edge/Deno runtimes (SubtleCrypto provider)
+  const cryptoProvider = Stripe.createSubtleCryptoProvider();
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    event = await stripe.webhooks.constructEventAsync(
+      payload,
+      signature,
+      webhookSecret,
+      undefined,
+      cryptoProvider,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return jsonResponse(400, { error: `Webhook signature verification failed: ${message}` });
