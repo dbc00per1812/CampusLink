@@ -288,15 +288,17 @@ struct ListingDetailView: View {
         .sheet(item: $activeConversation) { conversation in
             ChatView(conversation: conversation)
         }
-        .onReceive(paymentService.$paymentResult) { result in
-            if result != nil {
-                showPurchaseConfirmation = true
-            }
+        .onAppear {
+            // Clear any stale payment state when view appears
+            paymentService.paymentResult = nil
+            paymentService.paymentSheet = nil
+            showPurchaseConfirmation = false
         }
         .onDisappear {
             // Clear payment result to prevent sheet from appearing on next navigation
             paymentService.paymentResult = nil
             paymentService.paymentSheet = nil
+            showPurchaseConfirmation = false
         }
     }
     

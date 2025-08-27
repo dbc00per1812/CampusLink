@@ -114,6 +114,10 @@ struct HomeTabView: View {
                 }
         }
         .onAppear {
+            // Clear any stale payment state when returning to home
+            PaymentService.shared.paymentResult = nil
+            PaymentService.shared.paymentSheet = nil
+            
             Task {
                 await loadListings()
             }

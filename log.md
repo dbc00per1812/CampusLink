@@ -285,4 +285,21 @@ Ready to move on to **p3: Marketplace Listings** - building the core marketplace
 ### Task 4.3 Completed — Wallet tab in MainTabView
 - Added `WalletView` as a primary tab in `MainTabView`
 - Badge shows available balance in whole dollars when > 0
-- Badge updates via async load on tab render 
+- Badge updates via async load on tab render
+
+## Critical Fix - Home Tab Blur Issue
+**Time:** 8:06 PM
+**Issue:** Home tab listings appeared blurred and non-interactive
+
+**Root Cause:** 
+- PaymentService is a singleton that was retaining `paymentResult` across navigation
+- When navigating back to Home, NavigationLink previews would render ListingDetailView
+- The persisted `paymentResult` would trigger the purchase confirmation sheet invisibly
+- This left a dimming overlay that blocked all interaction
+
+**Fix Applied in ListingDetailView.swift:**
+1. Added `onDisappear` handler to clear PaymentService state when leaving the view
+2. Modified purchase confirmation sheet's `onDismiss` to clear state after checking for completion
+3. This prevents the singleton from carrying state across different listing views
+
+This was a simple fix as requested - just clearing the singleton's state at the right moments. 
