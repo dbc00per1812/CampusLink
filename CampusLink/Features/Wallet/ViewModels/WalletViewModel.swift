@@ -96,16 +96,24 @@ class WalletViewModel: ObservableObject {
     }
     
     private func checkStripeConnectStatus() async throws {
-        struct UserStripe: Decodable { let stripe_connect_id: String? }
+        struct UserStripe: Decodable { 
+            let stripe_connect_id: String?
+            let stripe_payouts_enabled: Bool?
+            let stripe_details_submitted: Bool?
+        }
         let userId = try await supabase.auth.session.user.id
         let user: UserStripe = try await supabase
             .from("users")
-            .select("stripe_connect_id")
+            .select("stripe_connect_id, stripe_payouts_enabled, stripe_details_submitted")
             .eq("id", value: userId)
             .single()
             .execute()
             .value
-        hasStripeConnectAccount = user.stripe_connect_id != nil
+        
+        // Only consider it "complete" if all requirements are met
+        hasStripeConnectAccount = user.stripe_connect_id != nil && 
+                                 user.stripe_payouts_enabled == true && 
+                                 user.stripe_details_submitted == true
     }
 }
 

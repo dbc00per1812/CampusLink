@@ -115,7 +115,7 @@ struct WalletView: View {
             }) {
                 HStack {
                     Image(systemName: viewModel.hasStripeConnectAccount ? "banknote" : "link")
-                    Text(viewModel.hasStripeConnectAccount ? "Withdraw" : "Setup Payouts")
+                    Text(viewModel.hasStripeConnectAccount ? "Withdraw" : "Complete Payout Setup")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
