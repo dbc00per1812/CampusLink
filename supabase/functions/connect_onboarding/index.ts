@@ -69,19 +69,7 @@ function handleOptions(req: Request): Response | null {
   return null;
 }
 
-async function getAuthenticatedUserId(req: Request): Promise<string> {
-  // Since JWT verification is disabled, we'll get the user ID from the request body
-  // This is a simplified approach for the onboarding flow
-  try {
-    const body = await req.json() as any;
-    if (body.user_id) {
-      return body.user_id;
-    }
-    throw new Error("user_id is required in request body");
-  } catch (err) {
-    throw new Error("Invalid request body or missing user_id");
-  }
-}
+
 
 async function getUserProfile(userId: string) {
   const supabase = getSupabaseServiceClient();
@@ -120,12 +108,16 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Get authenticated user
-    const userId = await getAuthenticatedUserId(req);
+    // Parse request body once
+    const body = await req.json() as OnboardingRequest & { user_id: string };
+    
+    if (!body.user_id) {
+      return jsonResponse(400, { error: "user_id is required in request body" });
+    }
+    
+    const userId = body.user_id;
     const userProfile = await getUserProfile(userId);
     
-    // Parse request body
-    const body = (await req.json()) as OnboardingRequest;
     const returnUrl = body.return_url || "campuslink://settings/payout-success";
     const refreshUrl = body.refresh_url || "campuslink://settings/payout-refresh";
 

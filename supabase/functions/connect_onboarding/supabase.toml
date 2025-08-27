@@ -1,2 +1,2 @@
-[functions.connect_onboarding]
+[function]
 verify_jwt = false

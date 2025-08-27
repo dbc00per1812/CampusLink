@@ -82,7 +82,11 @@ class WalletViewModel: ObservableObject {
             let userId = try await supabase.auth.session.user.id.uuidString
             let res: OnboardingRes = try await supabase.functions.invoke(
                 "connect_onboarding",
-                options: FunctionInvokeOptions(method: .post, body: OnboardingReq(user_id: userId))
+                options: FunctionInvokeOptions(
+                    method: .post, 
+                    body: OnboardingReq(user_id: userId),
+                    headers: ["Authorization": "Bearer \(try await supabase.auth.session.accessToken)"]
+                )
             )
             if res.onboarding_complete == true {
                 hasStripeConnectAccount = true
