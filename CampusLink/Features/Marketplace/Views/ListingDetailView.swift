@@ -259,8 +259,17 @@ struct ListingDetailView: View {
                 paymentResult: paymentService.paymentResult,
                 onDismiss: {
                     showPurchaseConfirmation = false
-                    // If payment was successful, dismiss the detail view too
-                    if case .completed = paymentService.paymentResult {
+                    // Check if payment was successful before clearing
+                    var shouldDismissDetail = false
+                    if let result = paymentService.paymentResult,
+                       case .completed = result {
+                        shouldDismissDetail = true
+                    }
+                    // Clear payment result after checking
+                    paymentService.paymentResult = nil
+                    paymentService.paymentSheet = nil
+                    // Dismiss detail view if payment was successful
+                    if shouldDismissDetail {
                         dismiss()
                     }
                 },
@@ -283,6 +292,11 @@ struct ListingDetailView: View {
             if result != nil {
                 showPurchaseConfirmation = true
             }
+        }
+        .onDisappear {
+            // Clear payment result to prevent sheet from appearing on next navigation
+            paymentService.paymentResult = nil
+            paymentService.paymentSheet = nil
         }
     }
     
