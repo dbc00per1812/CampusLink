@@ -71,13 +71,18 @@ class WalletViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
-        struct OnboardingReq: Encodable { let return_url: String = "campuslink://wallet/onboarding-complete"; let refresh_url: String = "campuslink://wallet/onboarding-refresh" }
+        struct OnboardingReq: Encodable { 
+            let user_id: String
+            let return_url: String = "campuslink://wallet/onboarding-complete"
+            let refresh_url: String = "campuslink://wallet/onboarding-refresh"
+        }
         struct OnboardingRes: Decodable { let onboarding_url: String?; let account_id: String?; let onboarding_complete: Bool?; let expires_at: Int? }
         
         do {
+            let userId = try await supabase.auth.session.user.id.uuidString
             let res: OnboardingRes = try await supabase.functions.invoke(
                 "connect_onboarding",
-                options: FunctionInvokeOptions(method: .post, body: OnboardingReq())
+                options: FunctionInvokeOptions(method: .post, body: OnboardingReq(user_id: userId))
             )
             if res.onboarding_complete == true {
                 hasStripeConnectAccount = true
