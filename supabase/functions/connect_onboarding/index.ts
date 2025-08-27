@@ -104,15 +104,32 @@ Deno.serve(async (req: Request) => {
   const maybeOptions = handleOptions(req);
   if (maybeOptions) return maybeOptions;
 
+  // Support GET callbacks from Stripe and redirect to app deep links
+  if (req.method === "GET") {
+    const u = new URL(req.url);
+    const cb = u.searchParams.get("cb");
+    const target = cb === "refresh"
+      ? "campuslink://wallet/onboarding-refresh"
+      : "campuslink://wallet/onboarding-complete";
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: target,
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
   if (req.method !== "POST") {
     return jsonResponse(405, { error: "Method not allowed" });
   }
 
   try {
-    // Parse request body first (can only be done once)
-    const body = await req.json() as OnboardingRequest;
-    const returnUrl = body.return_url || "campuslink://wallet/onboarding-complete";
-    const refreshUrl = body.refresh_url || "campuslink://wallet/onboarding-refresh";
+    // Build HTTPS callback URLs for Stripe (required). We'll redirect to app deep links in GET handler.
+    const self = new URL(req.url);
+    const baseCallback = `${self.origin}${self.pathname}`; // this function's public URL
+    const returnUrl = `${baseCallback}?cb=return`;
+    const refreshUrl = `${baseCallback}?cb=refresh`;
     
     // Get authenticated user from JWT
     const supabase = getSupabaseAuthClient(req);
