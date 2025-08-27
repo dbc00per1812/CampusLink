@@ -41,6 +41,7 @@ function getSupabaseServiceClient() {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
+
 function getSupabaseAuthClient(req: Request) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -108,14 +109,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Parse request body once
-    const body = await req.json() as OnboardingRequest & { user_id: string };
+    // Get authenticated user from JWT
+    const supabase = getSupabaseAuthClient(req);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    if (!body.user_id) {
-      return jsonResponse(400, { error: "user_id is required in request body" });
+    if (authError || !user?.id) {
+      return jsonResponse(401, { error: "Unauthorized: unable to resolve authenticated user" });
     }
     
-    const userId = body.user_id;
+    const userId = user.id;
     const userProfile = await getUserProfile(userId);
     
     const returnUrl = body.return_url || "campuslink://settings/payout-success";
