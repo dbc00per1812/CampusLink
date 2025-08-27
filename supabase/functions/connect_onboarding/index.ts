@@ -109,6 +109,11 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Parse request body first (can only be done once)
+    const body = await req.json() as OnboardingRequest;
+    const returnUrl = body.return_url || "campuslink://wallet/onboarding-complete";
+    const refreshUrl = body.refresh_url || "campuslink://wallet/onboarding-refresh";
+    
     // Get authenticated user from JWT
     const supabase = getSupabaseAuthClient(req);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -119,11 +124,6 @@ Deno.serve(async (req: Request) => {
     
     const userId = user.id;
     const userProfile = await getUserProfile(userId);
-    
-    // Parse request body for URLs
-    const body = await req.json() as OnboardingRequest;
-    const returnUrl = body.return_url || "campuslink://wallet/onboarding-complete";
-    const refreshUrl = body.refresh_url || "campuslink://wallet/onboarding-refresh";
 
     const stripe = getStripe();
     let accountId = userProfile.stripe_connect_id;
@@ -183,6 +183,12 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Connect onboarding error:", err);
-    return jsonResponse(400, { error: message, details: err instanceof Error ? err.stack : undefined });
+    
+    // Return more detailed error information
+    return jsonResponse(400, { 
+      error: message, 
+      details: err instanceof Error ? err.stack : undefined,
+      step: "onboarding_function"
+    });
   }
 });
