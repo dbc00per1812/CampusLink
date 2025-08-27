@@ -118,13 +118,66 @@ Deno.serve(async (req: Request) => {
     }
     
     const userId = user.id;
+    const userProfile = await getUserProfile(userId);
     
-    // Return the expected response format for the Swift code
+    // Parse request body for URLs
+    const body = await req.json() as OnboardingRequest;
+    const returnUrl = body.return_url || "campuslink://wallet/onboarding-complete";
+    const refreshUrl = body.refresh_url || "campuslink://wallet/onboarding-refresh";
+
+    const stripe = getStripe();
+    let accountId = userProfile.stripe_connect_id;
+
+    // Create Stripe Connect account if doesn't exist
+    if (!accountId) {
+      const account = await stripe.accounts.create({
+        type: "express",
+        country: "US",
+        email: userProfile.email,
+        capabilities: {
+          transfers: { requested: true },
+        },
+        business_type: "individual",
+        business_profile: {
+          product_description: "Campus marketplace seller",
+        },
+        metadata: {
+          user_id: userId,
+        },
+      });
+      
+      accountId = account.id;
+      
+      // Save the Connect account ID
+      await updateUserStripeConnectId(userId, accountId);
+    } else {
+      // Retrieve existing account to check status
+      const account = await stripe.accounts.retrieve(accountId);
+      
+      // If already onboarded, return success without creating new link
+      if (account.details_submitted && account.payouts_enabled) {
+        return jsonResponse(200, {
+          onboarding_complete: true,
+          account_id: accountId,
+          payouts_enabled: account.payouts_enabled,
+          message: "Account already onboarded",
+        });
+      }
+    }
+
+    // Create account onboarding link
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
+      type: "account_onboarding",
+    });
+
     return jsonResponse(200, {
-      onboarding_url: "https://stripe.com/connect/onboarding/test",
-      account_id: "test_account",
+      onboarding_url: accountLink.url,
+      account_id: accountId,
+      expires_at: accountLink.expires_at,
       onboarding_complete: false,
-      expires_at: Math.floor(Date.now() / 1000) + 3600 // 1 hour from now
     });
     
   } catch (err) {
