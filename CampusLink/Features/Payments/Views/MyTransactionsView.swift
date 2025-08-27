@@ -14,6 +14,14 @@ struct MyTransactionsView: View {
         content
             .navigationTitle("My Transactions")
             .onAppear { Task { await loadData() } }
+            .onDisappear {
+                // Ensure no lingering modals cause dimming when leaving this tab
+                errorMessage = nil
+                showConfirmAlert = false
+                showDeliveredAlert = false
+                activeTransaction = nil
+                activeConversation = nil
+            }
             .alert(
                 "Error",
                 isPresented: Binding(
