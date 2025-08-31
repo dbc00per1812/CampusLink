@@ -19,10 +19,14 @@ final class WalletServiceMock {
     func requestPayout(amountCents: Int) async throws -> Payout {
         let payout = Payout(
             id: UUID(),
-            sellerId: wallet.userId,
+            userId: wallet.userId.uuidString,
             amountCents: amountCents,
-            destination: "stripe_connect",
+            feeCents: 0,
+            netAmountCents: amountCents,
+            payoutType: "standard",
+            payoutMethod: "bank_account",
             status: .processing,
+            stripeConnectAccountId: wallet.userId.uuidString,
             stripeTransferId: nil,
             errorMessage: nil,
             retryCount: 0,

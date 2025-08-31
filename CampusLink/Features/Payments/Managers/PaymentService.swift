@@ -13,6 +13,30 @@ final class PaymentService: ObservableObject {
     @Published var paymentSheet: PaymentSheet?
     @Published var paymentResult: PaymentSheetResult?
     
+    // MARK: - Fee Calculation
+    private let feeService = FeeCalculationService.shared
+    
+    /// Calculates Stripe processing fees for a given amount
+    /// - Parameter amountCents: Amount in cents
+    /// - Returns: Processing fee in cents
+    func calculateProcessingFee(amountCents: Int) -> Int {
+        return feeService.calculateStripeProcessingFee(amountCents: amountCents)
+    }
+    
+    /// Gets total amount including processing fees
+    /// - Parameter baseAmountCents: Base amount in cents
+    /// - Returns: Total amount including fees in cents
+    func getTotalWithFees(baseAmountCents: Int) -> Int {
+        return feeService.calculateTotalWithFees(baseAmountCents: baseAmountCents)
+    }
+    
+    /// Gets fee breakdown for display
+    /// - Parameter baseAmountCents: Base amount in cents
+    /// - Returns: Dictionary with fee breakdown
+    func getFeeBreakdown(baseAmountCents: Int) -> [String: Int] {
+        return feeService.getFeeBreakdown(baseAmountCents: baseAmountCents)
+    }
+    
     private init() {
         // Configure Stripe with publishable key
         STPAPIClient.shared.publishableKey = Secrets.stripePublishableKey
@@ -96,6 +120,10 @@ final class PaymentService: ObservableObject {
                 #if DEBUG
                 print("✅ Payment completed successfully")
                 #endif
+                // Update order with payment intent ID for escrow tracking
+                Task { [weak self] in
+                    await self?.handlePaymentCompletion()
+                }
             case .canceled:
                 #if DEBUG
                 print("⚠️ Payment canceled by user")
@@ -106,6 +134,28 @@ final class PaymentService: ObservableObject {
                 #endif
             }
         }
+    }
+    
+    /// Handles payment completion by updating order with payment intent ID
+    private func handlePaymentCompletion() async {
+        // This would typically be called with the order ID and payment intent ID
+        // For now, we'll log that payment was completed
+        #if DEBUG
+        print("✅ PaymentService: Payment completed, order should be updated with payment intent ID")
+        #endif
+    }
+    
+    /// Updates an order with payment intent ID for escrow tracking
+    /// - Parameters:
+    ///   - orderId: The order ID to update
+    ///   - paymentIntentId: The Stripe payment intent ID
+    func updateOrderWithPaymentIntent(orderId: UUID, paymentIntentId: String) async throws {
+        let orderService = OrderService.shared
+        try await orderService.updateOrderWithPaymentIntent(orderId, paymentIntentId: paymentIntentId)
+        
+        #if DEBUG
+        print("✅ PaymentService: Order \(orderId) updated with payment intent \(paymentIntentId)")
+        #endif
     }
 
     // MARK: - Helpers

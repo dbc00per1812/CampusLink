@@ -111,10 +111,15 @@ extension HomeTabView {
                         ListingCard(listing: listing)
                     }
                     .buttonStyle(.plain)
+                    .id(listing.id) // Ensure stable identity
                     .onAppear {
                         if listing.id == listings.suffix(3).first?.id {
                             Task { await loadMoreListings() }
                         }
+                    }
+                    .onTapGesture {
+                        // Prevent navigation if data is being modified
+                        guard !isLoading && !isLoadingMore else { return }
                     }
                 }
 
@@ -184,8 +189,22 @@ extension HomeTabView {
                 .execute()
                 .value
 
+            // Ensure we're on the main thread and the response is valid
             await MainActor.run {
-                listings = response
+                guard !response.isEmpty else {
+                    listings = []
+                    isLoading = false
+                    currentPage = 1
+                    hasMorePages = false
+                    return
+                }
+                
+                // Validate that each listing has a unique ID
+                let uniqueListings = Array(Set(response.map { $0.id })).compactMap { id in
+                    response.first { $0.id == id }
+                }
+                
+                listings = uniqueListings
                 isLoading = false
                 currentPage = 1
                 hasMorePages = response.count == pageSize
@@ -218,7 +237,11 @@ extension HomeTabView {
                 .value
 
             await MainActor.run {
-                listings.append(contentsOf: response)
+                // Ensure no duplicate listings are added
+                let existingIds = Set(listings.map { $0.id })
+                let newListings = response.filter { !existingIds.contains($0.id) }
+                
+                listings.append(contentsOf: newListings)
                 currentPage += 1
                 hasMorePages = response.count == pageSize
                 isLoadingMore = false

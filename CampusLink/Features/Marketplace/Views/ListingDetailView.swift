@@ -7,12 +7,20 @@ struct ListingDetailView: View {
 
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var conversationViewModel = ConversationListViewModel()
+    @StateObject private var orderService = OrderService.shared
+    @StateObject private var walletService = WalletService.shared
 
     @State private var isContactingSeller = false
     @State private var isPrimaryActionLoading = false
     @State private var purchaseError: String?
     @State private var showErrorAlert = false
-    @State private var activeSheet: ActiveSheet?          // <- single entry point for all sheets
+    @State private var activeSheet: ActiveSheet?
+    @State private var showPaymentMethodSheet = false
+    @State private var currentWallet: Wallet?
+    @State private var isWalletLoading = false
+    @State private var createdOrder: Order?
+    @State private var selectedPaymentMethod: PaymentMethod?
+    @State private var processingFeeCents: Int = 0
 
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { return false }
@@ -89,6 +97,14 @@ struct ListingDetailView: View {
                                 .font(.title)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color("ThemeColor"))
+                            
+                            // Show processing fee if available
+                            if processingFeeCents > 0 {
+                                let feeAmount = Double(processingFeeCents) / 100.0
+                                Text("+ $\(feeAmount, specifier: "%.2f") processing")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
                             if listing.isSold {
                                 Text("SOLD")
@@ -249,26 +265,51 @@ struct ListingDetailView: View {
             case .purchaseConfirmation:
                 PurchaseConfirmationView(
                     listing: listing,
-                    paymentResult: paymentService.paymentResult,
+                    order: createdOrder,
+                    paymentMethod: selectedPaymentMethod ?? .card,
                     onDismiss: {
                         activeSheet = nil
-                        let wasCompleted: Bool = {
-                            if case .completed? = paymentService.paymentResult { return true }
-                            return false
-                        }()
+                        createdOrder = nil
+                        selectedPaymentMethod = nil
                         // Clear Stripe state
                         paymentService.paymentResult = nil
                         paymentService.paymentSheet = nil
-                        if wasCompleted { dismiss() }
+                        dismiss()
                     },
-                    onViewTransactions: {
-                        AppRouter.shared.pushTransactions()
+                    onViewOrder: {
+                        // Navigate to order details
+                        if let order = createdOrder {
+                            // TODO: Navigate to order details
+                            #if DEBUG
+                            print("📱 Navigate to order details: \(order.id)")
+                            #endif
+                        }
+                    },
+                    onContactSeller: {
+                        // Navigate to chat with seller
+                        if let order = createdOrder {
+                            // TODO: Navigate to chat
+                            #if DEBUG
+                            print("📱 Navigate to chat for order: \(order.id)")
+                            #endif
+                        }
                     }
                 )
 
             case let .chat(conversation):
                 ChatView(conversation: conversation)
             }
+        }
+
+        .sheet(isPresented: $showPaymentMethodSheet) {
+            PaymentMethodSheet(
+                listing: listing,
+                wallet: currentWallet,
+                onPaymentMethodSelected: { paymentMethod in
+                    showPaymentMethodSheet = false
+                    handlePaymentMethodSelection(paymentMethod)
+                }
+            )
         }
 
         .alert("Payment Error", isPresented: $showErrorAlert) {
@@ -282,6 +323,11 @@ struct ListingDetailView: View {
             paymentService.paymentResult = nil
             paymentService.paymentSheet = nil
             activeSheet = nil  // Ensure no sheet is shown on appear
+            
+            // Load wallet balance for payment method selection
+            if !isOwnListing && listing.listingType == .product {
+                loadWalletBalance()
+            }
         }
         .onDisappear {
             // Clear to prevent re-triggering elsewhere
@@ -304,6 +350,28 @@ struct ListingDetailView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter.string(from: date)
+    }
+
+    private func loadWalletBalance() {
+        guard let currentUserId = authManager.session?.user.id else { return }
+        
+        isWalletLoading = true
+        Task {
+            do {
+                let wallet = try await walletService.fetchBalance()
+                await MainActor.run {
+                    currentWallet = wallet
+                    isWalletLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    isWalletLoading = false
+                    #if DEBUG
+                    print("❌ Failed to load wallet balance: \(error)")
+                    #endif
+                }
+            }
+        }
     }
 
     private func handleContactSeller() {
@@ -348,53 +416,200 @@ struct ListingDetailView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        isPrimaryActionLoading = true
-
         if listing.listingType == .product {
-            Task {
-                do {
-                    try await paymentService.configurePaymentSheet(for: listing.id.uuidString)
+            // Show payment method selection instead of direct Stripe payment
+            showPaymentMethodSheet = true
+        } else {
+            // Service booking - show payment method selection
+            showPaymentMethodSheet = true
+        }
+    }
 
-                    await MainActor.run {
-                        isPrimaryActionLoading = false
+    private func handlePaymentMethodSelection(_ paymentMethod: PaymentMethod) {
+        isPrimaryActionLoading = true
+        
+        Task {
+            do {
+                switch paymentMethod {
+                case .wallet:
+                    try await handleWalletPayment()
+                case .card:
+                    try await handleCardPayment()
+                }
+            } catch {
+                await MainActor.run {
+                    isPrimaryActionLoading = false
+                    purchaseError = error.localizedDescription
+                    showErrorAlert = true
+                    #if DEBUG
+                    print("❌ Payment method selection failed: \(error)")
+                    #endif
+                }
+            }
+        }
+    }
 
-                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                           let rootVC = windowScene.windows.first?.rootViewController {
-                            Task { @MainActor in
-                                paymentService.presentPaymentSheet(from: rootVC)
+    private func handleWalletPayment() async throws {
+        guard let currentUserId = authManager.session?.user.id else {
+            throw PaymentError.userNotAuthenticated
+        }
+        
+        guard let wallet = currentWallet else {
+            throw PaymentError.walletNotLoaded
+        }
+        
+        let priceCents = Int(listing.price * 100)
+        guard wallet.availableCents >= priceCents else {
+            throw PaymentError.insufficientFunds
+        }
+        
+        // Wallet payments have no processing fees
+        await MainActor.run {
+            self.processingFeeCents = 0
+        }
+        
+        // Create order with wallet payment
+        let orderCreate = OrderCreate(
+            listingId: listing.id,
+            buyerId: currentUserId,
+            sellerId: UUID(uuidString: listing.user.id) ?? UUID(),
+            priceCents: priceCents,
+            paymentMethod: .wallet
+        )
+        
+        let order = try await orderService.createOrder(orderCreate)
+        
+        await MainActor.run {
+            isPrimaryActionLoading = false
+            createdOrder = order
+            selectedPaymentMethod = .wallet
+            // Show order confirmation
+            activeSheet = .purchaseConfirmation
+        }
+        
+        #if DEBUG
+        print("✅ Wallet payment order created: \(order.id)")
+        #endif
+    }
 
-                                // Wait briefly for result to populate
-                                try? await Task.sleep(nanoseconds: 500_000_000)
+    private func handleCardPayment() async throws {
+        // Use existing Stripe flow for card payments
+        try await paymentService.configurePaymentSheet(for: listing.id.uuidString)
 
-                                if let _ = paymentService.paymentResult {
-                                    // Consume/clear first, then show confirmation
-                                    // (prevents re-trigger on next appear)
-                                    // Keep the result available to the sheet; it will clear on dismiss.
-                                    activeSheet = .purchaseConfirmation
+        await MainActor.run {
+            isPrimaryActionLoading = false
+
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                
+                // Present the payment sheet
+                paymentService.presentPaymentSheet(from: rootVC)
+                
+                // Set up a timer to check for payment result
+                Task { @MainActor in
+                    // Wait for payment result with timeout
+                    var attempts = 0
+                    while attempts < 60 { // 30 second timeout
+                        if let paymentResult = paymentService.paymentResult {
+                            switch paymentResult {
+                            case .completed:
+                                // Create order after successful payment
+                                do {
+                                    guard let currentUserId = authManager.session?.user.id else {
+                                        throw PaymentError.userNotAuthenticated
+                                    }
+                                    
+                                    // Calculate Stripe processing fees
+                                    let basePriceCents = Int(listing.price * 100)
+                                    let processingFeeCents = paymentService.calculateProcessingFee(amountCents: basePriceCents)
+                                    
+                                    // Update UI with processing fee
+                                    await MainActor.run {
+                                        self.processingFeeCents = processingFeeCents
+                                    }
+                                    
+                                    let orderCreate = OrderCreate(
+                                        listingId: listing.id,
+                                        buyerId: currentUserId,
+                                        sellerId: UUID(uuidString: listing.user.id) ?? UUID(),
+                                        priceCents: basePriceCents,
+                                        paymentMethod: .card
+                                    )
+                                    
+                                    let order = try await orderService.createOrder(orderCreate)
+                                    
+                                    await MainActor.run {
+                                        createdOrder = order
+                                        selectedPaymentMethod = .card
+                                        activeSheet = .purchaseConfirmation
+                                    }
+                                    
+                                    #if DEBUG
+                                    print("✅ Card payment order created: \(order.id)")
+                                    #endif
+                                    return
+                                } catch {
+                                    await MainActor.run {
+                                        purchaseError = "Payment succeeded but order creation failed: \(error.localizedDescription)"
+                                        showErrorAlert = true
+                                    }
+                                    #if DEBUG
+                                    print("❌ Order creation failed after payment: \(error)")
+                                    #endif
+                                    return
                                 }
+                            case .canceled:
+                                #if DEBUG
+                                print("⚠️ Payment canceled by user")
+                                #endif
+                                return
+                            case .failed(let error):
+                                await MainActor.run {
+                                    purchaseError = "Payment failed: \(error.localizedDescription)"
+                                    showErrorAlert = true
+                                }
+                                #if DEBUG
+                                print("❌ Payment failed: \(error)")
+                                #endif
+                                return
                             }
                         }
+                        
+                        try? await Task.sleep(nanoseconds: 500_000_000) // Wait 0.5 seconds
+                        attempts += 1
                     }
-                } catch {
+                    
+                    // Timeout - payment didn't complete
                     await MainActor.run {
-                        isPrimaryActionLoading = false
-                        purchaseError = error.localizedDescription
+                        purchaseError = "Payment timed out. Please try again."
                         showErrorAlert = true
-                        #if DEBUG
-                        print("❌ Failed to create payment intent: \(error)")
-                        #endif
                     }
                 }
             }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                isPrimaryActionLoading = false
-                #if DEBUG
-                print("📅 Book service: \(listing.title)")
-                if let duration = listing.serviceDuration { print("   Duration: \(duration)") }
-                if let location = listing.serviceLocation { print("   Location: \(location.displayName)") }
-                #endif
-            }
+        }
+    }
+
+
+}
+
+// MARK: - Payment Errors
+
+enum PaymentError: Error, LocalizedError {
+    case userNotAuthenticated
+    case walletNotLoaded
+    case insufficientFunds
+    case orderCreationFailed
+    
+    var errorDescription: String? {
+        switch self {
+        case .userNotAuthenticated:
+            return "You must be logged in to make a purchase."
+        case .walletNotLoaded:
+            return "Unable to load wallet information. Please try again."
+        case .insufficientFunds:
+            return "Insufficient funds in your wallet. Please add funds or choose a different payment method."
+        case .orderCreationFailed:
+            return "Failed to create order. Please try again."
         }
     }
 }

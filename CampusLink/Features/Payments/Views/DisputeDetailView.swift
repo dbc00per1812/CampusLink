@@ -2,30 +2,27 @@ import SwiftUI
 
 struct DisputeDetailView: View, Identifiable {
     let id = UUID()
-    let transaction: PaymentTransaction
+    let order: Order
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text(transaction.listing?.title ?? "Listing")
+                    Text(order.listing?.title ?? "Listing")
                         .font(.headline)
                     Spacer()
-                    StatusBadge(text: (transaction.disputeStatus?.rawValue ?? "none").replacingOccurrences(of: "_", with: " ").capitalized, color: .orange)
+                    StatusBadge(text: "Disputed", color: .orange)
                 }
 
-                GroupBox(label: Text("Reason")) {
-                    Text(transaction.disputeReason?.replacingOccurrences(of: "_", with: " ").capitalized ?? "-")
+                GroupBox(label: Text("Order Status")) {
+                    Text(order.orderStatus.displayName)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                GroupBox(label: Text("Notes / Evidence")) {
-                    ScrollView {
-                        Text(transaction.disputeNotes ?? "-")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 240)
+                GroupBox(label: Text("Payment Status")) {
+                    Text(order.paymentStatus.displayName)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Spacer()

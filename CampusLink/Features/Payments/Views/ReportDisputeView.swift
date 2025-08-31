@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 
 struct ReportDisputeView: View {
-    let transaction: PaymentTransaction
+    let order: Order
     let onSubmitted: () -> Void
     @EnvironmentObject private var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
@@ -94,9 +94,9 @@ struct ReportDisputeView: View {
             do {
                 for image in selectedImages {
                     if let data = image.resizedForUpload(maxDimension: 800, compressionQuality: 0.7) {
-                        let path = "\(transaction.id.uuidString)/\(UUID().uuidString).jpg"
-                        try await supabase.storage.from("disputes").upload(path, data: data)
-                        let url = try supabase.storage.from("disputes").getPublicURL(path: path).absoluteString
+                        let path = "\(order.id.uuidString)/\(UUID().uuidString).jpg"
+                                    try await supabase.storage.from("disputes").upload(path, data: data)
+            let url = try supabase.storage.from("disputes").getPublicURL(path: path).absoluteString
                         evidenceURLs.append(url)
                     }
                 }
@@ -124,7 +124,7 @@ struct ReportDisputeView: View {
                     "dispute_reason": reason.rawValue,
                     "dispute_notes": disputeNotes
                 ])
-                .eq("id", value: transaction.id.uuidString)
+                .eq("id", value: order.id.uuidString)
                 .execute()
 
             await MainActor.run {

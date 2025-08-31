@@ -9,9 +9,8 @@ class WalletViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String? { didSet { isShowingError = errorMessage != nil } }
     @Published var isShowingError: Bool = false
-    @Published var showWithdrawSheet = false
-    @Published var withdrawAmount: String = ""
-    @Published var isProcessingPayout = false
+    @Published var showPayoutRequestSheet = false
+    @Published var showPayoutHistorySheet = false
     @Published var hasStripeConnectAccount = false
     // Use Identifiable item for onboarding sheet
     struct OnboardingLink: Identifiable { let url: URL; var id: String { url.absoluteString } }
@@ -43,29 +42,7 @@ class WalletViewModel: ObservableObject {
     
     func refreshData() async { await loadWalletData() }
     
-    func requestPayout() async {
-        guard let wallet = wallet else { return }
-        let amountCents: Int?
-        if let amount = Double(withdrawAmount.replacingOccurrences(of: ",", with: "")) {
-            amountCents = Int((amount * 100.0).rounded())
-        } else { amountCents = nil }
-        guard let cents = amountCents else { errorMessage = "Invalid amount"; return }
-        guard cents > 0 else { errorMessage = "Amount must be greater than $0"; return }
-        guard cents <= wallet.availableCents else { errorMessage = "Insufficient balance"; return }
-        
-        isProcessingPayout = true
-        errorMessage = nil
-        do {
-            let payout = try await walletService.requestPayout(amountCents: cents)
-            await loadWalletData()
-            withdrawAmount = ""
-            showWithdrawSheet = false
-            errorMessage = "Payout of \(payout.formattedAmount) initiated successfully"
-        } catch {
-            errorMessage = "Failed to process payout: \(error.localizedDescription)"
-        }
-        isProcessingPayout = false
-    }
+
     
     func startStripeOnboarding() async {
         isLoading = true

@@ -3,24 +3,43 @@ import SwiftUI
 struct MyTransactionsView: View {
     @EnvironmentObject private var authManager: AuthManager
     @State private var selection: Segment = .purchases
-    @State private var purchases: [PaymentTransaction] = []
-    @State private var sales: [PaymentTransaction] = []
+    @State private var purchases: [Order] = []
+    @State private var sales: [Order] = []
     @State private var isLoading = true
+    @State private var isRefreshing = false
     @State private var errorMessage: String?
+    @State private var searchText = ""
+    @State private var selectedStatusFilter: OrderStatus?
+    @State private var showingFilters = false
 
-    enum Segment: String, CaseIterable { case purchases = "Purchases", sales = "Sales" }
+    enum Segment: String, CaseIterable { 
+        case purchases = "Purchases"
+        case sales = "Sales" 
+    }
 
     var body: some View {
         content
             .navigationTitle("My Transactions")
+            .searchable(text: $searchText, prompt: "Search orders...")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showingFilters.toggle() }) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundColor(selectedStatusFilter != nil ? .blue : .primary)
+                    }
+                }
+            }
             .onAppear { Task { await loadData() } }
             .onDisappear {
                 // Ensure no lingering modals cause dimming when leaving this tab
                 errorMessage = nil
                 showConfirmAlert = false
                 showDeliveredAlert = false
-                activeTransaction = nil
+                activeOrder = nil
                 activeConversation = nil
+            }
+            .refreshable {
+                await refreshData()
             }
             .alert(
                 "Error",
@@ -34,36 +53,36 @@ struct MyTransactionsView: View {
                 Text(errorMessage ?? "")
             }
             .alert("Confirm Received?", isPresented: $showConfirmAlert) {
-                Button("Cancel", role: .cancel) { pendingCaptureTx = nil }
+                Button("Cancel", role: .cancel) { pendingCaptureOrder = nil }
                 Button("Confirm") {
-                    if let tx = pendingCaptureTx { Task { await confirmReceived(transaction: tx) } }
-                    pendingCaptureTx = nil
+                    if let order = pendingCaptureOrder { Task { await confirmReceived(order: order) } }
+                    pendingCaptureOrder = nil
                 }
             } message: { Text("This will release funds to the seller.") }
             .alert("Mark as Delivered?", isPresented: $showDeliveredAlert) {
-                Button("Cancel", role: .cancel) { pendingDeliveredTx = nil }
+                Button("Cancel", role: .cancel) { pendingDeliveredOrder = nil }
                 Button("Mark Delivered") {
-                    if let tx = pendingDeliveredTx { Task { await markDelivered(tx) } }
-                    pendingDeliveredTx = nil
+                    if let order = pendingDeliveredOrder { Task { await markDelivered(order) } }
+                    pendingDeliveredOrder = nil
                 }
             } message: { Text("This notifies the buyer and enables capture.") }
             .sheet(item: $disputeDraft) { draft in
-                ReportDisputeView(transaction: draft.transaction) {
+                ReportDisputeView(order: draft.order) {
                     Task { await loadData() }
                 }
                 .environmentObject(authManager)
             }
-            .sheet(item: $disputeToView) { tx in
-                DisputeDetailView(transaction: tx)
+            .sheet(item: $disputeToView) { order in
+                DisputeDetailView(order: order)
             }
-            .fullScreenCover(item: $activeTransaction) { tx in
+            .fullScreenCover(item: $activeOrder) { order in
                 TransactionActionSheetView(
-                    transaction: tx,
+                    order: order,
                     isBuyer: selection == .purchases,
-                    canConfirm: PaymentLogic.canBuyerConfirm(transaction: tx, isBuyer: true),
-                    onConfirm: { pendingCaptureTx = tx; showConfirmAlert = true },
-                    onContactSeller: { Task { await contactSeller(tx) } },
-                    onReport: { reportProblem(transaction: tx) }
+                    canConfirm: order.paymentStatus == .requiresCapture && order.orderStatus == .sellerConfirmed,
+                    onConfirm: { pendingCaptureOrder = order; showConfirmAlert = true },
+                    onContactSeller: { Task { await contactSeller(order) } },
+                    onReport: { reportProblem(order: order) }
                 )
                 .environmentObject(authManager)
             }
@@ -71,71 +90,226 @@ struct MyTransactionsView: View {
                 ChatView(conversation: convo)
                     .environmentObject(authManager)
             }
+            .sheet(isPresented: $showingFilters) {
+                FilterSheet(
+                    selectedStatus: $selectedStatusFilter,
+                    onApply: { Task { await loadData() } }
+                )
+            }
     }
 
     @ViewBuilder
     private var content: some View {
         VStack(spacing: 12) {
-            Picker("Type", selection: $selection) {
-                ForEach(Segment.allCases, id: \.self) { seg in
-                    Text(seg.rawValue).tag(seg as Segment)
-                }
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding(.horizontal)
-
-            if isLoading {
-                Spacer(); ProgressView("Loading transactions..."); Spacer()
+            // Enhanced segment picker with order counts
+            enhancedSegmentPicker
+            
+            if isLoading && !isRefreshing {
+                loadingView
             } else if let errorMessage = errorMessage {
-                Spacer(); Text(errorMessage).foregroundColor(.secondary); Spacer()
+                errorView(message: errorMessage)
+            } else if filteredOrders.isEmpty {
+                emptyStateView
             } else {
                 transactionsList
             }
         }
     }
+    
+    @ViewBuilder
+    private var enhancedSegmentPicker: some View {
+        VStack(spacing: 8) {
+            Picker("Type", selection: $selection) {
+                ForEach(Segment.allCases, id: \.self) { seg in
+                    HStack {
+                        Text(seg.rawValue)
+                        Text("(\(segmentOrderCount(for: seg)))")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .tag(seg as Segment)
+                }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.horizontal)
+            
+            // Status filter indicator
+            if let filter = selectedStatusFilter {
+                HStack {
+                    Text("Filtered by: \(filter.displayName)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Button("Clear") {
+                        selectedStatusFilter = nil
+                        Task { await loadData() }
+                    }
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Loading your transactions...")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    @ViewBuilder
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48))
+                .foregroundColor(.orange)
+            Text("Something went wrong")
+                .font(.headline)
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Try Again") {
+                Task { await loadData() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+    
+    @ViewBuilder
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: selection == .purchases ? "bag" : "tag")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            Text(selection == .purchases ? "No purchases yet" : "No sales yet")
+                .font(.headline)
+            Text(selection == .purchases ? 
+                "When you buy items, they'll appear here" : 
+                "When you sell items, they'll appear here")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
 
     @ViewBuilder
     private var transactionsList: some View {
         List {
-            ForEach(selection == .purchases ? purchases : sales) { tx in
-                TransactionRow(
-                    transaction: tx,
-                    isBuyer: selection == .purchases,
-                    onConfirmReceived: { pendingCaptureTx = tx; showConfirmAlert = true },
-                    onReportProblem: { reportProblem(transaction: tx) },
-                    onMarkDelivered: { pendingDeliveredTx = tx; showDeliveredAlert = true }
-                )
-                .contentShape(Rectangle())
-                .onTapGesture { activeTransaction = tx }
+            ForEach(filteredOrders) { order in
+                NavigationLink(destination: OrderDetailView(order: order)) {
+                    TransactionRow(
+                        order: order,
+                        isBuyer: selection == .purchases,
+                        onConfirmReceived: { pendingCaptureOrder = order; showConfirmAlert = true },
+                        onReportProblem: { reportProblem(order: order) },
+                        onMarkDelivered: { pendingDeliveredOrder = order; showDeliveredAlert = true }
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if selection == .purchases && order.paymentStatus == .requiresCapture && order.orderStatus == .sellerConfirmed {
+                        Button("Confirm") {
+                            pendingCaptureOrder = order
+                            showConfirmAlert = true
+                        }
+                        .tint(.green)
+                    }
+                    
+                    Button("Chat") {
+                        Task { await contactSeller(order) }
+                    }
+                    .tint(.blue)
+                }
             }
         }
         .listStyle(PlainListStyle())
+        .overlay(
+            Group {
+                if isRefreshing {
+                    VStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Refreshing...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 20)
+                }
+            }
+        )
+    }
+    
+    // MARK: - Computed Properties
+    
+    private var filteredOrders: [Order] {
+        let orders = selection == .purchases ? purchases : sales
+        
+        var filtered = orders
+        
+        // Apply status filter
+        if let statusFilter = selectedStatusFilter {
+            filtered = filtered.filter { $0.orderStatus == statusFilter }
+        }
+        
+        // Apply search filter
+        if !searchText.isEmpty {
+            filtered = filtered.filter { order in
+                order.listing?.title.localizedCaseInsensitiveContains(searchText) == true ||
+                order.listing?.description.localizedCaseInsensitiveContains(searchText) == true ||
+                order.id.uuidString.localizedCaseInsensitiveContains(searchText) == true
+            }
+        }
+        
+        return filtered
+    }
+    
+    private func segmentOrderCount(for segment: Segment) -> Int {
+        switch segment {
+        case .purchases:
+            return purchases.count
+        case .sales:
+            return sales.count
+        }
     }
 
     // MARK: - Data
 
     private func loadData() async {
-        guard let currentUserId = authManager.session?.user.id.uuidString else { return }
+        guard let currentUserId = authManager.session?.user.id else { return }
+        
         await MainActor.run { isLoading = true; errorMessage = nil }
+        
         do {
-            let purchaseResults: [PaymentTransaction] = try await supabase
-                .from("payments")
+            let purchaseResults: [Order] = try await supabase
+                .from("orders")
                 .select("""
                     *,
                     listing:listings(*)
                 """)
-                .eq("buyer_id", value: currentUserId)
+                .eq("buyer_id", value: currentUserId.uuidString)
                 .order("created_at", ascending: false)
                 .execute()
                 .value
 
-            let saleResults: [PaymentTransaction] = try await supabase
-                .from("payments")
+            let saleResults: [Order] = try await supabase
+                .from("orders")
                 .select("""
                     *,
                     listing:listings(*)
                 """)
-                .eq("seller_id", value: currentUserId)
+                .eq("seller_id", value: currentUserId.uuidString)
                 .order("created_at", ascending: false)
                 .execute()
                 .value
@@ -147,81 +321,84 @@ struct MyTransactionsView: View {
             }
         } catch {
             await MainActor.run {
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = "Failed to load transactions: \(error.localizedDescription)"
                 self.isLoading = false
             }
         }
     }
+    
+    private func refreshData() async {
+        await MainActor.run { isRefreshing = true }
+        await loadData()
+        await MainActor.run { isRefreshing = false }
+    }
 
     // MARK: - Actions
 
-    private func confirmReceived(transaction: PaymentTransaction) async {
-        guard let intentId = transaction.paymentIntentId else { return }
+    private func confirmReceived(order: Order) async {
         // Ensure caller is buyer
-        guard let currentUserId = authManager.session?.user.id.uuidString,
-              transaction.buyerId.lowercased() == currentUserId.lowercased() else {
+        guard let currentUserId = authManager.session?.user.id,
+              order.buyerId == currentUserId else {
             await MainActor.run { errorMessage = "Only the buyer can confirm receipt." }
             return
         }
-        // Only attempt capture when Stripe says it's capturable
-        guard PaymentLogic.canBuyerConfirm(transaction: transaction, isBuyer: true) else {
-            await MainActor.run { errorMessage = "This payment isn't ready to capture yet." }
+        // Only attempt capture when order is ready
+        guard order.paymentStatus == .requiresCapture && order.orderStatus == .sellerConfirmed else {
+            await MainActor.run { errorMessage = "This order isn't ready to complete yet." }
             return
         }
         do {
-            try await PaymentService.shared.capturePayment(paymentIntentId: intentId)
+            try await OrderService.shared.updateOrderStatus(order.id, status: .completed)
             await loadData()
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            await MainActor.run { errorMessage = "Failed to confirm receipt: \(error.localizedDescription)" }
         }
     }
 
-    private func markDelivered(_ tx: PaymentTransaction) async {
+    private func markDelivered(_ order: Order) async {
         // Verify current user is seller
-        guard let currentUserId = authManager.session?.user.id.uuidString,
-              tx.sellerId.lowercased() == currentUserId.lowercased() else {
+        guard let currentUserId = authManager.session?.user.id,
+              order.sellerId == currentUserId else {
             await MainActor.run { errorMessage = "Only the seller can mark delivered." }
             return
         }
         do {
-            try await supabase
-                .from("payments")
-                .update(["delivered_at": ISO8601DateFormatter().string(from: Date())])
-                .eq("id", value: tx.id.uuidString)
-                .execute()
+            try await OrderService.shared.updateOrderStatus(order.id, status: .inProgress)
             await loadData()
         } catch {
-            // no-op; UI refresh will pick up server-side status
+            await MainActor.run { errorMessage = "Failed to mark as delivered: \(error.localizedDescription)" }
         }
     }
 
     @State private var disputeDraft: DisputeDraft?
-    @State private var disputeToView: PaymentTransaction?
-    @State private var pendingCaptureTx: PaymentTransaction?
-    @State private var pendingDeliveredTx: PaymentTransaction?
+    @State private var disputeToView: Order?
+    @State private var pendingCaptureOrder: Order?
+    @State private var pendingDeliveredOrder: Order?
     @State private var showConfirmAlert = false
     @State private var showDeliveredAlert = false
-    @State private var activeTransaction: PaymentTransaction?
+    @State private var activeOrder: Order?
     @State private var activeConversation: Conversation?
 
-    private func reportProblem(transaction: PaymentTransaction) {
-        disputeDraft = DisputeDraft(transaction: transaction)
+    private func reportProblem(order: Order) {
+        disputeDraft = DisputeDraft(order: order)
     }
-    private func viewDispute(transaction: PaymentTransaction) {
-        disputeToView = transaction
+    private func viewDispute(order: Order) {
+        disputeToView = order
     }
 
-    private func contactSeller(_ tx: PaymentTransaction) async {
-        guard let currentUserId = authManager.session?.user.id.uuidString,
-              let listingId = tx.listingId?.uuidString else { return }
+    private func contactSeller(_ order: Order) async {
+        guard let currentUserId = authManager.session?.user.id else { return }
+        
+        let otherUserId = selection == .purchases ? order.sellerId : order.buyerId
+        
         do {
             // find existing
             let existing: [Conversation] = try await supabase
                 .from("conversations")
                 .select("*")
-                .eq("buyer_id", value: currentUserId)
-                .eq("seller_id", value: tx.sellerId)
-                .eq("listing_id", value: listingId)
+                .eq("buyer_id", value: currentUserId.uuidString)
+                .eq("seller_id", value: otherUserId.uuidString)
+                .eq("listing_id", value: order.listingId.uuidString)
                 .limit(1)
                 .execute()
                 .value
@@ -234,17 +411,67 @@ struct MyTransactionsView: View {
                 let buyer_id: String
                 let seller_id: String
                 let listing_id: String
+                let order_id: String
             }
             let created: Conversation = try await supabase
                 .from("conversations")
-                .insert(ConversationInsert(buyer_id: currentUserId, seller_id: tx.sellerId, listing_id: listingId))
+                .insert(ConversationInsert(
+                    buyer_id: order.buyerId.uuidString,
+                    seller_id: order.sellerId.uuidString,
+                    listing_id: order.listingId.uuidString,
+                    order_id: order.id.uuidString
+                ))
                 .select("*")
                 .single()
                 .execute()
                 .value
             await MainActor.run { activeConversation = created }
         } catch {
-            await MainActor.run { errorMessage = "Unable to open chat." }
+            await MainActor.run { errorMessage = "Unable to open chat: \(error.localizedDescription)" }
+        }
+    }
+}
+
+// MARK: - Filter Sheet
+
+struct FilterSheet: View {
+    @Binding var selectedStatus: OrderStatus?
+    let onApply: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            List {
+                Section("Order Status") {
+                    Button("All Orders") {
+                        selectedStatus = nil
+                    }
+                    .foregroundColor(selectedStatus == nil ? .blue : .primary)
+                    
+                    ForEach(OrderStatus.allCases, id: \.self) { status in
+                        Button(status.displayName) {
+                            selectedStatus = status
+                        }
+                        .foregroundColor(selectedStatus == status ? .blue : .primary)
+                    }
+                }
+            }
+            .navigationTitle("Filter Orders")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Apply") {
+                        onApply()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
         }
     }
 }
@@ -252,62 +479,66 @@ struct MyTransactionsView: View {
 // MARK: - Row
 
     private struct TransactionRow: View {
-    let transaction: PaymentTransaction
-    let isBuyer: Bool
-    let onConfirmReceived: () -> Void
+        let order: Order
+        let isBuyer: Bool
+        let onConfirmReceived: () -> Void
         let onReportProblem: () -> Void
         var onMarkDelivered: (() -> Void)? = nil
         var onViewDispute: (() -> Void)? = nil
 
-    private var statusBadgeColor: Color {
-        switch transaction.status.lowercased() {
-        case "succeeded", "completed": return .green
-        case "pending", "requires_capture", "authorized": return .orange
-        case "disputed", "canceled", "failed": return .red
-        default: return .gray
+        private var statusBadgeColor: Color {
+            order.orderStatus.badgeColor
         }
-    }
 
         private var canConfirm: Bool {
-            isBuyer && transaction.status.lowercased() == "requires_capture" && !transaction.isDisputed
+            isBuyer && order.paymentStatus == .requiresCapture && order.orderStatus == .sellerConfirmed
         }
 
         private var statusLabel: String {
-            transaction.status.replacingOccurrences(of: "_", with: " ").capitalized
+            order.orderStatus.displayName
         }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(transaction.listing?.title ?? "Listing")
+                    Text(order.listing?.title ?? "Listing")
                         .font(.headline)
                         .lineLimit(2)
-                    Text(transaction.formattedAmount)
+                    Text(order.formattedPrice)
                         .font(.subheadline)
                         .foregroundColor(Color("ThemeColor"))
                 }
                 Spacer()
-                Text(statusLabel)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(statusBadgeColor.opacity(0.15))
-                    .foregroundColor(statusBadgeColor)
-                    .cornerRadius(8)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(statusLabel)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(statusBadgeColor.opacity(0.15))
+                        .foregroundColor(statusBadgeColor)
+                        .cornerRadius(8)
+                    
+                    Text(order.createdAt.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
 
             // Summary badges row
             HStack(spacing: 8) {
-                if transaction.isDisputed {
+                if order.orderStatus == .disputed {
                     CampusLink.badge(text: "Disputed", color: .orange)
                 }
-                if transaction.status.lowercased() == "requires_capture" {
+                if order.paymentStatus == .requiresCapture {
                     CampusLink.badge(text: "Requires Capture", color: .orange)
                 }
-                if ["succeeded","completed"].contains(transaction.status.lowercased()) {
-                    CampusLink.badge(text: "Captured", color: .green)
+                if order.orderStatus == .completed {
+                    CampusLink.badge(text: "Completed", color: .green)
+                }
+                if order.paymentStatus == .succeeded {
+                    CampusLink.badge(text: "Paid", color: .green)
                 }
             }
 
@@ -339,7 +570,7 @@ struct MyTransactionsView: View {
                     }
                 }
 
-                if transaction.isDisputed {
+                if order.orderStatus == .disputed {
                     Button(action: { onViewDispute?() }) {
                         Text("View Dispute")
                             .font(.caption)
@@ -370,7 +601,7 @@ struct MyTransactionsView: View {
 
 private struct DisputeDraft: Identifiable {
     let id = UUID()
-    let transaction: PaymentTransaction
+    let order: Order
 }
 
 // MARK: - Small badge view

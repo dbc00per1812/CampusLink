@@ -2,7 +2,7 @@ import Foundation
 import Supabase
 
 // MARK: - Wallet Service
-final class WalletService {
+final class WalletService: ObservableObject {
     static let shared = WalletService()
     private init() {}
     

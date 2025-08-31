@@ -31,13 +31,44 @@ struct Wallet: Codable, Identifiable {
     }
 }
 
+// MARK: - Payout Insert Model
+struct PayoutInsert: Codable {
+    let userId: String
+    let amountCents: Int
+    let feeCents: Int
+    let netAmountCents: Int
+    let payoutType: String
+    let payoutMethod: String
+    let status: String
+    let stripeConnectAccountId: String?
+    let createdAt: String
+    let updatedAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case amountCents = "amount_cents"
+        case feeCents = "fee_cents"
+        case netAmountCents = "net_amount_cents"
+        case payoutType = "payout_type"
+        case payoutMethod = "payout_method"
+        case status
+        case stripeConnectAccountId = "stripe_connect_account_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
 // MARK: - Payout Model
 struct Payout: Codable, Identifiable {
     let id: UUID
-    let sellerId: UUID
+    let userId: String
     let amountCents: Int
-    let destination: String
+    let feeCents: Int
+    let netAmountCents: Int
+    let payoutType: String
+    let payoutMethod: String
     let status: PayoutStatus
+    let stripeConnectAccountId: String?
     let stripeTransferId: String?
     let errorMessage: String?
     let retryCount: Int?
@@ -47,7 +78,11 @@ struct Payout: Codable, Identifiable {
     
     // Computed properties
     var amount: Double { Double(amountCents) / 100.0 }
+    var fee: Double { Double(feeCents) / 100.0 }
+    var netAmount: Double { Double(netAmountCents) / 100.0 }
     var formattedAmount: String { String(format: "$%.2f", amount) }
+    var formattedFee: String { String(format: "$%.2f", fee) }
+    var formattedNetAmount: String { String(format: "$%.2f", netAmount) }
     var isPending: Bool { status == .pending }
     var isCompleted: Bool { status == .completed || status == .paid }
     var isFailed: Bool { status == .failed || status == .cancelled }
@@ -55,10 +90,14 @@ struct Payout: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case id
-        case sellerId = "seller_id"
+        case userId = "user_id"
         case amountCents = "amount_cents"
-        case destination
+        case feeCents = "fee_cents"
+        case netAmountCents = "net_amount_cents"
+        case payoutType = "payout_type"
+        case payoutMethod = "payout_method"
         case status
+        case stripeConnectAccountId = "stripe_connect_account_id"
         case stripeTransferId = "stripe_transfer_id"
         case errorMessage = "error_message"
         case retryCount = "retry_count"
@@ -107,6 +146,27 @@ enum PayoutStatus: String, Codable, CaseIterable {
         case .completed, .paid: return "green"
         case .failed, .cancelled: return "red"
         }
+    }
+}
+
+// MARK: - Transaction Insert Model
+struct TransactionInsert: Codable {
+    let userId: String
+    let type: String
+    let amountCents: Int
+    let balanceAfterCents: Int
+    let description: String
+    let relatedId: String?
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case type
+        case amountCents = "amount_cents"
+        case balanceAfterCents = "balance_after_cents"
+        case description
+        case relatedId = "related_id"
+        case createdAt = "created_at"
     }
 }
 

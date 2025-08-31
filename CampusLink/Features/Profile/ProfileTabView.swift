@@ -295,6 +295,16 @@ struct UserProfile: Codable {
         case profilePic = "profile_pic"
         case createdAt = "created_at"
     }
+    
+    // MARK: - Sample Data for Previews
+    static let sampleProfile = UserProfile(
+        id: "sample-user-id",
+        name: "Sample User",
+        bio: "This is a sample user profile for testing and preview purposes.",
+        profilePic: nil,
+        email: "sample@example.com",
+        createdAt: Date()
+    )
 }
 
 struct UserProfileUpdate: Codable {

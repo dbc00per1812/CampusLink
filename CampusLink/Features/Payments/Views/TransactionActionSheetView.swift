@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TransactionActionSheetView: View {
     @Environment(\.dismiss) private var dismiss
-    let transaction: PaymentTransaction
+    let order: Order
     let isBuyer: Bool
     let canConfirm: Bool
     let onConfirm: () -> Void
@@ -14,13 +14,13 @@ struct TransactionActionSheetView: View {
             VStack(spacing: 20) {
                 // Large header with title and price
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(transaction.listing?.title ?? "Listing")
+                    Text(order.listing?.title ?? "Listing")
                         .font(.title)
                         .fontWeight(.bold)
-                    Text(transaction.formattedAmount)
+                    Text(order.formattedPrice)
                         .font(.title2)
                         .foregroundColor(Color("ThemeColor"))
-                    if let desc = transaction.listing?.description, !desc.isEmpty {
+                    if let desc = order.listing?.description, !desc.isEmpty {
                         Text(desc)
                             .font(.body)
                             .foregroundColor(.secondary)
@@ -32,9 +32,10 @@ struct TransactionActionSheetView: View {
 
                 // Quick badges
                 HStack(spacing: 10) {
-                    if transaction.isDisputed { badge(text: "Disputed", color: .orange) }
-                    if transaction.status.lowercased() == "requires_capture" { badge(text: "Requires Capture", color: .orange) }
-                    if transaction.isCompleted { badge(text: "Captured", color: .green) }
+                    if order.orderStatus == .disputed { badge(text: "Disputed", color: .orange) }
+                    if order.paymentStatus == .requiresCapture { badge(text: "Requires Capture", color: .orange) }
+                    if order.orderStatus == .completed { badge(text: "Completed", color: .green) }
+                    if order.paymentStatus == .succeeded { badge(text: "Paid", color: .green) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)

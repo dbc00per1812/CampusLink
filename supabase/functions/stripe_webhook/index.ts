@@ -81,13 +81,49 @@ async function getPayoutByTransferId(transferId: string): Promise<{ id: string; 
   return data as { id: string; seller_id: string; amount_cents: number };
 }
 
+async function createOrderFromPayment(paymentIntentId: string): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  
+  try {
+    // Get payment details
+    const { data: payment, error: paymentError } = await supabase
+      .from("payments")
+      .select("listing_id, buyer_id, seller_id, amount_cents, payment_method")
+      .eq("payment_intent_id", paymentIntentId)
+      .single();
+      
+    if (paymentError || !payment) {
+      console.warn(`No payment found for PaymentIntent ${paymentIntentId}`);
+      return;
+    }
+    
+    // Create order using the reserve_then_order RPC
+    const { data: order, error: orderError } = await supabase
+      .rpc("reserve_then_order", {
+        p_listing_id: payment.listing_id,
+        p_buyer_id: payment.buyer_id,
+        p_seller_id: payment.seller_id,
+        p_price_cents: payment.amount_cents.toString(),
+        p_payment_method: payment.payment_method || "card"
+      });
+      
+    if (orderError) {
+      console.error(`Failed to create order for payment ${paymentIntentId}: ${orderError.message}`);
+    } else {
+      console.log(`Order created successfully for payment ${paymentIntentId}: ${order.id}`);
+    }
+    
+  } catch (error) {
+    console.error(`Error creating order from payment ${paymentIntentId}:`, error);
+  }
+}
+
 async function updateConnectAccountStatus(accountId: string, payoutsEnabled: boolean, detailsSubmitted: boolean): Promise<void> {
   const supabase = getSupabaseServiceClient();
   
   // Find user by stripe_connect_id
   const { data: user, error: userError } = await supabase
     .from("users")
-    .select("id")
     .eq("stripe_connect_id", accountId)
     .single();
     
@@ -161,6 +197,9 @@ Deno.serve(async (req: Request) => {
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
         await updatePaymentStatusByIntentId(pi.id, "succeeded");
+        
+        // Create order when payment succeeds
+        await createOrderFromPayment(pi.id);
         break;
       }
       case "payment_intent.payment_failed": {

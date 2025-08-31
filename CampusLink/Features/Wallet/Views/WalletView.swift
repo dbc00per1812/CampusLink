@@ -26,7 +26,28 @@ struct WalletView: View {
             .refreshable { await viewModel.refreshData() }
         }
         .task { await viewModel.loadWalletData() }
-        .sheet(isPresented: $viewModel.showWithdrawSheet, onDismiss: { viewModel.showWithdrawSheet = false }) { withdrawSheet }
+        .sheet(isPresented: $viewModel.showPayoutRequestSheet, onDismiss: { viewModel.showPayoutRequestSheet = false }) { 
+            if let wallet = viewModel.wallet {
+                PayoutRequestView(
+                    availableBalance: wallet.availableCents,
+                    onPayoutRequested: { payout in
+                        viewModel.showPayoutRequestSheet = false
+                        // Refresh wallet data after payout request
+                        Task {
+                            await viewModel.refreshData()
+                        }
+                    },
+                    onDismiss: {
+                        viewModel.showPayoutRequestSheet = false
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $viewModel.showPayoutHistorySheet, onDismiss: { viewModel.showPayoutHistorySheet = false }) {
+            if let userId = authManager.session?.user.id.uuidString {
+                PayoutHistoryView(userId: userId)
+            }
+        }
         .sheet(item: $viewModel.onboardingLink, onDismiss: { viewModel.onboardingLink = nil }) { link in
             SafariView(url: link.url).ignoresSafeArea()
         }
@@ -35,7 +56,8 @@ struct WalletView: View {
         } message: { Text(viewModel.errorMessage ?? "") }
         .onDisappear {
             // Ensure no overlays linger when switching tabs
-            viewModel.showWithdrawSheet = false
+            viewModel.showPayoutRequestSheet = false
+            viewModel.showPayoutHistorySheet = false
             viewModel.onboardingLink = nil
             viewModel.errorMessage = nil
         }
@@ -102,45 +124,64 @@ struct WalletView: View {
     
     // MARK: - Action Buttons
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            // Withdraw Button
-            Button(action: {
-                if viewModel.hasStripeConnectAccount {
-                    viewModel.showWithdrawSheet = true
-                } else {
-                    Task {
-                        await viewModel.startStripeOnboarding()
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                // Request Payout Button
+                Button(action: {
+                    if viewModel.hasStripeConnectAccount {
+                        viewModel.showPayoutRequestSheet = true
+                    } else {
+                        Task {
+                            await viewModel.startStripeOnboarding()
+                        }
                     }
+                }) {
+                    HStack {
+                        Image(systemName: viewModel.hasStripeConnectAccount ? "banknote" : "link")
+                        Text(viewModel.hasStripeConnectAccount ? "Request Payout" : "Complete Payout Setup")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color("ThemeColor"))
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
                 }
-            }) {
-                HStack {
-                    Image(systemName: viewModel.hasStripeConnectAccount ? "banknote" : "link")
-                    Text(viewModel.hasStripeConnectAccount ? "Withdraw" : "Complete Payout Setup")
+                .disabled(viewModel.wallet?.availableCents ?? 0 <= 0 && viewModel.hasStripeConnectAccount)
+                
+                // Payout History Button
+                if viewModel.hasStripeConnectAccount {
+                    Button(action: {
+                        viewModel.showPayoutHistorySheet = true
+                    }) {
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text("History")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                    }
+                } else {
+                    // Add Funds Button (placeholder for future)
+                    Button(action: {
+                        // Future: Add funds functionality
+                    }) {
+                        HStack {
+                            Image(systemName: "plus.circle")
+                            Text("Add Funds")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                    }
+                    .disabled(true) // Not implemented yet
+                    .opacity(0.5)
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color("ThemeColor"))
-                .foregroundColor(.white)
-                .cornerRadius(12)
             }
-            .disabled(viewModel.wallet?.availableCents ?? 0 <= 0 && viewModel.hasStripeConnectAccount)
-            
-            // Add Funds Button (placeholder for future)
-            Button(action: {
-                // Future: Add funds functionality
-            }) {
-                HStack {
-                    Image(systemName: "plus.circle")
-                    Text("Add Funds")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color(UIColor.secondarySystemBackground))
-                .foregroundColor(.primary)
-                .cornerRadius(12)
-            }
-            .disabled(true) // Not implemented yet
-            .opacity(0.5)
         }
     }
     
@@ -221,130 +262,7 @@ struct WalletView: View {
         .contentShape(Rectangle())
     }
     
-    // MARK: - Withdraw Sheet
-    private var withdrawSheet: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                // Available Balance Display
-                VStack(spacing: 8) {
-                    Text("Available to Withdraw")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Text(viewModel.wallet?.formattedAvailableBalance ?? "$0.00")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(Color("ThemeColor"))
-                }
-                .padding(.top)
-                
-                // Amount Input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Withdraw Amount")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    HStack {
-                        Text("$")
-                            .font(.title2)
-                        TextField("0.00", text: $viewModel.withdrawAmount)
-                            .keyboardType(.decimalPad)
-                            .font(.title2)
-                    }
-                    .padding()
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(12)
-                    
-                    // Quick Amount Buttons
-                    HStack(spacing: 12) {
-                        ForEach([25, 50, 100], id: \.self) { amount in
-                            Button(action: {
-                                viewModel.withdrawAmount = String(amount)
-                            }) {
-                                Text("$\(amount)")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color(UIColor.tertiarySystemBackground))
-                                    .cornerRadius(8)
-                            }
-                        }
-                        
-                        Button(action: {
-                            if let wallet = viewModel.wallet {
-                                viewModel.withdrawAmount = String(format: "%.2f", wallet.availableBalance)
-                            }
-                        }) {
-                            Text("Max")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color("ThemeColor").opacity(0.1))
-                                .foregroundColor(Color("ThemeColor"))
-                                .cornerRadius(8)
-                        }
-                    }
-                }
-                
-                // Platform Fee Notice
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .font(.caption)
-                        Text("Platform fee: 5% (min $0.50)")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.secondary)
-                    
-                    if let amount = Double(viewModel.withdrawAmount), amount > 0 {
-                        let fee = max(0.50, amount * 0.05)
-                        let netAmount = amount - fee
-                        HStack {
-                            Text("You'll receive:")
-                                .font(.caption)
-                            Text(String(format: "$%.2f", netAmount))
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                
-                Spacer()
-                
-                // Withdraw Button
-                Button(action: {
-                    Task {
-                        await viewModel.requestPayout()
-                    }
-                }) {
-                    if viewModel.isProcessingPayout {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    } else {
-                        Text("Withdraw Funds")
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color("ThemeColor"))
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .disabled(viewModel.isProcessingPayout || viewModel.withdrawAmount.isEmpty)
-            }
-            .padding()
-            .navigationTitle("Withdraw Funds")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        viewModel.showWithdrawSheet = false
-                    }
-                }
-            }
-        }
-    }
+
 }
 
 // MARK: - Safari View
