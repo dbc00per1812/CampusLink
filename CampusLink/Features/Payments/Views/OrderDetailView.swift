@@ -23,7 +23,7 @@ struct OrderDetailView: View {
     }
     
     private var canMarkDelivered: Bool {
-        isSeller && order.orderStatus == .sellerConfirmed
+        isSeller && order.orderStatus == .placed
     }
     
     var body: some View {
@@ -147,16 +147,16 @@ struct OrderDetailView: View {
                 
                 timelineStep(
                     title: "Seller Confirmed",
-                    subtitle: "Seller has confirmed the order",
+                    subtitle: "Seller has marked as delivered",
                     isCompleted: order.orderStatus.rawValue >= OrderStatus.sellerConfirmed.rawValue,
                     date: order.sellerConfirmedAt
                 )
                 
                 timelineStep(
-                    title: "In Progress",
-                    subtitle: "Order is being processed",
-                    isCompleted: order.orderStatus.rawValue >= OrderStatus.inProgress.rawValue,
-                    date: order.inProgressAt
+                    title: "Buyer Confirmed",
+                    subtitle: "Buyer has confirmed receipt",
+                    isCompleted: order.orderStatus == .completed,
+                    date: order.completedAt
                 )
                 
                 timelineStep(
@@ -316,6 +316,45 @@ struct OrderDetailView: View {
                         .background(Color.orange)
                         .cornerRadius(12)
                     }
+                }
+                
+                // Show message when no actions are available
+                if !canConfirmReceived && !canMarkDelivered && order.orderStatus == .completed {
+                    VStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.green)
+                        Text("Order Completed!")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.green)
+                        Text("Funds have been released to the seller.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(12)
+                } else if !canConfirmReceived && !canMarkDelivered {
+                    VStack(spacing: 8) {
+                        Image(systemName: "clock")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                        Text("Waiting for Action")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                        Text("The order is waiting for the next step in the process.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(12)
                 }
             }
         }
