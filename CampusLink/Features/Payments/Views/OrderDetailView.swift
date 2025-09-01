@@ -9,50 +9,70 @@ struct OrderDetailView: View {
     @State private var showDisputeSheet = false
     @State private var showContactSheet = false
     @State private var activeConversation: Conversation?
+    @State private var showSuccessView = false
+    @State private var successMessage = ""
+    @State private var currentOrder: Order
+    @Environment(\.dismiss) private var dismiss
+    
+    init(order: Order) {
+        self.order = order
+        self._currentOrder = State(initialValue: order)
+    }
     
     private var isBuyer: Bool {
-        authManager.session?.user.id == order.buyerId
+        authManager.session?.user.id == currentOrder.buyerId
     }
     
     private var isSeller: Bool {
-        authManager.session?.user.id == order.sellerId
+        authManager.session?.user.id == currentOrder.sellerId
     }
     
     private var canConfirmReceived: Bool {
-        isBuyer && order.paymentStatus == .succeeded && order.orderStatus == .sellerConfirmed
+        isBuyer && currentOrder.paymentStatus == .succeeded && currentOrder.orderStatus == .sellerConfirmed
     }
     
     private var canMarkDelivered: Bool {
-        isSeller && (order.orderStatus == .placed || order.orderStatus == .inProgress)
+        isSeller && (currentOrder.orderStatus == .placed || currentOrder.orderStatus == .inProgress)
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Header Section
-                headerSection
-                
-                // Order Status Timeline
-                statusTimelineSection
-                
-                // Payment Details
-                paymentDetailsSection
-                
-                // Escrow Status (if applicable)
-                if order.hasEscrowAccount {
-                    escrowStatusSection
+        ZStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header Section
+                    headerSection
+                    
+                    // Order Status Timeline
+                    statusTimelineSection
+                    
+                    // Payment Details
+                    paymentDetailsSection
+                    
+                    // Escrow Status (if applicable)
+                    if currentOrder.hasEscrowAccount {
+                        escrowStatusSection
+                    }
+                    
+                    // Actions Section
+                    if !showSuccessView {
+                        actionsSection
+                    }
+                    
+                    // Debug Section (for development)
+                    debugSection
+                    
+                    // Order Information
+                    orderInfoSection
                 }
-                
-                // Actions Section
-                actionsSection
-                
-                // Debug Section (for development)
-                debugSection
-                
-                // Order Information
-                orderInfoSection
+                .padding()
             }
-            .padding()
+            .blur(radius: showSuccessView ? 3 : 0)
+            .disabled(showSuccessView)
+            
+            // Success overlay
+            if showSuccessView {
+                successOverlay
+            }
         }
         .navigationTitle("Order Details")
         .navigationBarTitleDisplayMode(.inline)
@@ -64,7 +84,7 @@ struct OrderDetailView: View {
                 .foregroundColor(Color("ThemeColor"))
             }
         }
-        .alert(order.listing?.listingType == .service ? "Confirm Service Completed?" : "Confirm Product Received?", isPresented: $showConfirmAlert) {
+        .alert(currentOrder.listing?.listingType == .service ? "Confirm Service Completed?" : "Confirm Product Received?", isPresented: $showConfirmAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Confirm") {
                 Task { await confirmReceived() }
@@ -102,7 +122,7 @@ struct OrderDetailView: View {
         VStack(spacing: 16) {
             // Order ID
             HStack {
-                Text("Order #\(order.id.uuidString.prefix(8))")
+                Text("Order #\(currentOrder.id.uuidString.prefix(8))")
                     .font(.title2)
                     .fontWeight(.bold)
                 Spacer()
@@ -110,7 +130,7 @@ struct OrderDetailView: View {
             }
             
             // Listing Info
-            if let listing = order.listing {
+            if let listing = currentOrder.listing {
                 HStack(alignment: .top, spacing: 12) {
                     // Placeholder for listing image
                     RoundedRectangle(cornerRadius: 8)
@@ -152,28 +172,28 @@ struct OrderDetailView: View {
                     title: "Order Placed",
                     subtitle: "Order created and payment processed",
                     isCompleted: true,
-                    date: order.createdAt
+                    date: currentOrder.createdAt
                 )
                 
                 timelineStep(
                     title: "Seller Confirmed",
                     subtitle: "Seller has marked as delivered",
-                    isCompleted: order.orderStatus.rawValue >= OrderStatus.sellerConfirmed.rawValue,
-                    date: order.sellerConfirmedAt
+                    isCompleted: currentOrder.orderStatus.rawValue >= OrderStatus.sellerConfirmed.rawValue,
+                    date: currentOrder.sellerConfirmedAt
                 )
                 
                 timelineStep(
                     title: "Buyer Confirmed",
                     subtitle: "Buyer has confirmed receipt",
-                    isCompleted: order.orderStatus == .completed,
-                    date: order.completedAt
+                    isCompleted: currentOrder.orderStatus == .completed,
+                    date: currentOrder.completedAt
                 )
                 
                 timelineStep(
                     title: "Completed",
                     subtitle: "Order delivered and funds released",
-                    isCompleted: order.orderStatus == .completed,
-                    date: order.completedAt
+                    isCompleted: currentOrder.orderStatus == .completed,
+                    date: currentOrder.completedAt
                 )
             }
         }
@@ -223,12 +243,12 @@ struct OrderDetailView: View {
                 .fontWeight(.semibold)
             
             VStack(spacing: 12) {
-                paymentDetailRow(title: "Amount", value: order.formattedPrice)
-                paymentDetailRow(title: "Payment Method", value: order.paymentMethod.displayName)
-                paymentDetailRow(title: "Payment Status", value: order.paymentStatus.displayName)
+                paymentDetailRow(title: "Amount", value: currentOrder.formattedPrice)
+                paymentDetailRow(title: "Payment Method", value: currentOrder.paymentMethod.displayName)
+                paymentDetailRow(title: "Payment Status", value: currentOrder.paymentStatus.displayName)
                 paymentDetailRow(title: "Escrow Protection", value: "Active until completion")
                 
-                if let autoReleaseAt = order.autoReleaseAt {
+                if let autoReleaseAt = currentOrder.autoReleaseAt {
                     paymentDetailRow(title: "Auto-Release", value: autoReleaseAt.formatted(date: .abbreviated, time: .shortened))
                 }
             }
@@ -259,7 +279,7 @@ struct OrderDetailView: View {
                 .fontWeight(.semibold)
             
             // Get escrow status from service
-            AsyncEscrowStatusView(orderId: order.id)
+            AsyncEscrowStatusView(orderId: currentOrder.id)
         }
         .padding()
         .background(Color(.systemBackground))
@@ -282,7 +302,7 @@ struct OrderDetailView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.headline)
-                            Text(order.listing?.listingType == .service ? "Confirm Service Completed" : "Confirm Product Received")
+                            Text(currentOrder.listing?.listingType == .service ? "Confirm Service Completed" : "Confirm Product Received")
                                 .font(.headline)
                                 .fontWeight(.semibold)
                         }
@@ -311,7 +331,7 @@ struct OrderDetailView: View {
                     }
                 }
                 
-                if order.orderStatus != .completed && order.orderStatus != .cancelled {
+                if currentOrder.orderStatus != .completed && currentOrder.orderStatus != .cancelled {
                     Button(action: { showDisputeSheet = true }) {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -329,7 +349,7 @@ struct OrderDetailView: View {
                 }
                 
                 // Show message when no actions are available
-                if !canConfirmReceived && !canMarkDelivered && order.orderStatus == .completed {
+                if !canConfirmReceived && !canMarkDelivered && currentOrder.orderStatus == .completed {
                     VStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title2)
@@ -387,7 +407,7 @@ struct OrderDetailView: View {
                     Text("Order Status:")
                         .fontWeight(.medium)
                     Spacer()
-                    Text(order.orderStatus.displayName)
+                    Text(currentOrder.orderStatus.displayName)
                         .foregroundColor(.blue)
                 }
                 
@@ -395,7 +415,7 @@ struct OrderDetailView: View {
                     Text("Payment Status:")
                         .fontWeight(.medium)
                     Spacer()
-                    Text(order.paymentStatus.rawValue)
+                    Text(currentOrder.paymentStatus.rawValue)
                         .foregroundColor(.blue)
                 }
                 
@@ -447,12 +467,12 @@ struct OrderDetailView: View {
                 .fontWeight(.semibold)
             
             VStack(spacing: 12) {
-                infoRow(title: "Order ID", value: order.id.uuidString)
-                infoRow(title: "Created", value: order.createdAt.formatted(date: .abbreviated, time: .shortened))
-                infoRow(title: "Buyer", value: String(order.buyerId.uuidString.prefix(8)))
-                infoRow(title: "Seller", value: String(order.sellerId.uuidString.prefix(8)))
+                infoRow(title: "Order ID", value: currentOrder.id.uuidString)
+                infoRow(title: "Created", value: currentOrder.createdAt.formatted(date: .abbreviated, time: .shortened))
+                infoRow(title: "Buyer", value: String(currentOrder.buyerId.uuidString.prefix(8)))
+                infoRow(title: "Seller", value: String(currentOrder.sellerId.uuidString.prefix(8)))
                 
-                if let updatedAt = order.updatedAt {
+                if let updatedAt = currentOrder.updatedAt {
                     infoRow(title: "Last Updated", value: updatedAt.formatted(date: .abbreviated, time: .shortened))
                 }
             }
@@ -479,32 +499,37 @@ struct OrderDetailView: View {
     
     // MARK: - Order Status Badge
     private var orderStatusBadge: some View {
-        Text(order.orderStatus.displayName)
+        Text(currentOrder.orderStatus.displayName)
             .font(.caption)
             .fontWeight(.semibold)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(order.orderStatus.badgeColor.opacity(0.15))
-            .foregroundColor(order.orderStatus.badgeColor)
+            .background(currentOrder.orderStatus.badgeColor.opacity(0.15))
+            .foregroundColor(currentOrder.orderStatus.badgeColor)
             .cornerRadius(16)
     }
     
     // MARK: - Actions
     private func confirmReceived() async {
-        print("🔵 confirmReceived: Starting confirmation for order \(order.id)")
+        print("🔵 confirmReceived: Starting confirmation for order \(currentOrder.id)")
         isLoading = true
         do {
             print("🔵 confirmReceived: Calling OrderService.confirmDelivery...")
             // This calls the function that releases funds to seller and marks order as completed
-            let updatedOrder = try await OrderService.shared.confirmDelivery(order.id)
+            let updatedOrder = try await OrderService.shared.confirmDelivery(currentOrder.id)
             
             print("✅ confirmReceived: Order confirmed successfully, new status: \(updatedOrder.orderStatus.displayName)")
             
             await MainActor.run {
-                // Refresh order data to show updated status
-                Task {
-                    await loadOrderData()
-                }
+                // Update the current order
+                self.currentOrder = updatedOrder
+                
+                // Show success view
+                self.successMessage = currentOrder.listing?.listingType == .service 
+                    ? "Service has been marked as completed. Payment has been released to the seller."
+                    : "Product has been marked as received. Payment has been released to the seller."
+                self.showSuccessView = true
+                
                 print("✅ Order confirmed - funds released to seller")
             }
         } catch {
@@ -521,20 +546,30 @@ struct OrderDetailView: View {
     private func markDelivered() async {
         print("🔵 Button clicked! markDelivered() called")
         isLoading = true
-        print("🔵 markDelivered() called for order: \(order.id)")
-        print("🔵 Current order status: \(order.orderStatus.displayName)")
+        print("🔵 markDelivered() called for order: \(currentOrder.id)")
+        print("🔵 Current order status: \(currentOrder.orderStatus.displayName)")
         print("🔵 Current user is seller: \(isSeller)")
         do {
             print("🔵 Calling OrderService.markDelivered...")
-            let updatedOrder = try await OrderService.shared.markDelivered(order.id)
+            let updatedOrder = try await OrderService.shared.markDelivered(currentOrder.id)
             print("✅ markDelivered succeeded: \(updatedOrder.orderStatus.displayName)")
-            // Refresh order data
-            await loadOrderData()
+            
+            await MainActor.run {
+                // Update the current order
+                self.currentOrder = updatedOrder
+                
+                // Show success view
+                self.successMessage = currentOrder.listing?.listingType == .service
+                    ? "Service has been marked as delivered. Waiting for buyer to confirm completion."
+                    : "Product has been marked as delivered. Waiting for buyer to confirm receipt."
+                self.showSuccessView = true
+            }
         } catch {
             await MainActor.run {
                 print("❌ markDelivered failed: \(error)")
                 errorMessage = "Failed to mark as delivered: \(error.localizedDescription)"
-                print("❌ Error message set to:", errorMessage ?? "nil")            }
+                print("❌ Error message set to:", errorMessage ?? "nil")
+            }
         }
         await MainActor.run {
             isLoading = false
@@ -544,7 +579,7 @@ struct OrderDetailView: View {
     private func loadOrderData() async {
         // Refresh order data from the service
         do {
-            let updatedOrder = try await OrderService.shared.getOrderDetails(order.id)
+            let updatedOrder = try await OrderService.shared.getOrderDetails(currentOrder.id)
             // In a real app, you would update the local order state
             // For now, we'll just ensure the conversation is loaded
             print("✅ Order data refreshed")
@@ -557,7 +592,7 @@ struct OrderDetailView: View {
     private func loadConversation() async {
         guard let currentUserId = authManager.session?.user.id else { return }
         
-        let otherUserId = isBuyer ? order.sellerId : order.buyerId
+        let otherUserId = isBuyer ? currentOrder.sellerId : currentOrder.buyerId
         
         do {
             // Find existing conversation
@@ -566,7 +601,7 @@ struct OrderDetailView: View {
                 .select("*")
                 .eq("buyer_id", value: currentUserId.uuidString)
                 .eq("seller_id", value: otherUserId.uuidString)
-                .eq("listing_id", value: order.listingId.uuidString)
+                .eq("listing_id", value: currentOrder.listingId.uuidString)
                 .limit(1)
                 .execute()
                 .value
@@ -589,10 +624,10 @@ struct OrderDetailView: View {
             let created: Conversation = try await supabase
                 .from("conversations")
                 .insert(ConversationInsert(
-                    buyer_id: order.buyerId.uuidString,
-                    seller_id: order.sellerId.uuidString,
-                    listing_id: order.listingId.uuidString,
-                    order_id: order.id.uuidString
+                    buyer_id: currentOrder.buyerId.uuidString,
+                    seller_id: currentOrder.sellerId.uuidString,
+                    listing_id: currentOrder.listingId.uuidString,
+                    order_id: currentOrder.id.uuidString
                 ))
                 .select("*")
                 .single()
@@ -605,6 +640,82 @@ struct OrderDetailView: View {
         } catch {
             print("Error loading conversation: \(error)")
         }
+    }
+    
+    // MARK: - Success Overlay
+    private var successOverlay: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            VStack(spacing: 20) {
+                // Success checkmark animation
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.1))
+                        .frame(width: 120, height: 120)
+                    
+                    Circle()
+                        .stroke(Color.green, lineWidth: 3)
+                        .frame(width: 120, height: 120)
+                    
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 60, weight: .bold))
+                        .foregroundColor(.green)
+                }
+                .transition(.scale.combined(with: .opacity))
+                
+                Text("Success!")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                Text(successMessage)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                VStack(spacing: 12) {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Text("Done")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.green)
+                            .cornerRadius(12)
+                    }
+                    
+                    Button(action: {
+                        showSuccessView = false
+                    }) {
+                        Text("View Order Details")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color("ThemeColor"))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color("ThemeColor").opacity(0.1))
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(24)
+            .background(Color(UIColor.systemBackground))
+            .cornerRadius(20)
+            .shadow(radius: 20)
+            .padding(.horizontal, 40)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.3))
+        .ignoresSafeArea()
+        .transition(.opacity)
+        .animation(.easeInOut, value: showSuccessView)
     }
 }
 

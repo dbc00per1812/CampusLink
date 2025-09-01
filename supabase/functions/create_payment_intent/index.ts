@@ -97,12 +97,27 @@ async function fetchListing(listingId: string): Promise<{ id: string; price: num
 
 async function createPaymentIntent(amountInCents: number, metadata: Record<string, string>): Promise<Stripe.Response<Stripe.PaymentIntent>> {
   const stripe = getStripe();
+  
+  // Calculate Stripe processing fee (2.9% + 30¢)
+  const stripeFeePercentage = 0.029; // 2.9%
+  const stripeFeeFixed = 30; // 30 cents
+  const stripeFee = Math.round(amountInCents * stripeFeePercentage) + stripeFeeFixed;
+  const totalAmountWithFees = amountInCents + stripeFee;
+  
+  // Add fee information to metadata
+  const enhancedMetadata = {
+    ...metadata,
+    base_amount_cents: amountInCents.toString(),
+    stripe_fee_cents: stripeFee.toString(),
+    total_amount_cents: totalAmountWithFees.toString(),
+  };
+  
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: amountInCents,
+    amount: totalAmountWithFees, // Charge the total including fees
     currency: "usd",
     capture_method: "manual",
     automatic_payment_methods: { enabled: true },
-    metadata,
+    metadata: enhancedMetadata,
   });
   return paymentIntent;
 }
@@ -112,17 +127,27 @@ async function insertPaymentRow(params: {
   sellerId: string;
   listingId: string;
   amountInCents: number;
+  stripeFeeInCents?: number;
+  totalAmountInCents?: number;
   paymentIntentId: string;
 }): Promise<void> {
   const supabase = getSupabaseServiceClient();
-  const { error } = await supabase.from("payments").insert({
+  
+  // Use totalAmountInCents if provided (new format), otherwise use amountInCents (old format)
+  const amountToStore = params.totalAmountInCents || params.amountInCents;
+  
+  // Store the marketplace fee in the existing marketplace_fee_cents column
+  const insertData = {
     buyer_id: params.buyerId,
     seller_id: params.sellerId,
     listing_id: params.listingId,
-    amount: params.amountInCents,
+    amount: amountToStore,
     payment_intent_id: params.paymentIntentId,
     status: "requires_capture",
-  });
+    marketplace_fee_cents: params.stripeFeeInCents || 0,
+  };
+  
+  const { error } = await supabase.from("payments").insert(insertData);
   if (error) {
     throw new Error(`Failed to insert payment row: ${error.message}`);
   }
@@ -155,21 +180,39 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(400, { error: "Listing price is invalid" });
     }
 
+    // Calculate fees
+    const stripeFeePercentage = 0.029; // 2.9%
+    const stripeFeeFixed = 30; // 30 cents
+    const stripeFee = Math.round(amountInCents * stripeFeePercentage) + stripeFeeFixed;
+    const totalAmountWithFees = amountInCents + stripeFee;
+
     const paymentIntent = await createPaymentIntent(amountInCents, {
       listing_id: listing.id,
       buyer_id: userId,
       seller_id: listing.user_id,
     });
 
+    // Ensure client_secret exists
+    if (!paymentIntent.client_secret) {
+      throw new Error("Failed to create payment intent: No client secret returned");
+    }
+
     await insertPaymentRow({
       buyerId: userId,
       sellerId: listing.user_id,
       listingId: listing.id,
       amountInCents,
+      stripeFeeInCents: stripeFee,
+      totalAmountInCents: totalAmountWithFees,
       paymentIntentId: paymentIntent.id,
     });
 
-    return jsonResponse(200, { client_secret: paymentIntent.client_secret });
+    return jsonResponse(200, { 
+      client_secret: paymentIntent.client_secret,
+      base_amount_cents: amountInCents,
+      stripe_fee_cents: stripeFee,
+      total_amount_cents: totalAmountWithFees,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return jsonResponse(400, { error: message });

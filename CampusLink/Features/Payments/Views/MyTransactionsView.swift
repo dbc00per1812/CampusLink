@@ -11,6 +11,8 @@ struct MyTransactionsView: View {
     @State private var searchText = ""
     @State private var selectedStatusFilter: OrderStatus?
     @State private var showingFilters = false
+    @State private var showSuccessToast = false
+    @State private var successToastMessage = ""
 
     enum Segment: String, CaseIterable { 
         case purchases = "Purchases"
@@ -18,9 +20,37 @@ struct MyTransactionsView: View {
     }
 
     var body: some View {
-        content
-            .navigationTitle("My Transactions")
-            .searchable(text: $searchText, prompt: "Search orders...")
+        ZStack {
+            content
+                .navigationTitle("My Transactions")
+                .searchable(text: $searchText, prompt: "Search orders...")
+            
+            // Success toast overlay
+            if showSuccessToast {
+                VStack {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                        
+                        Text(successToastMessage)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+                    .background(Color.green)
+                    .cornerRadius(12)
+                    .shadow(radius: 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(), value: showSuccessToast)
+                    
+                    Spacer()
+                }
+                .padding(.top, 50)
+                .zIndex(1)
+            }
+        }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingFilters.toggle() }) {
@@ -294,6 +324,8 @@ struct MyTransactionsView: View {
                     listing:listings(*)
                 """)
                 .eq("buyer_id", value: currentUserId.uuidString)
+                .neq("order_status", value: "cancelled")
+                .neq("payment_status", value: "failed")
                 .order("created_at", ascending: false)
                 .execute()
                 .value
@@ -305,6 +337,8 @@ struct MyTransactionsView: View {
                     listing:listings(*)
                 """)
                 .eq("seller_id", value: currentUserId.uuidString)
+                .neq("order_status", value: "cancelled")
+                .neq("payment_status", value: "failed")
                 .order("created_at", ascending: false)
                 .execute()
                 .value
@@ -344,6 +378,17 @@ struct MyTransactionsView: View {
         }
         do {
             try await OrderService.shared.updateOrderStatus(order.id, status: .completed)
+            await MainActor.run {
+                successToastMessage = order.listing?.listingType == .service 
+                    ? "Service marked as completed! ✅"
+                    : "Product marked as received! ✅"
+                showSuccessToast = true
+                
+                // Hide toast after 3 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    showSuccessToast = false
+                }
+            }
             await loadData()
         } catch {
             await MainActor.run { errorMessage = "Failed to confirm receipt: \(error.localizedDescription)" }
@@ -359,6 +404,17 @@ struct MyTransactionsView: View {
         }
         do {
             try await OrderService.shared.updateOrderStatus(order.id, status: .inProgress)
+            await MainActor.run {
+                successToastMessage = order.listing?.listingType == .service
+                    ? "Service marked as delivered! ✅"
+                    : "Product marked as delivered! ✅"
+                showSuccessToast = true
+                
+                // Hide toast after 3 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    showSuccessToast = false
+                }
+            }
             await loadData()
         } catch {
             await MainActor.run { errorMessage = "Failed to mark as delivered: \(error.localizedDescription)" }

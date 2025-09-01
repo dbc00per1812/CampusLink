@@ -275,10 +275,15 @@ struct PayoutHistoryView: View {
     private func cancelPayout(_ payout: Payout) async {
         do {
             let _ = try await payoutService.cancelPayout(payout.id)
+            await MainActor.run {
+                // Show success message
+                self.errorMessage = "Payout cancelled successfully. Funds have been restored to your wallet."
+                self.showingError = true
+            }
             await loadPayoutData() // Refresh data
         } catch {
             await MainActor.run {
-                self.errorMessage = "Failed to cancel payout: \(error.localizedDescription)"
+                self.errorMessage = error.localizedDescription
                 self.showingError = true
             }
         }
@@ -362,7 +367,7 @@ struct PayoutRow: View {
                 Spacer()
                 
                 // Action Button
-                if payout.status == .pending {
+                if payout.status == .pending || payout.status == .processing {
                     Button("Cancel") {
                         onCancel()
                     }

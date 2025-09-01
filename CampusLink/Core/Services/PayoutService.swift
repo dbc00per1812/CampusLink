@@ -207,53 +207,37 @@ final class PayoutService: ObservableObject {
         }
     }
     
-    /// Cancels a pending payout
+    /// Cancels a pending payout with Stripe integration
     /// - Parameter payoutId: The payout ID to cancel
     /// - Returns: Updated payout record
     func cancelPayout(_ payoutId: UUID) async throws -> Payout {
         do {
-            let payout: Payout = try await supabase
-                .from("payouts")
-                .select()
-                .eq("id", value: payoutId.uuidString)
-                .single()
-                .execute()
-                .value
-            
-            guard payout.status == .pending else {
-                throw PayoutServiceError.invalidPayoutStatus
+            // Define response structure from Edge Function
+            struct CancelPayoutResponse: Decodable {
+                let status: String?
+                let message: String?
+                let error: String?
+                let stripe_cancelled: Bool?
+                let stripe_reason: String?
+                let amount_restored: Double?
             }
             
-            // Update payout status
+            // Call the Edge Function to handle Stripe cancellation and database updates
+            let response: CancelPayoutResponse = try await supabase.functions
+                .invoke("cancel_payout", options: FunctionInvokeOptions(
+                    body: ["payout_id": payoutId.uuidString]
+                ))
+            
+            // Check if the response indicates an error
+            if let errorMessage = response.error {
+                throw PayoutServiceError.cancellationFailed(errorMessage)
+            }
+            
+            // Fetch the updated payout record
             let updatedPayout: Payout = try await supabase
                 .from("payouts")
-                .update([
-                    "status": "cancelled",
-                    "updated_at": ISO8601DateFormatter().string(from: Date())
-                ])
+                .select()
                 .eq("id", value: payoutId.uuidString)
-                .select()
-                .single()
-                .execute()
-                .value
-            
-            // Restore wallet balance
-            let wallet: Wallet = try await supabase
-                .from("wallets")
-                .select()
-                .eq("user_id", value: payout.userId)
-                .single()
-                .execute()
-                .value
-            
-            let _: Wallet = try await supabase
-                .from("wallets")
-                .update([
-                    "available_cents": String(wallet.availableCents + payout.amountCents),
-                    "updated_at": ISO8601DateFormatter().string(from: Date())
-                ])
-                .eq("user_id", value: payout.userId)
-                .select()
                 .single()
                 .execute()
                 .value
@@ -316,8 +300,9 @@ enum PayoutServiceError: LocalizedError {
     case networkError
     case requestCancelled
     case authenticationRequired
+    case cancellationFailed(String)
     
-    var errorDescription: String? {
+        var errorDescription: String? {
         switch self {
         case .insufficientBalance:
             return "Insufficient balance for payout"
@@ -333,6 +318,8 @@ enum PayoutServiceError: LocalizedError {
             return "Request was cancelled"
         case .authenticationRequired:
             return "Authentication required to request payout"
+        case .cancellationFailed(let message):
+            return "Failed to cancel payout: \(message)"
         }
     }
 }

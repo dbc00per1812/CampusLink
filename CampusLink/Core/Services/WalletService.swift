@@ -96,6 +96,8 @@ final class WalletService: ObservableObject {
                 .from("payments")
                 .select()
                 .or("buyer_id.eq.\(userId),seller_id.eq.\(userId)")
+                .neq("status", value: "failed")
+                .neq("status", value: "cancelled")
                 .order("created_at", ascending: false)
                 .limit(limit)
                 .execute()

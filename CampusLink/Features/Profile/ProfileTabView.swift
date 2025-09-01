@@ -203,10 +203,16 @@ extension ProfileTabView {
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                     
-                    Text(String(format: "$%.2f", listing.price))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.red)
+                    HStack(spacing: 4) {
+                        Text(String(format: "$%.2f", listing.price))
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.red)
+                        let totalWithFee = listing.price * 1.029 + 0.30
+                        Text("($\(totalWithFee, specifier: "%.2f") w/ fee)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                     
                     HStack(spacing: 8) {
                         // Status badge - assuming listing has status

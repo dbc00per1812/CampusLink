@@ -311,9 +311,15 @@ struct ListingCard: View {
                 HStack {
                     Text(listing.title).font(.headline).lineLimit(2)
                     Spacer()
-                    Text("$\(listing.price, specifier: "%.2f")")
-                        .font(.title2).fontWeight(.bold)
-                        .foregroundColor(Color("ThemeColor"))
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("$\(listing.price, specifier: "%.2f")")
+                            .font(.title3).fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                        let totalWithFee = listing.price * 1.029 + 0.30 // Include 2.9% + $0.30
+                        Text("$\(totalWithFee, specifier: "%.2f") total")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 Text(listing.description)

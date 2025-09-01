@@ -114,12 +114,17 @@ struct ListingDetailView: View {
                                 .fontWeight(.bold)
                                 .foregroundColor(Color("ThemeColor"))
                             
-                            // Show processing fee if available
-                            if processingFeeCents > 0 {
-                                let feeAmount = Double(processingFeeCents) / 100.0
-                                Text("+ $\(feeAmount, specifier: "%.2f") processing")
+                            // Always show estimated processing fee
+                            let estimatedFee = listing.price * 0.029 + 0.30 // 2.9% + $0.30
+                            let totalWithFee = listing.price + estimatedFee
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("+ $\(estimatedFee, specifier: "%.2f") fee")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                Text("Total: $\(totalWithFee, specifier: "%.2f")")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.primary)
                             }
 
                             if listing.isSold {
@@ -585,8 +590,13 @@ struct ListingDetailView: View {
     }
 
     private func handleCardPayment() async throws {
-        // Use existing Stripe flow for card payments
-        try await paymentService.configurePaymentSheet(for: listing.id.uuidString)
+        // Use existing Stripe flow for card payments with fee information
+        let (baseAmountCents, stripeFeeCents, totalAmountCents) = try await paymentService.configurePaymentSheet(for: listing.id.uuidString)
+        
+        // Update UI with actual fee information
+        await MainActor.run {
+            self.processingFeeCents = stripeFeeCents
+        }
 
         await MainActor.run {
             isPrimaryActionLoading = false

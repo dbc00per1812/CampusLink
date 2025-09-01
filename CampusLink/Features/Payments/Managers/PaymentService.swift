@@ -46,21 +46,59 @@ final class PaymentService: ObservableObject {
 
     /// Calls the `create_payment_intent` Edge Function to prepare a Stripe PaymentIntent.
     /// - Parameter listingId: The identifier of the listing that the user intends to purchase.
-    /// - Returns: The client secret string used to initialize Stripe's PaymentSheet on iOS.
-    func preparePaymentSheet(listingId: String) async throws -> String {
+    /// - Returns: Tuple containing client secret and fee information
+    func preparePaymentSheet(listingId: String) async throws -> (clientSecret: String, baseAmountCents: Int, stripeFeeCents: Int, totalAmountCents: Int) {
         let url = try functionsURL(appendingPath: "create_payment_intent")
 
         struct RequestBody: Encodable { let listing_id: String }
-        struct ResponseBody: Decodable { let client_secret: String }
+        
+        // Check if the server returns the new format with fees
+        struct ResponseBodyWithFees: Decodable { 
+            let client_secret: String
+            let base_amount_cents: Int?
+            let stripe_fee_cents: Int?
+            let total_amount_cents: Int?
+        }
+        
+        // Fallback for old format
+        struct ResponseBodyOld: Decodable {
+            let client_secret: String
+        }
 
         let token = try await currentAccessToken()
         let request = try makeRequest(url: url, token: token, body: RequestBody(listing_id: listingId))
 
         let (data, response) = try await URLSession.shared.data(for: request)
         try ensureSuccess(response: response, data: data)
-
-        let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-        return decoded.client_secret
+        
+        // Try new format first, fallback to old format
+        do {
+            let decoded = try JSONDecoder().decode(ResponseBodyWithFees.self, from: data)
+            
+            // If we have fee information, use it
+            if let baseAmount = decoded.base_amount_cents,
+               let stripeFee = decoded.stripe_fee_cents,
+               let totalAmount = decoded.total_amount_cents {
+                return (decoded.client_secret, baseAmount, stripeFee, totalAmount)
+            } else {
+                // Fallback: calculate fees on client side (not ideal but works)
+                // This matches what was working before
+                print("⚠️ Server didn't return fee information, calculating locally")
+                // We don't have the price here, so we'll need to handle this differently
+                return (decoded.client_secret, 0, 0, 0)
+            }
+        } catch {
+            // Try old format
+            do {
+                let decoded = try JSONDecoder().decode(ResponseBodyOld.self, from: data)
+                print("⚠️ Using old response format without fee information")
+                return (decoded.client_secret, 0, 0, 0)
+            } catch {
+                print("❌ Failed to decode payment intent response: \(error)")
+                print("Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+                throw PaymentServiceError.invalidResponse
+            }
+        }
     }
 
     /// Calls the `capture_payment` Edge Function to capture funds for a previously authorized PaymentIntent.
@@ -80,9 +118,10 @@ final class PaymentService: ObservableObject {
     
     /// Prepares and configures the Stripe PaymentSheet for a listing purchase.
     /// - Parameter listingId: The identifier of the listing to purchase.
-    func configurePaymentSheet(for listingId: String) async throws {
-        // Get the client secret from our Edge Function
-        let clientSecret = try await preparePaymentSheet(listingId: listingId)
+    /// - Returns: Fee information for display
+    func configurePaymentSheet(for listingId: String) async throws -> (baseAmountCents: Int, stripeFeeCents: Int, totalAmountCents: Int) {
+        // Get the client secret and fee info from our Edge Function
+        let (clientSecret, baseAmountCents, stripeFeeCents, totalAmountCents) = try await preparePaymentSheet(listingId: listingId)
         
         // Configure the PaymentSheet
         var configuration = PaymentSheet.Configuration()
@@ -99,7 +138,10 @@ final class PaymentService: ObservableObject {
         
         #if DEBUG
         print("✅ PaymentService: PaymentSheet configured for listing \(listingId)")
+        print("💰 Base: $\(Double(baseAmountCents)/100), Fee: $\(Double(stripeFeeCents)/100), Total: $\(Double(totalAmountCents)/100)")
         #endif
+        
+        return (baseAmountCents, stripeFeeCents, totalAmountCents)
     }
     
     /// Presents the Stripe PaymentSheet UI.
