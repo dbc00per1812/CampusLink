@@ -449,6 +449,7 @@ struct EditProfileView: View {
                 }
                 .padding(.top)
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
@@ -470,6 +471,7 @@ struct EditProfileView: View {
                 }
             }
         }
+        .hideKeyboardOnTap()
         .onAppear {
             Task {
                 await loadCurrentProfile()

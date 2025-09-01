@@ -121,13 +121,8 @@ struct MyTransactionsView: View {
         VStack(spacing: 8) {
             Picker("Type", selection: $selection) {
                 ForEach(Segment.allCases, id: \.self) { seg in
-                    HStack {
-                        Text(seg.rawValue)
-                        Text("(\(segmentOrderCount(for: seg)))")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                    .tag(seg as Segment)
+                    Text("\(seg.rawValue) (\(segmentOrderCount(for: seg)))")
+                        .tag(seg as Segment)
                 }
             }
             .pickerStyle(SegmentedPickerStyle())
