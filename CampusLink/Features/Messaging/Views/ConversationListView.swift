@@ -99,7 +99,7 @@ struct ConversationListView: View {
             }
         }
         .refreshable {
-            await viewModel.loadConversations()
+            await viewModel.refreshConversations()
         }
     }
 }

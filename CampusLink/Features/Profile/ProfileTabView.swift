@@ -17,7 +17,7 @@ struct ProfileTabView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 0) {
                     // Header with username and menu
                     headerView
@@ -55,21 +55,21 @@ struct ProfileTabView: View {
 extension ProfileTabView {
     
     private var headerView: some View {
-        HStack {
-            Text("Profile")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+                HStack {
+                    Text("Profile")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
             
-            Spacer()
+                    Spacer()
             
-            Button(action: {
-                showSettings = true
-            }) {
-                Image(systemName: "gearshape.fill")
-                    .font(.title2)
-                    .foregroundColor(Color("ThemeColor"))
-            }
-        }
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title2)
+                            .foregroundColor(Color("ThemeColor"))
+                    }
+                }
         .padding(.horizontal, 16)
         .padding(.top, 10)
     }
@@ -626,4 +626,4 @@ struct ProfileTabView_Previews: PreviewProvider {
         ProfileTabView()
             .environmentObject(AuthManager())
     }
-}
+} 

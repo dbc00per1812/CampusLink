@@ -21,10 +21,26 @@ struct ListingDetailView: View {
     @State private var createdOrder: Order?
     @State private var selectedPaymentMethod: PaymentMethod?
     @State private var processingFeeCents: Int = 0
+    @State private var showDeleteAlert = false
+    @State private var isDeleting = false
 
     private var isOwnListing: Bool {
-        guard let currentUserId = authManager.session?.user.id.uuidString else { return false }
-        return listing.user.id == currentUserId
+        guard let currentUserId = authManager.session?.user.id.uuidString else { 
+            print("🔍 No current user ID")
+            return false 
+        }
+        
+        // Try case-insensitive comparison since UUIDs might have different casing
+        let isOwner = listing.user.id.lowercased() == currentUserId.lowercased()
+        
+        print("🔍 Current User ID: \(currentUserId)")
+        print("🔍 Current User ID (lowercase): \(currentUserId.lowercased())")
+        print("🔍 Listing User ID: \(listing.user.id)")
+        print("🔍 Listing User ID (lowercase): \(listing.user.id.lowercased())")
+        print("🔍 Is Owner: \(isOwner)")
+        print("🔍 Auth Session User: \(authManager.session?.user.id.uuidString ?? "nil")")
+        
+        return isOwner
     }
 
     var body: some View {
@@ -220,7 +236,9 @@ struct ListingDetailView: View {
                     isContactingLoading: isContactingSeller,
                     isPrimaryActionLoading: isPrimaryActionLoading,
                     onContactSeller: { handleContactSeller() },
-                    onPrimaryAction: { handlePrimaryAction() }
+                    onPrimaryAction: { handlePrimaryAction() },
+                    onEditListing: isOwnListing ? { handleEditListing() } : nil,
+                    onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
                 )
 
                 Spacer(minLength: 100)
@@ -317,6 +335,16 @@ struct ListingDetailView: View {
         } message: {
             Text(purchaseError ?? "An unknown error occurred")
         }
+        .alert("Delete Listing", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Task {
+                    await deleteListing()
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this listing? This action cannot be undone.")
+        }
 
         .onAppear {
             // Clear any stale payment state when view appears
@@ -338,6 +366,55 @@ struct ListingDetailView: View {
     }
 
     // MARK: - Helpers
+
+    private func handleEditListing() {
+        // TODO: Implement edit listing functionality
+        // For now, show a simple alert
+        print("🔧 Edit listing functionality coming soon")
+    }
+    
+    private func handleDeleteListing() {
+        showDeleteAlert = true
+    }
+    
+    private func deleteListing() async {
+        guard let userId = authManager.session?.user.id.uuidString else { return }
+        
+        await MainActor.run {
+            isDeleting = true
+        }
+        
+        do {
+            // Delete the listing from the database
+            try await supabase
+                .from("listings")
+                .delete()
+                .eq("id", value: listing.id.uuidString)
+                .eq("user_id", value: userId) // Ensure user owns the listing
+                .execute()
+            
+            await MainActor.run {
+                isDeleting = false
+                // Navigate back to the previous screen
+                dismiss()
+            }
+            
+            #if DEBUG
+            print("✅ Listing deleted successfully: \(listing.id)")
+            #endif
+            
+        } catch {
+            await MainActor.run {
+                isDeleting = false
+                purchaseError = "Failed to delete listing: \(error.localizedDescription)"
+                showErrorAlert = true
+            }
+            
+            #if DEBUG
+            print("❌ Failed to delete listing: \(error)")
+            #endif
+        }
+    }
 
     private func sheetDidDismiss() {
         // Safety: ensure Stripe state is cleared whenever any sheet goes away

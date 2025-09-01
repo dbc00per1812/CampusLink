@@ -48,17 +48,24 @@ class ConversationListViewModel: ObservableObject {
             // Fetch last message for each conversation
             var updatedConversations: [Conversation] = []
             for var conversation in response {
-                // Get the last message for this conversation
-                let messages: [Message] = try await supabase
-                    .from("messages")
-                    .select("*")
-                    .eq("conversation_id", value: conversation.id.uuidString)
-                    .order("created_at", ascending: false)
-                    .limit(1)
-                    .execute()
-                    .value
-                
-                conversation.lastMessage = messages.first
+                do {
+                    // Get the last message for this conversation
+                    let messages: [Message] = try await supabase
+                        .from("messages")
+                        .select("*")
+                        .eq("conversation_id", value: conversation.id.uuidString)
+                        .order("created_at", ascending: false)
+                        .limit(1)
+                        .execute()
+                        .value
+                    
+                    conversation.lastMessage = messages.first
+                } catch {
+                    // If we can't fetch messages for this conversation, just continue without lastMessage
+                    #if DEBUG
+                    print("Failed to load messages for conversation \(conversation.id): \(error)")
+                    #endif
+                }
                 updatedConversations.append(conversation)
             }
             
@@ -69,8 +76,61 @@ class ConversationListViewModel: ObservableObject {
             #if DEBUG
             print("Failed to load conversations: \(error)")
             #endif
-            errorMessage = "Failed to load conversations"
+            // Don't show error for refresh - just silently fail and keep existing data
             isLoading = false
+        }
+    }
+    
+    /// Refresh conversations silently (for pull-to-refresh)
+    func refreshConversations() async {
+        guard let userId = currentUserId else { return }
+        
+        do {
+            // Fetch conversations where user is either buyer or seller
+            let response: [Conversation] = try await supabase
+                .from("conversations")
+                .select("""
+                    *,
+                    listing:listings(*),
+                    buyer:users!conversations_buyer_fkey(*),
+                    seller:users!conversations_seller_fkey(*)
+                """)
+                .or("buyer_id.eq.\(userId),seller_id.eq.\(userId)")
+                .order("last_message_at", ascending: false)
+                .execute()
+                .value
+            
+            // Fetch last message for each conversation
+            var updatedConversations: [Conversation] = []
+            for var conversation in response {
+                do {
+                    // Get the last message for this conversation
+                    let messages: [Message] = try await supabase
+                        .from("messages")
+                        .select("*")
+                        .eq("conversation_id", value: conversation.id.uuidString)
+                        .order("created_at", ascending: false)
+                        .limit(1)
+                        .execute()
+                        .value
+                    
+                    conversation.lastMessage = messages.first
+                } catch {
+                    // If we can't fetch messages for this conversation, just continue without lastMessage
+                    #if DEBUG
+                    print("Failed to load messages for conversation \(conversation.id): \(error)")
+                    #endif
+                }
+                updatedConversations.append(conversation)
+            }
+            
+            conversations = updatedConversations
+            
+        } catch {
+            #if DEBUG
+            print("Failed to refresh conversations: \(error)")
+            #endif
+            // Silently fail for refresh - don't show error
         }
     }
     

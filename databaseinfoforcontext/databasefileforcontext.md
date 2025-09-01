@@ -22,8 +22,8 @@ CREATE TABLE public.disputes (
   status text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT disputes_pkey PRIMARY KEY (id),
-  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
-  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id)
+  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id),
+  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
 );
 CREATE TABLE public.listings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -79,10 +79,10 @@ CREATE TABLE public.orders (
   refunded_at timestamp with time zone,
   buyer_confirmed_at timestamp with time zone,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
-  CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id),
   CONSTRAINT orders_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
-  CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
+  CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id)
 );
 CREATE TABLE public.payments (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -108,9 +108,9 @@ CREATE TABLE public.payments (
   escrow_release_status text DEFAULT 'held'::text CHECK (escrow_release_status = ANY (ARRAY['held'::text, 'released'::text, 'disputed'::text])),
   stripe_escrow_account_id text,
   CONSTRAINT payments_pkey PRIMARY KEY (id),
-  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT payments_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
-  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
+  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
 );
 CREATE TABLE public.payouts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

@@ -4,6 +4,8 @@ enum ActionButtonType {
     case contactSeller
     case buyNow
     case bookService
+    case editListing
+    case deleteListing
     
     var title: String {
         switch self {
@@ -13,6 +15,10 @@ enum ActionButtonType {
             return "Buy Now"
         case .bookService:
             return "Book Service"
+        case .editListing:
+            return "Edit Post"
+        case .deleteListing:
+            return "Delete Post"
         }
     }
     
@@ -24,6 +30,10 @@ enum ActionButtonType {
             return "cart"
         case .bookService:
             return "calendar"
+        case .editListing:
+            return "pencil"
+        case .deleteListing:
+            return "trash"
         }
     }
     
@@ -35,6 +45,10 @@ enum ActionButtonType {
             return Color.green
         case .bookService:
             return Color.blue
+        case .editListing:
+            return Color.blue
+        case .deleteListing:
+            return Color.red
         }
     }
     
@@ -92,18 +106,26 @@ struct ActionButtonRow: View {
     let isPrimaryActionLoading: Bool
     let onContactSeller: () -> Void
     let onPrimaryAction: () -> Void
+    let onEditListing: (() -> Void)?
+    let onDeleteListing: (() -> Void)?
     
-    init(listing: ListingWithUser, isOwnListing: Bool, isContactingLoading: Bool = false, isPrimaryActionLoading: Bool = false, onContactSeller: @escaping () -> Void, onPrimaryAction: @escaping () -> Void) {
+    init(listing: ListingWithUser, isOwnListing: Bool, isContactingLoading: Bool = false, isPrimaryActionLoading: Bool = false, onContactSeller: @escaping () -> Void, onPrimaryAction: @escaping () -> Void, onEditListing: (() -> Void)? = nil, onDeleteListing: (() -> Void)? = nil) {
         self.listing = listing
         self.isOwnListing = isOwnListing
         self.isContactingLoading = isContactingLoading
         self.isPrimaryActionLoading = isPrimaryActionLoading
         self.onContactSeller = onContactSeller
         self.onPrimaryAction = onPrimaryAction
+        self.onEditListing = onEditListing
+        self.onDeleteListing = onDeleteListing
     }
     
     private var shouldShowButtons: Bool {
-        !isOwnListing && !listing.isSold
+        let result = !isOwnListing && !listing.isSold
+        print("🔍 ActionButtonRow - isOwnListing: \(isOwnListing), isSold: \(listing.isSold), shouldShowButtons: \(result)")
+        print("🔍 ActionButtonRow - onEditListing exists: \(onEditListing != nil)")
+        print("🔍 ActionButtonRow - onDeleteListing exists: \(onDeleteListing != nil)")
+        return result
     }
     
     private var primaryButtonType: ActionButtonType {
@@ -140,7 +162,7 @@ struct ActionButtonRow: View {
                 }
             }
         } else if isOwnListing {
-            VStack(spacing: 8) {
+            VStack(spacing: 12) {
                 HStack {
                     Image(systemName: "person.circle.fill")
                         .foregroundColor(Color("ThemeColor"))
@@ -149,10 +171,21 @@ struct ActionButtonRow: View {
                         .foregroundColor(.secondary)
                 }
                 
-                Text("You can manage this listing from your profile")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+                HStack(spacing: 12) {
+                    if let onEditListing = onEditListing {
+                        ActionButton(
+                            type: .editListing,
+                            action: onEditListing
+                        )
+                    }
+                    
+                    if let onDeleteListing = onDeleteListing {
+                        ActionButton(
+                            type: .deleteListing,
+                            action: onDeleteListing
+                        )
+                    }
+                }
             }
             .padding()
             .background(Color(UIColor.systemGray6))
