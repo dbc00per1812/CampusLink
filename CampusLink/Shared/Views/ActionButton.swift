@@ -218,7 +218,19 @@ struct ActionButton_Previews: PreviewProvider {
                     serviceLocation: nil,
                     serviceAvailability: nil,
                     createdAt: Date(),
-                    user: UserProfile(id: UUID().uuidString, name: "Test User", bio: nil, profilePic: nil, email: "test@example.com", createdAt: Date())
+                    user: User(
+                        id: UUID().uuidString, 
+                        name: "Test User", 
+                        bio: nil, 
+                        profilePic: nil, 
+                        email: "test@example.com", 
+                        createdAt: Date(),
+                        campusEmailVerified: true,
+                        trustScore: 85,
+                        stripeConnectId: nil,
+                        stripePayoutsEnabled: false,
+                        stripeDetailsSubmitted: false
+                    )
                 ),
                 isOwnListing: false,
                 isContactingLoading: false,

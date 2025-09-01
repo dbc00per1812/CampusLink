@@ -48,7 +48,13 @@ struct WalletView: View {
                 PayoutHistoryView(userId: userId)
             }
         }
-        .sheet(item: $viewModel.onboardingLink, onDismiss: { viewModel.onboardingLink = nil }) { link in
+        .sheet(item: $viewModel.onboardingLink, onDismiss: { 
+            viewModel.onboardingLink = nil
+            // Refresh data after onboarding to update Stripe Connect status
+            Task {
+                await viewModel.refreshData()
+            }
+        }) { link in
             SafariView(url: link.url).ignoresSafeArea()
         }
         .alert("Wallet", isPresented: $viewModel.isShowingError) {

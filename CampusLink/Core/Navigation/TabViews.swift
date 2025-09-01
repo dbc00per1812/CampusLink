@@ -34,6 +34,10 @@ struct PostView: View {
     @State private var isLoading = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var navigateToHome = false
+    
+    // Add focus state for keyboard dismissal
+    @FocusState private var isTextFieldFocused: Bool
     
     let categories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Other"]
     
@@ -99,6 +103,7 @@ struct PostView: View {
                                 .font(.headline)
                                 .foregroundColor(.secondary)
                             TextField(selectedListingType == .product ? "What are you selling?" : "What service are you offering?", text: $title)
+                                .focused($isTextFieldFocused)
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
@@ -109,6 +114,7 @@ struct PostView: View {
                                 .font(.headline)
                                 .foregroundColor(.secondary)
                             TextField(selectedListingType == .product ? "Describe your item..." : "Describe your service...", text: $description, axis: .vertical)
+                                .focused($isTextFieldFocused)
                                 .lineLimit(4...8)
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
@@ -135,6 +141,7 @@ struct PostView: View {
                                     .font(.headline)
                                     .foregroundColor(.secondary)
                                 TextField("e.g., 1 hour, 2-3 hours, Half day", text: $serviceDuration)
+                                    .focused($isTextFieldFocused)
                                     .padding()
                                     .background(Color(UIColor.systemGray6))
                                     .cornerRadius(12)
@@ -160,6 +167,7 @@ struct PostView: View {
                                     .font(.headline)
                                     .foregroundColor(.secondary)
                                 TextField("e.g., Mon-Fri 9AM-5PM, Weekends only, Flexible schedule", text: $serviceAvailability, axis: .vertical)
+                                    .focused($isTextFieldFocused)
                                     .lineLimit(2...4)
                                     .padding()
                                     .background(Color(UIColor.systemGray6))
@@ -177,6 +185,7 @@ struct PostView: View {
                                         .font(.title2)
                                         .foregroundColor(.secondary)
                                     TextField("0.00", text: $price)
+                                        .focused($isTextFieldFocused)
                                         .keyboardType(.decimalPad)
                                 }
                                 .padding()
@@ -202,6 +211,9 @@ struct PostView: View {
                         
                         // Post Button
                         Button(action: {
+                            // Dismiss keyboard first
+                            isTextFieldFocused = false
+                            
                             Task {
                                 await createListing()
                             }
@@ -228,6 +240,10 @@ struct PostView: View {
                 }
                 .padding()
         }
+        .onTapGesture {
+            // Dismiss keyboard when tapping outside text fields
+            isTextFieldFocused = false
+        }
         .onChange(of: selectedImage) { oldValue, newValue in
                 Task {
                     if let newValue = newValue {
@@ -236,11 +252,11 @@ struct PostView: View {
                 }
             }
             .alert(isPresented: $showingAlert) {
-                Alert(title: Text("Post Listing"), message: Text(alertMessage), dismissButton: .default(Text("OK")) {
-                    if alertMessage.contains("successfully") {
-                        clearForm()
-                    }
-                })
+                Alert(
+                    title: Text(alertMessage.contains("successfully") ? "Success" : "Error"), 
+                    message: Text(alertMessage), 
+                    dismissButton: .default(Text("OK"))
+                )
             }
     }
     
@@ -309,9 +325,11 @@ struct PostView: View {
                 .execute()
             
             await MainActor.run {
-                alertMessage = "Listing posted successfully!"
+                alertMessage = "Listing posted successfully! 🎉"
                 showingAlert = true
                 isLoading = false
+                // Auto-clear form after successful posting
+                clearForm()
             }
             
         } catch {

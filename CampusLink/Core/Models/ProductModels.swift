@@ -110,7 +110,7 @@ struct ListingWithUser: Codable, Identifiable {
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
     let createdAt: Date
-    let user: UserProfile
+    let user: User
     
     enum CodingKeys: String, CodingKey {
         case id, title, description, price, category, photo, user
@@ -136,11 +136,13 @@ struct ListingWithUser: Codable, Identifiable {
         serviceLocation: nil,
         serviceAvailability: nil,
         createdAt: Date(),
-        user: UserProfile.sampleProfile
+        user: User.sampleUser
     )
 }
 
 // MARK: - User Model (matches database schema)
+typealias UserProfile = User
+
 struct User: Codable {
     let id: String
     let name: String?
@@ -179,4 +181,7 @@ struct User: Codable {
         stripePayoutsEnabled: true,
         stripeDetailsSubmitted: true
     )
+    
+    // Alias for UserProfile compatibility
+    static let sampleProfile = sampleUser
 } 

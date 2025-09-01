@@ -50,13 +50,10 @@ struct PaymentTransaction: Codable, Identifiable {
 extension PaymentTransaction {
     var isCompleted: Bool { status.lowercased() == "completed" || status.lowercased() == "succeeded" }
     var isDisputed: Bool { (disputeStatus ?? .none) != .none }
-    // If amount stored in cents, pretty print dollars; else show as-is
+    // Handle legacy data that was stored incorrectly (amounts > 50 are likely in cents)
     var formattedAmount: String {
-        if amount > 1000 { // heuristic: treat as cents
-            return String(format: "$%.2f", amount / 100.0)
-        } else {
-            return String(format: "$%.2f", amount)
-        }
+        let displayAmount = amount > 50 ? amount / 100.0 : amount
+        return String(format: "$%.2f", displayAmount)
     }
 }
 

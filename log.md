@@ -1,5 +1,28 @@
 # CampusLink Development Log
 
+## Latest Updates - January 18, 2025 1:15 PM
+
+### ✅ Instagram-Style Profile Page Redesign COMPLETED
+**Objective**: Redesigned profile page to match Instagram-like layout from user's screenshot
+**Implementation**:
+- **New Layout**: Profile picture + stats (posts/followers/following) in header row
+- **Action Buttons**: "Edit profile", "Share profile", and add person buttons  
+- **Grid View**: 3-column grid showing user's listings with tab selector
+- **Edit Profile**: Separate modal view for editing name, bio, profile picture
+- **Files Modified**:
+  - `ProfileTabView.swift` - Complete rewrite with Instagram-style layout
+  - `ProductModels.swift` - Added `UserProfile` typealias for compatibility
+  - `ActionButton.swift` - Updated User model initialization
+- **Features**: Clean, modern design matching social media UX patterns
+- **Result**: ✅ **Build successful, ready for testing**
+
+### ✅ Transaction Amount Display Fix (Legacy Data) COMPLETED  
+**Issue**: Legacy data still showing 100x amounts (e.g. $500 instead of $5)
+- **Solution**: Implemented smart legacy detection in `PaymentTransaction.formattedAmount`
+- **Logic**: Amounts > $50 assumed to be legacy cents data, divided by 100
+- **Files Modified**: `PaymentModels.swift` (lines 53-57)
+- **Result**: ✅ **Both old and new transactions display correctly**
+
 ## Sprint 1
 
 ### p1: Setup
