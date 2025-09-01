@@ -62,6 +62,7 @@ struct LoginView: View {
             .padding()
         }
         .navigationBarHidden(true)
+        .hideKeyboardOnTap()
         .alert(isPresented: $showingAlert) {
             Alert(title: Text("Login Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }

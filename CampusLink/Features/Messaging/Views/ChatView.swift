@@ -80,6 +80,7 @@ struct ChatView: View {
                 .environmentObject(authManager)
             }
         }
+        .hideKeyboardOnTap()
         .onAppear {
             if let userId = authManager.session?.user.id.uuidString { Task { await viewModel.initialize(userId: userId) } }
         }

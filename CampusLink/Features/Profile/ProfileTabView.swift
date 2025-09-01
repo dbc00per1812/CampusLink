@@ -331,6 +331,7 @@ extension ProfileTabView {
                 .from("listings")
                 .select("*, user:users(*)")
                 .eq("user_id", value: userId)
+                .eq("status", value: "active")
                 .order("created_at", ascending: false)
                 .limit(20)
                 .execute()

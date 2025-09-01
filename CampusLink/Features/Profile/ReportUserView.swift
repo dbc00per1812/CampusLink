@@ -149,6 +149,7 @@ struct ReportUserView: View {
                     Text("Important Information")
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle("Report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

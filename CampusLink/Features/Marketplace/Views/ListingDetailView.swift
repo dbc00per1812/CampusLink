@@ -316,6 +316,12 @@ struct ListingDetailView: View {
 
             case let .chat(conversation):
                 ChatView(conversation: conversation)
+            case .editListing:
+                EditListingView(listing: listing) {
+                    // On updated, simply dismiss this detail view to refresh upstream
+                    dismiss()
+                }
+                .environmentObject(authManager)
             }
         }
 
@@ -368,9 +374,7 @@ struct ListingDetailView: View {
     // MARK: - Helpers
 
     private func handleEditListing() {
-        // TODO: Implement edit listing functionality
-        // For now, show a simple alert
-        print("🔧 Edit listing functionality coming soon")
+        activeSheet = .editListing
     }
     
     private func handleDeleteListing() {
@@ -385,13 +389,24 @@ struct ListingDetailView: View {
         }
         
         do {
-            // Delete the listing from the database
-            try await supabase
-                .from("listings")
-                .delete()
-                .eq("id", value: listing.id.uuidString)
-                .eq("user_id", value: userId) // Ensure user owns the listing
-                .execute()
+            // Prefer hard-delete via RPC that cascades related rows
+            do {
+                let _: Bool = try await supabase
+                    .rpc("delete_listing_cascade", params: [
+                        "p_listing_id": listing.id.uuidString,
+                        "p_user_id": userId
+                    ])
+                    .execute()
+                    .value
+            } catch {
+                // Fallback to soft-delete if RPC not available yet
+                try await supabase
+                    .from("listings")
+                    .update(["status": "archived"])
+                    .eq("id", value: listing.id.uuidString)
+                    .eq("user_id", value: userId)
+                    .execute()
+            }
             
             await MainActor.run {
                 isDeleting = false
@@ -400,13 +415,13 @@ struct ListingDetailView: View {
             }
             
             #if DEBUG
-            print("✅ Listing deleted successfully: \(listing.id)")
+            print("✅ Listing removed (hard or soft) successfully: \(listing.id)")
             #endif
             
         } catch {
             await MainActor.run {
                 isDeleting = false
-                purchaseError = "Failed to delete listing: \(error.localizedDescription)"
+                purchaseError = "Failed to archive listing: \(error.localizedDescription)"
                 showErrorAlert = true
             }
             
@@ -697,12 +712,14 @@ enum ActiveSheet: Identifiable {
     case report(userId: String, userName: String, listingId: String, listingTitle: String)
     case purchaseConfirmation
     case chat(Conversation)
+    case editListing
 
     var id: String {
         switch self {
         case let .report(userId, _, listingId, _): return "report:\(userId):\(listingId)"
         case .purchaseConfirmation: return "purchaseConfirmation"
         case let .chat(conversation): return "chat:\(conversation.id)"
+        case .editListing: return "editListing"
         }
     }
 }

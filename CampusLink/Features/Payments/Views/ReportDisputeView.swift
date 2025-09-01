@@ -59,6 +59,7 @@ struct ReportDisputeView: View {
                     Section { Text(errorMessage).foregroundColor(.red) }
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle("Report a Problem")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -240,6 +240,7 @@ struct PostView: View {
                 }
                 .padding()
         }
+        .hideKeyboardOnTap()
         .onTapGesture {
             // Dismiss keyboard when tapping outside text fields
             isTextFieldFocused = false
@@ -430,6 +431,7 @@ struct PaymentsView: View {
                 .from("listings")
                 .select()
                 .eq("user_id", value: userId)
+                .eq("status", value: "active")
                 .order("created_at", ascending: false)
                 .execute()
                 .value

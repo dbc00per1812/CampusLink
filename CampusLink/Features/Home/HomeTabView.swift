@@ -164,6 +164,7 @@ extension HomeTabView {
                     *,
                     user:users(*)
                 """)
+                .eq("status", value: "active")
 
             if enableDomainFilter {
                 var userEmail: String? = authManager.session?.user.email
@@ -231,6 +232,7 @@ extension HomeTabView {
                     *,
                     user:users(*)
                 """)
+                .eq("status", value: "active")
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -267,6 +269,7 @@ extension HomeTabView {
                     *,
                     user:users(*)
                 """)
+                .eq("status", value: "active")
                 .order("created_at", ascending: false)
                 .range(from: 0, to: pageSize - 1)
                 .execute()

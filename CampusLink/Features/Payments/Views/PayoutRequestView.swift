@@ -51,6 +51,7 @@ struct PayoutRequestView: View {
             }
             .navigationBarHidden(true)
             .background(Color(.systemGroupedBackground))
+            .hideKeyboardOnTap()
         }
         .alert("Payout Error", isPresented: $showingError) {
             Button("OK") { }
