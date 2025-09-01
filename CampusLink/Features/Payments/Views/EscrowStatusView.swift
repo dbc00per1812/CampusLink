@@ -85,10 +85,22 @@ struct EscrowStatusView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text(escrowStatus.canBeReleased ? "Ready to Release" : "Held in Escrow")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(escrowStatus.canBeReleased ? .green : .blue)
+                    if escrowStatus.orderStatus == .completed {
+                        Text("Funds Released")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.green)
+                    } else if escrowStatus.canBeReleased {
+                        Text("Ready to Release")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.orange)
+                    } else {
+                        Text("Held in Escrow")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.blue)
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -116,11 +128,19 @@ struct EscrowStatusView: View {
             }
             
             // Info text
-            Text("Funds are held securely in escrow until delivery is confirmed or the 3-day auto-release period expires.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .lineSpacing(2)
+            if escrowStatus.orderStatus == .completed {
+                Text("Funds have been automatically released to the seller upon order completion.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            } else {
+                Text("Funds are held securely in escrow until delivery is confirmed or the 3-day auto-release period expires.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
         }
         .padding()
         .background(Color(.systemBackground))

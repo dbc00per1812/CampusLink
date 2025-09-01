@@ -228,8 +228,11 @@ struct EscrowStatus {
     }
     
     var canBeReleased: Bool {
-        return orderStatus == .completed || 
-               (autoReleaseAt != nil && autoReleaseAt! <= Date())
+        // Don't show release button for completed orders (funds should already be released)
+        // Only show for orders that are still active and past auto-release time
+        return orderStatus != .completed && 
+               autoReleaseAt != nil && 
+               autoReleaseAt! <= Date()
     }
     
     var timeUntilAutoRelease: TimeInterval? {

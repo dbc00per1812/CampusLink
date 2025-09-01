@@ -23,7 +23,7 @@ struct OrderDetailView: View {
     }
     
     private var canMarkDelivered: Bool {
-        isSeller && order.orderStatus == .placed
+        isSeller && (order.orderStatus == .placed || order.orderStatus == .inProgress)
     }
     
     var body: some View {
@@ -45,6 +45,9 @@ struct OrderDetailView: View {
                 
                 // Actions Section
                 actionsSection
+                
+                // Debug Section (for development)
+                debugSection
                 
                 // Order Information
                 orderInfoSection
@@ -68,6 +71,13 @@ struct OrderDetailView: View {
             }
         } message: {
             Text("This will release the payment to the seller and complete the transaction.")
+        }
+        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            Button("OK") {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
         .sheet(isPresented: $showDisputeSheet) {
             ReportDisputeView(order: order) {
@@ -364,6 +374,71 @@ struct OrderDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
     
+    // MARK: - Debug Section
+    private var debugSection: some View {
+        VStack(spacing: 16) {
+            Text("Debug Info")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.orange)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Order Status:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(order.orderStatus.displayName)
+                        .foregroundColor(.blue)
+                }
+                
+                HStack {
+                    Text("Payment Status:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(order.paymentStatus.rawValue)
+                        .foregroundColor(.blue)
+                }
+                
+                HStack {
+                    Text("Is Seller:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(isSeller ? "Yes" : "No")
+                        .foregroundColor(isSeller ? .green : .red)
+                }
+                
+                HStack {
+                    Text("Is Buyer:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(isBuyer ? "Yes" : "No")
+                        .foregroundColor(isBuyer ? .green : .red)
+                }
+                
+                HStack {
+                    Text("Can Mark Delivered:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(canMarkDelivered ? "Yes" : "No")
+                        .foregroundColor(canMarkDelivered ? .green : .red)
+                }
+                
+                HStack {
+                    Text("Can Confirm Received:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(canConfirmReceived ? "Yes" : "No")
+                        .foregroundColor(canConfirmReceived ? .green : .red)
+                }
+            }
+            .font(.caption)
+            .padding()
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .padding()
+    }
+    
     // MARK: - Order Information Section
     private var orderInfoSection: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -416,10 +491,14 @@ struct OrderDetailView: View {
     
     // MARK: - Actions
     private func confirmReceived() async {
+        print("🔵 confirmReceived: Starting confirmation for order \(order.id)")
         isLoading = true
         do {
+            print("🔵 confirmReceived: Calling OrderService.confirmDelivery...")
             // This calls the function that releases funds to seller and marks order as completed
             let updatedOrder = try await OrderService.shared.confirmDelivery(order.id)
+            
+            print("✅ confirmReceived: Order confirmed successfully, new status: \(updatedOrder.orderStatus.displayName)")
             
             await MainActor.run {
                 // Refresh order data to show updated status
@@ -429,6 +508,7 @@ struct OrderDetailView: View {
                 print("✅ Order confirmed - funds released to seller")
             }
         } catch {
+            print("❌ confirmReceived: Failed to confirm delivery: \(error)")
             await MainActor.run {
                 errorMessage = "Failed to confirm delivery: \(error.localizedDescription)"
             }
@@ -439,15 +519,22 @@ struct OrderDetailView: View {
     }
     
     private func markDelivered() async {
+        print("🔵 Button clicked! markDelivered() called")
         isLoading = true
+        print("🔵 markDelivered() called for order: \(order.id)")
+        print("🔵 Current order status: \(order.orderStatus.displayName)")
+        print("🔵 Current user is seller: \(isSeller)")
         do {
+            print("🔵 Calling OrderService.markDelivered...")
             let updatedOrder = try await OrderService.shared.markDelivered(order.id)
+            print("✅ markDelivered succeeded: \(updatedOrder.orderStatus.displayName)")
             // Refresh order data
             await loadOrderData()
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
+                print("❌ markDelivered failed: \(error)")
+                errorMessage = "Failed to mark as delivered: \(error.localizedDescription)"
+                print("❌ Error message set to:", errorMessage ?? "nil")            }
         }
         await MainActor.run {
             isLoading = false

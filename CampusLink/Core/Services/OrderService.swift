@@ -95,8 +95,8 @@ final class OrderService: ObservableObject {
             }
             
             // Verify order is in correct status for marking as delivered
-            guard order.orderStatus == .placed else {
-                throw OrderServiceError.invalidOrderStatus
+            guard [.placed, .inProgress].contains(order.orderStatus) else {
+                throw OrderServiceError.invalidOrderStatus("Cannot mark as delivered. Order status must be 'placed' or 'in progress', but current status is '\(order.orderStatus.displayName)'")
             }
             
             // Update order status to seller confirmed (ready for buyer confirmation)
@@ -121,18 +121,47 @@ final class OrderService: ObservableObject {
     
     func confirmDelivery(_ orderId: UUID) async throws -> Order {
         do {
+            print("🔵 confirmDelivery: Starting for order \(orderId)")
+            
             let session = try await supabase.auth.session
             let currentUserId = session.user.id
+            print("🔵 confirmDelivery: Current user ID: \(currentUserId)")
             
             // Verify the current user is the buyer
             let order = try await getOrderDetails(orderId)
+            print("🔵 confirmDelivery: Order details loaded, buyer ID: \(order.buyerId), current user: \(currentUserId)")
+            print("🔵 confirmDelivery: Order price: $\(Double(order.priceCents)/100.0), Seller: \(order.sellerId)")
+            
             guard currentUserId == order.buyerId else {
+                print("❌ confirmDelivery: Unauthorized - current user is not the buyer")
                 throw OrderServiceError.unauthorizedAction
             }
             
             // Verify order is in correct status for delivery confirmation
             guard order.orderStatus == .sellerConfirmed else {
-                throw OrderServiceError.invalidOrderStatus
+                print("❌ confirmDelivery: Invalid order status - expected .sellerConfirmed, got \(order.orderStatus.displayName)")
+                throw OrderServiceError.invalidOrderStatus("Cannot confirm delivery. Order status must be 'seller_confirmed', but current status is '\(order.orderStatus.displayName)'")
+            }
+            
+            print("🔵 confirmDelivery: Order status verified, updating to completed")
+            
+            // Check seller's wallet BEFORE escrow release
+            print("🔵 confirmDelivery: Checking seller wallet BEFORE escrow release...")
+            do {
+                let preWallet: [Wallet] = try await supabase
+                    .from("wallets")
+                    .select()
+                    .eq("user_id", value: order.sellerId.uuidString)
+                    .execute()
+                    .value
+                
+                if let wallet = preWallet.first {
+                    print("🔵 confirmDelivery: PRE-RELEASE - Seller wallet balance: \(wallet.availableCents) cents ($\(Double(wallet.availableCents)/100.0))")
+                } else {
+                    print("🔵 confirmDelivery: PRE-RELEASE - No wallet found for seller \(order.sellerId)")
+                }
+            } catch {
+                print("❌ confirmDelivery: Failed to check pre-release wallet: \(error)")
             }
             
             // Update order status to completed
@@ -140,6 +169,7 @@ final class OrderService: ObservableObject {
                 .from("orders")
                 .update([
                     "order_status": "completed",
+                    "buyer_confirmed_at": ISO8601DateFormatter().string(from: Date()),
                     "completed_at": ISO8601DateFormatter().string(from: Date()),
                     "updated_at": ISO8601DateFormatter().string(from: Date())
                 ])
@@ -149,60 +179,246 @@ final class OrderService: ObservableObject {
                 .execute()
                 .value
             
+            print("🔵 confirmDelivery: Order status updated successfully, releasing escrow funds")
+            
             // Release funds from escrow to seller's wallet
             try await releaseEscrowFunds(order: order)
             
+            print("🔵 confirmDelivery: Escrow funds released successfully")
+            
+            // Check seller's wallet AFTER escrow release
+            print("🔵 confirmDelivery: Checking seller wallet AFTER escrow release...")
+            do {
+                let postWallet: [Wallet] = try await supabase
+                    .from("wallets")
+                    .select()
+                    .eq("user_id", value: order.sellerId.uuidString)
+                    .execute()
+                    .value
+                
+                if let wallet = postWallet.first {
+                    print("🔵 confirmDelivery: POST-RELEASE - Seller wallet balance: \(wallet.availableCents) cents ($\(Double(wallet.availableCents)/100.0))")
+                } else {
+                    print("🔵 confirmDelivery: POST-RELEASE - No wallet found for seller \(order.sellerId)")
+                }
+            } catch {
+                print("❌ confirmDelivery: Failed to check post-release wallet: \(error)")
+            }
+            
             return updatedOrder
         } catch {
+            print("❌ confirmDelivery: Error occurred: \(error)")
+            print("❌ confirmDelivery: Error type: \(type(of: error))")
+            print("❌ confirmDelivery: Error description: \(error.localizedDescription)")
             throw handleError(error)
         }
     }
     
     /// Releases funds from escrow to seller's wallet
     private func releaseEscrowFunds(order: Order) async throws {
-        // Get the seller's wallet
-        let sellerWallet: Wallet = try await supabase
-            .from("wallets")
-            .select()
-            .eq("user_id", value: order.sellerId.uuidString)
-            .single()
-            .execute()
-            .value
+        print("🔵 releaseEscrowFunds: Starting for order \(order.id)")
+        
+        // Test wallet access first
+        print("🔵 releaseEscrowFunds: Testing wallet access...")
+        let accessTestResult = try await testWalletAccess(userId: order.sellerId)
+        print("🔵 releaseEscrowFunds: Wallet access test result: \(accessTestResult)")
+        
+        // First, ensure the seller exists in public.users table
+        print("🔵 releaseEscrowFunds: Checking if seller exists in public.users...")
+        let sellerUser: User
+        do {
+            sellerUser = try await supabase
+                .from("users")
+                .select()
+                .eq("id", value: order.sellerId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 releaseEscrowFunds: Seller found in public.users: \(sellerUser.name ?? "Unknown")")
+        } catch {
+            print("🔵 releaseEscrowFunds: Seller not found in public.users, attempting to create...")
+            
+            // Try to create the user record in public.users
+            do {
+                let newUser: User = try await supabase
+                    .from("users")
+                    .insert([
+                        "id": order.sellerId.uuidString,
+                        "created_at": ISO8601DateFormatter().string(from: Date())
+                    ])
+                    .select()
+                    .single()
+                    .execute()
+                    .value
+                
+                sellerUser = newUser
+                print("🔵 releaseEscrowFunds: Successfully created seller user in public.users")
+            } catch {
+                print("❌ releaseEscrowFunds: Failed to create seller user: \(error)")
+                throw OrderServiceError.walletUpdateFailed("Failed to create seller user record: \(error.localizedDescription)")
+            }
+        }
+        
+        // Get or create the seller's wallet
+        let sellerWallet: Wallet
+        do {
+            sellerWallet = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: order.sellerId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 releaseEscrowFunds: Found existing seller wallet with \(sellerWallet.availableCents) cents")
+        } catch {
+            print("🔵 releaseEscrowFunds: No existing wallet found, creating new wallet for seller \(order.sellerId)")
+            
+            // Create a new wallet for the seller
+            struct WalletInsert: Encodable {
+                let user_id: String
+                let available_cents: Int
+                let escrow_cents: Int
+                let updated_at: String
+            }
+            
+            let insertData = WalletInsert(
+                user_id: order.sellerId.uuidString,
+                available_cents: 0,
+                escrow_cents: 0,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+            
+            let newWallet: Wallet = try await supabase
+                .from("wallets")
+                .insert(insertData)
+                .select()
+                .single()
+                .execute()
+                .value
+            
+            sellerWallet = newWallet
+            print("🔵 releaseEscrowFunds: Created new wallet with \(sellerWallet.availableCents) cents")
+        }
+        
+        // Verify wallet has valid data
+        guard sellerWallet.availableCents >= 0 else {
+            print("❌ releaseEscrowFunds: Invalid wallet balance: \(sellerWallet.availableCents)")
+            throw OrderServiceError.walletUpdateFailed("Invalid wallet balance for seller")
+        }
         
         // Calculate net amount (after marketplace fees)
         let netAmountCents = order.priceCents - order.marketplaceFeeCents
+        print("🔵 releaseEscrowFunds: Order price: \(order.priceCents), marketplace fee: \(order.marketplaceFeeCents), net amount: \(netAmountCents)")
+        print("🔵 releaseEscrowFunds: Current wallet balance: \(sellerWallet.availableCents)")
+        print("🔵 releaseEscrowFunds: Expected new balance: \(sellerWallet.availableCents + netAmountCents)")
+        
+        // Verify the calculation is valid
+        guard netAmountCents > 0 else {
+            print("❌ releaseEscrowFunds: Invalid net amount calculation: \(netAmountCents)")
+            throw OrderServiceError.walletUpdateFailed("Invalid payment amount calculation")
+        }
         
         // Update seller's wallet balance
-        let _: Wallet = try await supabase
-            .from("wallets")
-            .update([
-                "available_cents": String(sellerWallet.availableCents + netAmountCents),
-                "updated_at": ISO8601DateFormatter().string(from: Date())
-            ])
-            .eq("user_id", value: order.sellerId.uuidString)
-            .select()
-            .single()
-            .execute()
-            .value
+        do {
+            struct WalletUpdate: Encodable {
+                let available_cents: Int
+                let updated_at: String
+            }
+            
+            let updateData = WalletUpdate(
+                available_cents: sellerWallet.availableCents + netAmountCents,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+            
+            print("🔵 releaseEscrowFunds: Attempting wallet update with data: \(updateData)")
+            
+            let updateResult = try await supabase
+                .from("wallets")
+                .update(updateData)
+                .eq("user_id", value: order.sellerId.uuidString)
+                .execute()
+            
+            print("🔵 releaseEscrowFunds: Update result: \(updateResult)")
+            
+            // Check if the update actually affected any rows
+            if updateResult.count == 0 {
+                print("❌ releaseEscrowFunds: No wallet rows were updated for seller \(order.sellerId)")
+                throw OrderServiceError.walletUpdateFailed("No wallet found for seller \(order.sellerId)")
+            }
+            
+            print("🔵 releaseEscrowFunds: Successfully updated seller wallet (affected \(updateResult.count) rows)")
+        } catch {
+            print("❌ releaseEscrowFunds: Failed to update seller wallet: \(error)")
+            throw error
+        }
         
-        // Create a transaction record for the escrow release
-        let transactionData = TransactionInsert(
-            userId: order.sellerId.uuidString,
-            type: "escrow_release",
-            amountCents: netAmountCents,
-            balanceAfterCents: sellerWallet.availableCents + netAmountCents,
-            description: "Escrow funds released from order #\(order.id.uuidString.prefix(8))",
-            relatedId: order.id.uuidString,
-            createdAt: ISO8601DateFormatter().string(from: Date())
-        )
+        // Create a transaction record for the escrow release (optional - table may not exist)
+        do {
+            let transactionData = TransactionInsert(
+                userId: order.sellerId.uuidString,
+                type: "escrow_release",
+                amountCents: netAmountCents,
+                balanceAfterCents: sellerWallet.availableCents + netAmountCents,
+                description: "Escrow funds released from order #\(order.id.uuidString.prefix(8))",
+                relatedId: order.id.uuidString,
+                createdAt: ISO8601DateFormatter().string(from: Date())
+            )
+            
+            let _: WalletTransaction = try await supabase
+                .from("wallet_transactions")
+                .insert(transactionData)
+                .select()
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 releaseEscrowFunds: Successfully created transaction record")
+        } catch {
+            print("⚠️ releaseEscrowFunds: Transaction logging failed (table may not exist): \(error)")
+            print("🔵 releaseEscrowFunds: This is non-critical - continuing with wallet update")
+            // Don't throw here - the wallet update succeeded, this is just logging
+        }
         
-        let _: WalletTransaction = try await supabase
-            .from("wallet_transactions")
-            .insert(transactionData)
-            .select()
-            .single()
-            .execute()
-            .value
+        // Verify the wallet update actually took effect
+        do {
+            let verifyWallet: Wallet = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: order.sellerId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            let expectedBalance = sellerWallet.availableCents + netAmountCents
+            print("🔵 releaseEscrowFunds: Wallet verification - Expected: \(expectedBalance), Actual: \(verifyWallet.availableCents)")
+            
+            if verifyWallet.availableCents != expectedBalance {
+                print("❌ releaseEscrowFunds: Wallet balance mismatch! Expected \(expectedBalance) but got \(verifyWallet.availableCents)")
+                throw OrderServiceError.walletUpdateFailed("Wallet balance verification failed - expected \(expectedBalance) but got \(verifyWallet.availableCents)")
+            }
+            
+            print("✅ releaseEscrowFunds: Wallet balance verified successfully")
+            
+            // Additional verification - let's also check if we can read the wallet from a different query
+            print("🔵 releaseEscrowFunds: Performing additional wallet verification...")
+            let finalCheck: [Wallet] = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: order.sellerId.uuidString)
+                .execute()
+                .value
+            
+            if let finalWallet = finalCheck.first {
+                print("🔵 releaseEscrowFunds: Final wallet check - balance: \(finalWallet.availableCents)")
+            } else {
+                print("❌ releaseEscrowFunds: Final wallet check failed - no wallet found")
+            }
+        } catch {
+            print("❌ releaseEscrowFunds: Failed to verify wallet update: \(error)")
+            throw OrderServiceError.walletUpdateFailed("Failed to verify wallet update: \(error.localizedDescription)")
+        }
     }
     
     func openDispute(_ orderId: UUID, reason: String, evidence: String?) async throws -> Order {
@@ -258,11 +474,16 @@ final class OrderService: ObservableObject {
             let session = try await supabase.auth.session
             let currentUserId = userId ?? session.user.id
             
-            let orders: [Order] = try await supabase
+            var query = supabase
                 .from("orders")
                 .select()
                 .or("buyer_id.eq.\(currentUserId.uuidString),seller_id.eq.\(currentUserId.uuidString)")
-                .eq("order_status", value: status?.rawValue ?? "")
+            
+            if let status = status {
+                query = query.eq("order_status", value: status.rawValue)
+            }
+            
+            let orders: [Order] = try await query
                 .order("created_at", ascending: false)
                 .limit(limit)
                 .execute()
@@ -329,7 +550,7 @@ final class OrderService: ObservableObject {
                 [.placed, .sellerConfirmed, .inProgress].contains($0.orderStatus) 
             }.count
             let disputedOrders = allOrders.filter { $0.orderStatus == .disputed }.count
-            let cancelledOrders = allOrders.filter { $0.orderStatus == .cancelled }.count
+            let _ = allOrders.filter { $0.orderStatus == .cancelled }.count
             
             let totalValue = allOrders.reduce(0) { $0 + $1.priceCents }
             
@@ -409,6 +630,40 @@ final class OrderService: ObservableObject {
         }
     }
     
+    // MARK: - Debug Methods (for testing wallet access)
+    func testWalletAccess(userId: UUID) async throws -> String {
+        do {
+            print("🔵 testWalletAccess: Testing wallet access for user \(userId)")
+            
+            // Try to read wallet
+            let wallet: Wallet = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 testWalletAccess: Successfully read wallet - balance: \(wallet.availableCents)")
+            
+            // Try to update wallet (small test update)
+            let testUpdateResult = try await supabase
+                .from("wallets")
+                .update([
+                    "updated_at": ISO8601DateFormatter().string(from: Date())
+                ])
+                .eq("user_id", value: userId.uuidString)
+                .execute()
+            
+            print("🔵 testWalletAccess: Successfully updated wallet - affected rows: \(testUpdateResult.count)")
+            
+            return "Wallet access test passed - Read: ✅, Update: ✅"
+        } catch {
+            print("❌ testWalletAccess: Failed - \(error)")
+            return "Wallet access test failed - \(error.localizedDescription)"
+        }
+    }
+    
     // MARK: - Helper Methods
     private func handleError(_ error: Error) -> Error {
         if error.localizedDescription.contains("cancelled") {
@@ -448,7 +703,8 @@ enum OrderServiceError: Error, LocalizedError {
     case requestCancelled
     case networkError
     case invalidOrderState
-    case invalidOrderStatus
+    case invalidOrderStatus(String)
+    case walletUpdateFailed(String)
     
     var errorDescription: String? {
         switch self {
@@ -466,8 +722,10 @@ enum OrderServiceError: Error, LocalizedError {
             return "Network connection error"
         case .invalidOrderState:
             return "This operation is not allowed in the current order state"
-        case .invalidOrderStatus:
-            return "This operation is not allowed in the current order status"
+        case .invalidOrderStatus(let message):
+            return message
+        case .walletUpdateFailed(let message):
+            return "Failed to update wallet: \(message)"
         }
     }
     
@@ -487,8 +745,10 @@ enum OrderServiceError: Error, LocalizedError {
             return "Please check your internet connection and try again"
         case .invalidOrderState:
             return "This operation is not allowed in the current order state"
-        case .invalidOrderStatus:
-            return "Please ensure the order is in the correct status for this operation"
+        case .invalidOrderStatus(let message):
+            return "Please ensure the order is in the correct status for this operation. \(message)"
+        case .walletUpdateFailed(let message):
+            return "Please contact support as there was an issue updating the seller's wallet. \(message)"
         }
     }
 }
