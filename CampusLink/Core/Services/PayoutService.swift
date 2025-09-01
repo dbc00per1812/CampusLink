@@ -120,7 +120,9 @@ final class PayoutService: ObservableObject {
             // Create payout record
             let payoutData = PayoutInsert(
                 userId: accountId,
+                sellerId: accountId, // For now, user_id and seller_id are the same
                 amountCents: amountCents,
+                destination: payoutMethod.rawValue, // For now, use the payout method as destination
                 feeCents: feeCents,
                 netAmountCents: netAmountCents,
                 payoutType: payoutType.rawValue,
@@ -313,6 +315,7 @@ enum PayoutServiceError: LocalizedError {
     case invalidPayoutStatus
     case networkError
     case requestCancelled
+    case authenticationRequired
     
     var errorDescription: String? {
         switch self {
@@ -328,6 +331,8 @@ enum PayoutServiceError: LocalizedError {
             return "Network error occurred"
         case .requestCancelled:
             return "Request was cancelled"
+        case .authenticationRequired:
+            return "Authentication required to request payout"
         }
     }
 }

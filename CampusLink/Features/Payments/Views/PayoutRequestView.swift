@@ -8,6 +8,7 @@ struct PayoutRequestView: View {
     let onDismiss: () -> Void
     
     @StateObject private var payoutService = PayoutService.shared
+    @EnvironmentObject private var authManager: AuthManager
     @State private var selectedPayoutType: PayoutService.PayoutType = .standard
     @State private var selectedPayoutMethod: PayoutService.PayoutMethod = .bankAccount
     @State private var amountCents: Int = 0
@@ -327,11 +328,15 @@ struct PayoutRequestView: View {
         
         Task {
             do {
+                guard let userId = authManager.session?.user.id.uuidString else {
+                    throw PayoutServiceError.authenticationRequired
+                }
+                
                 let payout = try await payoutService.requestPayout(
                     amountCents: amountCents,
                     payoutType: selectedPayoutType,
                     payoutMethod: selectedPayoutMethod,
-                    accountId: "current-user-id" // This should come from auth
+                    accountId: userId
                 )
                 
                 await MainActor.run {

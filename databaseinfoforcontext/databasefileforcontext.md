@@ -11,8 +11,8 @@ CREATE TABLE public.conversations (
   order_id uuid,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
   CONSTRAINT conversations_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
-  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
-  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
+  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.disputes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -79,10 +79,10 @@ CREATE TABLE public.orders (
   refunded_at timestamp with time zone,
   buyer_confirmed_at timestamp with time zone,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
-  CONSTRAINT orders_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
   CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
-  CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
-  CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id)
+  CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id),
+  CONSTRAINT orders_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
 );
 CREATE TABLE public.payments (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -108,9 +108,9 @@ CREATE TABLE public.payments (
   escrow_release_status text DEFAULT 'held'::text CHECK (escrow_release_status = ANY (ARRAY['held'::text, 'released'::text, 'disputed'::text])),
   stripe_escrow_account_id text,
   CONSTRAINT payments_pkey PRIMARY KEY (id),
+  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT payments_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
-  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
-  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
+  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.payouts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -124,7 +124,17 @@ CREATE TABLE public.payouts (
   payout_fee_cents integer DEFAULT 0,
   stripe_connect_account_id text,
   destination_type text DEFAULT 'bank'::text CHECK (destination_type = ANY (ARRAY['bank'::text, 'debit_card'::text])),
+  user_id uuid NOT NULL,
+  fee_cents integer DEFAULT 0,
+  net_amount_cents integer DEFAULT 0,
+  payout_method text DEFAULT 'bank'::text,
+  stripe_transfer_id text,
+  error_message text,
+  retry_count integer DEFAULT 0,
+  updated_at timestamp with time zone,
+  paid_at timestamp with time zone,
   CONSTRAINT payouts_pkey PRIMARY KEY (id),
+  CONSTRAINT payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.reports (
@@ -169,6 +179,18 @@ CREATE TABLE public.users (
   stripe_details_submitted boolean DEFAULT false,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.wallet_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  type text NOT NULL,
+  amount_cents integer NOT NULL,
+  balance_after_cents integer NOT NULL,
+  description text,
+  related_id text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT wallet_transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT wallet_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.wallets (
   user_id uuid NOT NULL,

@@ -34,7 +34,9 @@ struct Wallet: Codable, Identifiable {
 // MARK: - Payout Insert Model
 struct PayoutInsert: Codable {
     let userId: String
+    let sellerId: String
     let amountCents: Int
+    let destination: String
     let feeCents: Int
     let netAmountCents: Int
     let payoutType: String
@@ -46,7 +48,9 @@ struct PayoutInsert: Codable {
     
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
+        case sellerId = "seller_id"
         case amountCents = "amount_cents"
+        case destination
         case feeCents = "fee_cents"
         case netAmountCents = "net_amount_cents"
         case payoutType = "payout_type"
