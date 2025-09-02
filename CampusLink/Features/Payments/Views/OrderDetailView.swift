@@ -12,6 +12,7 @@ struct OrderDetailView: View {
     @State private var showSuccessView = false
     @State private var successMessage = ""
     @State private var currentOrder: Order
+    @State private var showOrderInfo = false
     @Environment(\.dismiss) private var dismiss
     
     init(order: Order) {
@@ -58,11 +59,8 @@ struct OrderDetailView: View {
                         actionsSection
                     }
                     
-                    // Debug Section (for development)
-                    debugSection
-                    
-                    // Order Information
-                    orderInfoSection
+                    // Collapsible Order Information
+                    collapsibleOrderInfoSection
                 }
                 .padding()
             }
@@ -394,93 +392,128 @@ struct OrderDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
     
-    // MARK: - Debug Section
-    private var debugSection: some View {
-        VStack(spacing: 16) {
-            Text("Debug Info")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.orange)
-            
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Order Status:")
-                        .fontWeight(.medium)
-                    Spacer()
-                    Text(currentOrder.orderStatus.displayName)
-                        .foregroundColor(.blue)
+    // MARK: - Collapsible Order Information Section
+    private var collapsibleOrderInfoSection: some View {
+        VStack(spacing: 0) {
+            // Dropdown Header
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showOrderInfo.toggle()
                 }
-                
+            }) {
                 HStack {
-                    Text("Payment Status:")
-                        .fontWeight(.medium)
+                    Text("Order Information")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
                     Spacer()
-                    Text(currentOrder.paymentStatus.rawValue)
-                        .foregroundColor(.blue)
-                }
-                
-                HStack {
-                    Text("Is Seller:")
+                    
+                    Image(systemName: showOrderInfo ? "chevron.up" : "chevron.down")
+                        .font(.subheadline)
                         .fontWeight(.medium)
-                    Spacer()
-                    Text(isSeller ? "Yes" : "No")
-                        .foregroundColor(isSeller ? .green : .red)
+                        .foregroundColor(.secondary)
+                        .rotationEffect(.degrees(showOrderInfo ? 180 : 0))
                 }
-                
-                HStack {
-                    Text("Is Buyer:")
-                        .fontWeight(.medium)
-                    Spacer()
-                    Text(isBuyer ? "Yes" : "No")
-                        .foregroundColor(isBuyer ? .green : .red)
-                }
-                
-                HStack {
-                    Text("Can Mark Delivered:")
-                        .fontWeight(.medium)
-                    Spacer()
-                    Text(canMarkDelivered ? "Yes" : "No")
-                        .foregroundColor(canMarkDelivered ? .green : .red)
-                }
-                
-                HStack {
-                    Text("Can Confirm Received:")
-                        .fontWeight(.medium)
-                    Spacer()
-                    Text(canConfirmReceived ? "Yes" : "No")
-                        .foregroundColor(canConfirmReceived ? .green : .red)
-                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
             }
-            .font(.caption)
-            .padding()
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(8)
-        }
-        .padding()
-    }
-    
-    // MARK: - Order Information Section
-    private var orderInfoSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Order Information")
-                .font(.headline)
-                .fontWeight(.semibold)
+            .buttonStyle(PlainButtonStyle())
             
-            VStack(spacing: 12) {
-                infoRow(title: "Order ID", value: currentOrder.id.uuidString)
-                infoRow(title: "Created", value: currentOrder.createdAt.formatted(date: .abbreviated, time: .shortened))
-                infoRow(title: "Buyer", value: String(currentOrder.buyerId.uuidString.prefix(8)))
-                infoRow(title: "Seller", value: String(currentOrder.sellerId.uuidString.prefix(8)))
-                
-                if let updatedAt = currentOrder.updatedAt {
-                    infoRow(title: "Last Updated", value: updatedAt.formatted(date: .abbreviated, time: .shortened))
+            // Collapsible Content
+            if showOrderInfo {
+                VStack(spacing: 16) {
+                    // Debug Info Section
+                    VStack(spacing: 12) {
+                        Text("Debug Info")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Order Status:")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(currentOrder.orderStatus.displayName)
+                                    .foregroundColor(.blue)
+                            }
+                            
+                            HStack {
+                                Text("Payment Status:")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(currentOrder.paymentStatus.rawValue)
+                                    .foregroundColor(.blue)
+                            }
+                            
+                            HStack {
+                                Text("Is Seller:")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(isSeller ? "Yes" : "No")
+                                    .foregroundColor(isSeller ? .green : .red)
+                            }
+                            
+                            HStack {
+                                Text("Is Buyer:")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(isBuyer ? "Yes" : "No")
+                                    .foregroundColor(isBuyer ? .green : .red)
+                            }
+                            
+                            HStack {
+                                Text("Can Mark Delivered:")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(canMarkDelivered ? "Yes" : "No")
+                                    .foregroundColor(canMarkDelivered ? .green : .red)
+                            }
+                            
+                            HStack {
+                                Text("Can Confirm Received:")
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(canConfirmReceived ? "Yes" : "No")
+                                    .foregroundColor(canConfirmReceived ? .green : .red)
+                            }
+                        }
+                        .font(.caption)
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    
+                    Divider()
+                    
+                    // Order Details Section
+                    VStack(spacing: 12) {
+                        Text("Order Details")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        
+                        VStack(spacing: 8) {
+                            infoRow(title: "Order ID", value: currentOrder.id.uuidString)
+                            infoRow(title: "Created", value: currentOrder.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            infoRow(title: "Buyer", value: String(currentOrder.buyerId.uuidString.prefix(8)))
+                            infoRow(title: "Seller", value: String(currentOrder.sellerId.uuidString.prefix(8)))
+                            
+                            if let updatedAt = currentOrder.updatedAt {
+                                infoRow(title: "Last Updated", value: updatedAt.formatted(date: .abbreviated, time: .shortened))
+                            }
+                        }
+                    }
                 }
+                .padding()
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .padding(.horizontal)
     }
     
     private func infoRow(title: String, value: String) -> some View {

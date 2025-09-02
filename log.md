@@ -176,3 +176,31 @@
 - CampusLink/Core/Services/WalletService.swift
 
 ### Status: ✅ FIXED
+
+
+## Order Details UI Cleanup
+
+### Issue: Debug info and order details cluttering the UI
+
+### Root Cause:
+- Debug info and order information sections were always visible
+- Taking up unnecessary screen space and making UI look cluttered
+
+### Solution:
+1. Added @State private var showOrderInfo = false to control visibility
+2. Created collapsible dropdown section with:
+   - Clickable header with chevron icon animation
+   - Smooth animation when expanding/collapsing
+   - Combined debug info and order details in one dropdown
+   - Improved styling with better spacing and backgrounds
+
+### Features:
+- Header shows 'Order Information' with chevron that rotates
+- Expandable content shows both debug info and order details
+- Smooth animations for better UX
+- Positioned at bottom of page to avoid cluttering main content
+
+### Files Modified:
+- CampusLink/Features/Payments/Views/OrderDetailView.swift
+
+### Status: ✅ FIXED
