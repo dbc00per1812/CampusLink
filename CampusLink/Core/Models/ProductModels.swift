@@ -14,6 +14,20 @@ enum ListingType: String, Codable, CaseIterable {
     }
 }
 
+enum ListingIntent: String, Codable, CaseIterable {
+    case offer = "offer"
+    case seek = "seek"
+    
+    var displayName: String {
+        switch self {
+        case .offer:
+            return "Sell"
+        case .seek:
+            return "Seek"
+        }
+    }
+}
+
 enum ServiceLocation: String, Codable, CaseIterable {
     case onCampus = "on_campus"
     case offCampus = "off_campus"
@@ -31,6 +45,29 @@ enum ServiceLocation: String, Codable, CaseIterable {
     }
 }
 
+enum ServiceType: String, Codable, CaseIterable {
+    case calendar = "calendar"
+    case slots = "slots"
+    
+    var displayName: String {
+        switch self {
+        case .calendar:
+            return "Calendar-based"
+        case .slots:
+            return "Time Slots"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .calendar:
+            return "Flexible scheduling based on your availability"
+        case .slots:
+            return "Pre-defined time slots with limited capacity"
+        }
+    }
+}
+
 struct Listing: Codable, Identifiable {
     let id: UUID
     let userId: String
@@ -44,7 +81,16 @@ struct Listing: Codable, Identifiable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
+    let serviceType: ServiceType?
+    let slotsAvailable: Int?
+    let maxBookingsPerSlot: Int?
+    let archived: Bool?
     let createdAt: Date
+    // Seek mode fields (Phase 2)
+    let intent: ListingIntent
+    let budgetMin: Double?
+    let budgetMax: Double?
+    let expiresAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id, title, description, price, category, photo
@@ -54,7 +100,16 @@ struct Listing: Codable, Identifiable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
+        case serviceType = "service_type"
+        case slotsAvailable = "slots_available"
+        case maxBookingsPerSlot = "max_bookings_per_slot"
+        case archived = "archived"
         case createdAt = "created_at"
+        // Seek mode fields
+        case intent
+        case budgetMin = "budget_min"
+        case budgetMax = "budget_max"
+        case expiresAt = "expires_at"
     }
     
     // MARK: - Sample Data for Previews
@@ -71,7 +126,15 @@ struct Listing: Codable, Identifiable {
         serviceDuration: nil,
         serviceLocation: nil,
         serviceAvailability: nil,
-        createdAt: Date()
+        serviceType: nil,
+        slotsAvailable: nil,
+        maxBookingsPerSlot: nil,
+        archived: false,
+        createdAt: Date(),
+        intent: .offer,
+        budgetMin: nil,
+        budgetMax: nil,
+        expiresAt: nil
     )
 }
 
@@ -86,6 +149,15 @@ struct ListingCreate: Codable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
+    let serviceType: ServiceType?
+    let slotsAvailable: Int?
+    let maxBookingsPerSlot: Int?
+    let archived: Bool?
+    // Seek mode fields (Phase 2)
+    let intent: ListingIntent
+    let budgetMin: Double?
+    let budgetMax: Double?
+    let expiresAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case title, description, price, category, photo
@@ -94,6 +166,15 @@ struct ListingCreate: Codable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
+        case serviceType = "service_type"
+        case slotsAvailable = "slots_available"
+        case maxBookingsPerSlot = "max_bookings_per_slot"
+        case archived = "archived"
+        // Seek mode fields
+        case intent
+        case budgetMin = "budget_min"
+        case budgetMax = "budget_max"
+        case expiresAt = "expires_at"
     }
 }
 
@@ -109,8 +190,17 @@ struct ListingWithUser: Codable, Identifiable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
+    let serviceType: ServiceType?
+    let slotsAvailable: Int?
+    let maxBookingsPerSlot: Int?
+    let archived: Bool?
     let createdAt: Date
     let user: User
+    // Seek mode fields (Phase 2)
+    let intent: ListingIntent
+    let budgetMin: Double?
+    let budgetMax: Double?
+    let expiresAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id, title, description, price, category, photo, user
@@ -119,7 +209,16 @@ struct ListingWithUser: Codable, Identifiable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
+        case serviceType = "service_type"
+        case slotsAvailable = "slots_available"
+        case maxBookingsPerSlot = "max_bookings_per_slot"
+        case archived = "archived"
         case createdAt = "created_at"
+        // Seek mode fields
+        case intent
+        case budgetMin = "budget_min"
+        case budgetMax = "budget_max"
+        case expiresAt = "expires_at"
     }
     
     // MARK: - Sample Data for Previews
@@ -135,8 +234,16 @@ struct ListingWithUser: Codable, Identifiable {
         serviceDuration: nil,
         serviceLocation: nil,
         serviceAvailability: nil,
+        serviceType: nil,
+        slotsAvailable: nil,
+        maxBookingsPerSlot: nil,
+        archived: false,
         createdAt: Date(),
-        user: User.sampleUser
+        user: User.sampleUser,
+        intent: .offer,
+        budgetMin: nil,
+        budgetMax: nil,
+        expiresAt: nil
     )
 }
 
@@ -184,4 +291,29 @@ struct User: Codable {
     
     // Alias for UserProfile compatibility
     static let sampleProfile = sampleUser
+}
+
+// MARK: - Offer Model (Phase 0)
+struct Offer: Codable, Identifiable {
+    let id: UUID
+    let seekListingId: UUID
+    let offerListingId: UUID
+    let seekerId: String
+    let sellerId: String
+    let message: String?
+    let status: String
+    let createdAt: Date
+    let updatedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case seekListingId = "seek_listing_id"
+        case offerListingId = "offer_listing_id"
+        case seekerId = "seeker_id"
+        case sellerId = "seller_id"
+        case message
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
 } 

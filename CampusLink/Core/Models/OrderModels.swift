@@ -167,6 +167,9 @@ struct Order: Codable, Identifiable {
     let marketplaceFeeCents: Int
     let stripePaymentIntentId: String?
     
+    // Time slot for slot-based services
+    let timeSlotId: UUID?
+    
     // Joined data
     var listing: Listing?
     
@@ -228,6 +231,7 @@ struct Order: Codable, Identifiable {
         case stripeEscrowAccountId = "stripe_escrow_account_id"
         case marketplaceFeeCents = "marketplace_fee_cents"
         case stripePaymentIntentId = "stripe_payment_intent_id"
+        case timeSlotId = "time_slot_id"
         case listing
     }
 }
@@ -263,6 +267,7 @@ struct OrderWithDetails: Codable, Identifiable {
             stripeEscrowAccountId: "escrow_sample_123",
             marketplaceFeeCents: 0,
             stripePaymentIntentId: "pi_sample_123",
+            timeSlotId: nil,
             listing: nil
         ),
         listing: Listing.sampleListing,
@@ -278,6 +283,7 @@ struct OrderCreate: Codable {
     let sellerId: UUID
     let priceCents: Int
     let paymentMethod: PaymentMethod
+    let timeSlotId: UUID? // For slot-based services
     
     enum CodingKeys: String, CodingKey {
         case listingId = "listing_id"
@@ -285,6 +291,7 @@ struct OrderCreate: Codable {
         case sellerId = "seller_id"
         case priceCents = "price_cents"
         case paymentMethod = "payment_method"
+        case timeSlotId = "time_slot_id"
     }
 }
 
@@ -302,6 +309,7 @@ struct OrderInsert: Codable {
     let stripeEscrowAccountId: String?
     let marketplaceFeeCents: Int
     let stripePaymentIntentId: String?
+    let timeSlotId: String?
     
     enum CodingKeys: String, CodingKey {
         case listingId = "listing_id"
@@ -316,6 +324,7 @@ struct OrderInsert: Codable {
         case stripeEscrowAccountId = "stripe_escrow_account_id"
         case marketplaceFeeCents = "marketplace_fee_cents"
         case stripePaymentIntentId = "stripe_payment_intent_id"
+        case timeSlotId = "time_slot_id"
     }
 }
 

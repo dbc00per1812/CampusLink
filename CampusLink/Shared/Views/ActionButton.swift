@@ -250,6 +250,10 @@ struct ActionButton_Previews: PreviewProvider {
                     serviceDuration: nil,
                     serviceLocation: nil,
                     serviceAvailability: nil,
+                    serviceType: nil,
+                    slotsAvailable: nil,
+                    maxBookingsPerSlot: nil,
+                    archived: false,
                     createdAt: Date(),
                     user: User(
                         id: UUID().uuidString, 
@@ -263,7 +267,12 @@ struct ActionButton_Previews: PreviewProvider {
                         stripeConnectId: nil,
                         stripePayoutsEnabled: false,
                         stripeDetailsSubmitted: false
-                    )
+                    ),
+                    // Seek mode fields
+                    intent: .offer,
+                    budgetMin: nil,
+                    budgetMax: nil,
+                    expiresAt: nil
                 ),
                 isOwnListing: false,
                 isContactingLoading: false,

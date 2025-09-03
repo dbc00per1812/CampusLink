@@ -34,7 +34,8 @@ final class OrderService: ObservableObject {
                 updatedAt: ISO8601DateFormatter().string(from: Date()),
                 stripeEscrowAccountId: escrowAccountId, // Set escrow account ID
                 marketplaceFeeCents: 0, // No marketplace fees initially, only Stripe processing fees
-                stripePaymentIntentId: nil // Will be set when payment intent is created
+                stripePaymentIntentId: nil, // Will be set when payment intent is created
+                timeSlotId: orderCreate.timeSlotId?.uuidString
             )
             
             let order: Order = try await supabase

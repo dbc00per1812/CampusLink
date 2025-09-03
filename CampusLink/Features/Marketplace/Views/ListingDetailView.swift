@@ -9,6 +9,7 @@ struct ListingDetailView: View {
     @StateObject private var conversationViewModel = ConversationListViewModel()
     @StateObject private var orderService = OrderService.shared
     @StateObject private var walletService = WalletService.shared
+    @StateObject private var timeSlotService = TimeSlotService.shared
 
     @State private var isContactingSeller = false
     @State private var isPrimaryActionLoading = false
@@ -23,6 +24,9 @@ struct ListingDetailView: View {
     @State private var processingFeeCents: Int = 0
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
+    @State private var timeSlots: [TimeSlot] = []
+    @State private var selectedTimeSlot: TimeSlot?
+    @State private var isLoadingTimeSlots = false
 
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { 
@@ -109,22 +113,41 @@ struct ListingDetailView: View {
                         Spacer()
 
                         VStack(alignment: .trailing) {
-                            Text("$\(listing.price, specifier: "%.2f")")
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundColor(Color("ThemeColor"))
-                            
-                            // Always show estimated processing fee
-                            let estimatedFee = listing.price * 0.029 + 0.30 // 2.9% + $0.30
-                            let totalWithFee = listing.price + estimatedFee
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("+ $\(estimatedFee, specifier: "%.2f") fee")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Text("Total: $\(totalWithFee, specifier: "%.2f")")
+                            if AppConfig.enableSeekMode && listing.intent == .seek {
+                                // Show budget for seek posts
+                                if let min = listing.budgetMin, let max = listing.budgetMax {
+                                    Text("$\(min, specifier: "%.0f") - $\(max, specifier: "%.0f")")
+                                        .font(.title)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Color("ThemeColor"))
+                                } else if let max = listing.budgetMax {
+                                    Text("Up to $\(max, specifier: "%.0f")")
+                                        .font(.title)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Color("ThemeColor"))
+                                }
+                                Text("Budget")
                                     .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                // Show price for offer posts
+                                Text("$\(listing.price, specifier: "%.2f")")
+                                    .font(.title)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Color("ThemeColor"))
+                                
+                                // Always show estimated processing fee
+                                let estimatedFee = listing.price * 0.029 + 0.30 // 2.9% + $0.30
+                                let totalWithFee = listing.price + estimatedFee
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("+ $\(estimatedFee, specifier: "%.2f") fee")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("Total: $\(totalWithFee, specifier: "%.2f")")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                }
                             }
 
                             if listing.isSold {
@@ -235,16 +258,92 @@ struct ListingDetailView: View {
                 .cornerRadius(12)
 
                 // Actions
-                ActionButtonRow(
-                    listing: listing,
-                    isOwnListing: isOwnListing,
-                    isContactingLoading: isContactingSeller,
-                    isPrimaryActionLoading: isPrimaryActionLoading,
-                    onContactSeller: { handleContactSeller() },
-                    onPrimaryAction: { handlePrimaryAction() },
-                    onEditListing: isOwnListing ? { handleEditListing() } : nil,
-                    onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
-                )
+                if AppConfig.enableSeekMode && listing.intent == .seek && !isOwnListing {
+                    // Seek post actions for non-owners
+                    VStack(spacing: 12) {
+                        Button(action: handleOfferMyItem) {
+                            HStack {
+                                Image(systemName: "tag.fill")
+                                Text("Offer My Item")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color("ThemeColor"))
+                            .cornerRadius(12)
+                        }
+                        
+                        Button(action: handleContactSeller) {
+                            HStack {
+                                Image(systemName: "message.fill")
+                                Text("Contact Seeker")
+                            }
+                            .font(.headline)
+                            .foregroundColor(Color("ThemeColor"))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color("ThemeColor"), lineWidth: 2)
+                            )
+                        }
+                    }
+                } else if AppConfig.enableSeekMode && listing.intent == .seek && isOwnListing {
+                    // Seek post actions for owner
+                    VStack(spacing: 12) {
+                        Button(action: handleViewOffers) {
+                            HStack {
+                                Image(systemName: "envelope.badge")
+                                Text("View Offers")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color("ThemeColor"))
+                            .cornerRadius(12)
+                        }
+                        
+                        HStack(spacing: 12) {
+                            Button(action: handleEditListing) {
+                                Text("Edit")
+                                    .font(.headline)
+                                    .foregroundColor(Color("ThemeColor"))
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color("ThemeColor"), lineWidth: 2)
+                                    )
+                            }
+                            
+                            Button(action: handleDeleteListing) {
+                                Text("Delete")
+                                    .font(.headline)
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.red, lineWidth: 2)
+                                    )
+                            }
+                        }
+                    }
+                } else {
+                    // Regular offer post actions
+                    ActionButtonRow(
+                        listing: listing,
+                        isOwnListing: isOwnListing,
+                        isContactingLoading: isContactingSeller,
+                        isPrimaryActionLoading: isPrimaryActionLoading,
+                        onContactSeller: { handleContactSeller() },
+                        onPrimaryAction: { handlePrimaryAction() },
+                        onEditListing: isOwnListing ? { handleEditListing() } : nil,
+                        onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
+                    )
+                }
 
                 Spacer(minLength: 100)
             }
@@ -311,10 +410,9 @@ struct ListingDetailView: View {
                     onContactSeller: {
                         // Navigate to chat with seller
                         if let order = createdOrder {
-                            // TODO: Navigate to chat
-                            #if DEBUG
-                            print("📱 Navigate to chat for order: \(order.id)")
-                            #endif
+                            Task {
+                                await handleContactSellerFromOrder(order)
+                            }
                         }
                     }
                 )
@@ -327,6 +425,22 @@ struct ListingDetailView: View {
                     dismiss()
                 }
                 .environmentObject(authManager)
+                
+            case .timeSlotSelection:
+                TimeSlotSelectionView(
+                    listing: listing,
+                    timeSlots: timeSlots,
+                    onSlotSelected: { slot in
+                        selectedTimeSlot = slot
+                        activeSheet = nil
+                        // After slot selection, show payment method sheet
+                        showPaymentMethodSheet = true
+                    },
+                    onCancel: {
+                        activeSheet = nil
+                        selectedTimeSlot = nil
+                    }
+                )
             }
         }
 
@@ -384,6 +498,18 @@ struct ListingDetailView: View {
     
     private func handleDeleteListing() {
         showDeleteAlert = true
+    }
+    
+    // MARK: - Seek Mode Actions (Phase 2)
+    
+    private func handleOfferMyItem() {
+        // Phase 3: Navigate to OfferComposeView
+        print("📦 Offer My Item - Coming Soon!")
+    }
+    
+    private func handleViewOffers() {
+        // Phase 3: Navigate to OffersListView
+        print("📋 View Offers - Coming Soon!")
     }
     
     private func deleteListing() async {
@@ -508,17 +634,86 @@ struct ListingDetailView: View {
             }
         }
     }
+    
+    private func handleContactSellerFromOrder(_ order: Order) async {
+        isContactingSeller = true
+
+        if let userId = authManager.session?.user.id.uuidString {
+            await conversationViewModel.initialize(userId: userId)
+
+            if let conversation = await conversationViewModel.getOrCreateConversation(for: listing) {
+                await MainActor.run {
+                    isContactingSeller = false
+                    // Dismiss the purchase confirmation first
+                    activeSheet = nil
+                    createdOrder = nil
+                    selectedPaymentMethod = nil
+                    // Then open chat
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        activeSheet = .chat(conversation)
+                    }
+                    #if DEBUG
+                    print("✅ Opening chat for order: \(order.id)")
+                    #endif
+                }
+            } else {
+                await MainActor.run {
+                    isContactingSeller = false
+                    purchaseError = "Failed to start conversation. Please try again."
+                    showErrorAlert = true
+                    #if DEBUG
+                    print("❌ Failed to create/find conversation for order: \(order.id)")
+                    #endif
+                }
+            }
+        } else {
+            await MainActor.run {
+                isContactingSeller = false
+                purchaseError = "You must be logged in to contact the seller."
+                showErrorAlert = true
+            }
+        }
+    }
 
     private func handlePrimaryAction() {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
         if listing.listingType == .product {
-            // Show payment method selection instead of direct Stripe payment
+            // Show payment method selection for products
             showPaymentMethodSheet = true
-        } else {
-            // Service booking - show payment method selection
-            showPaymentMethodSheet = true
+        } else if listing.listingType == .service {
+            // Check if this is a slot-based service
+            if listing.serviceType == .slots {
+                // Show time slot selection first
+                loadTimeSlots()
+                activeSheet = .timeSlotSelection
+            } else {
+                // Calendar-based service - show payment method selection directly
+                showPaymentMethodSheet = true
+            }
+        }
+    }
+    
+    private func loadTimeSlots() {
+        guard listing.serviceType == .slots else { return }
+        
+        isLoadingTimeSlots = true
+        
+        Task {
+            do {
+                let slots = try await timeSlotService.getTimeSlotsForListing(listing.id)
+                await MainActor.run {
+                    self.timeSlots = slots
+                    self.isLoadingTimeSlots = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.purchaseError = "Failed to load time slots: \(error.localizedDescription)"
+                    self.showErrorAlert = true
+                    self.isLoadingTimeSlots = false
+                }
+            }
         }
     }
 
@@ -571,7 +766,8 @@ struct ListingDetailView: View {
             buyerId: currentUserId,
             sellerId: UUID(uuidString: listing.user.id) ?? UUID(),
             priceCents: priceCents,
-            paymentMethod: .wallet
+            paymentMethod: .wallet,
+            timeSlotId: selectedTimeSlot?.id
         )
         
         let order = try await orderService.createOrder(orderCreate)
@@ -635,7 +831,8 @@ struct ListingDetailView: View {
                                         buyerId: currentUserId,
                                         sellerId: UUID(uuidString: listing.user.id) ?? UUID(),
                                         priceCents: basePriceCents,
-                                        paymentMethod: .card
+                                        paymentMethod: .card,
+                                        timeSlotId: selectedTimeSlot?.id
                                     )
                                     
                                     let order = try await orderService.createOrder(orderCreate)
@@ -723,6 +920,7 @@ enum ActiveSheet: Identifiable {
     case purchaseConfirmation
     case chat(Conversation)
     case editListing
+    case timeSlotSelection
 
     var id: String {
         switch self {
@@ -730,6 +928,7 @@ enum ActiveSheet: Identifiable {
         case .purchaseConfirmation: return "purchaseConfirmation"
         case let .chat(conversation): return "chat:\(conversation.id)"
         case .editListing: return "editListing"
+        case .timeSlotSelection: return "timeSlotSelection"
         }
     }
 }

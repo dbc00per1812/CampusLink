@@ -11,14 +11,34 @@ struct HomeTabView: View {
     @State private var isLoadingMore = false
     @State private var hasMorePages = true
     @State private var currentPage = 0
+    
+    // Seek mode filter (Phase 2)
+    @State private var selectedFilter: ListingFilter = .all
 
     private let pageSize = 10
     private let enableDomainFilter = false  // Disabled for v1.0 release
+    
+    enum ListingFilter: String, CaseIterable {
+        case all = "All"
+        case forSale = "For Sale"
+        case wanted = "Wanted"
+        
+        var intentFilter: ListingIntent? {
+            switch self {
+            case .all: return nil
+            case .forSale: return .offer
+            case .wanted: return .seek
+            }
+        }
+    }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
                 headerView()
+                if AppConfig.enableSeekMode {
+                    filterView()
+                }
                 contentView()
             }
             // keep this screen interactable even if a parent mistakenly disabled it
@@ -37,6 +57,33 @@ struct HomeTabView: View {
 // MARK: - Sections
 
 extension HomeTabView {
+    @ViewBuilder
+    private func filterView() -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(ListingFilter.allCases, id: \.self) { filter in
+                    Button(action: {
+                        selectedFilter = filter
+                        Task { await refreshListings() }
+                    }) {
+                        Text(filter.rawValue)
+                            .font(.subheadline)
+                            .fontWeight(selectedFilter == filter ? .semibold : .regular)
+                            .foregroundColor(selectedFilter == filter ? .white : Color("ThemeColor"))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(selectedFilter == filter ? Color("ThemeColor") : Color("ThemeColor").opacity(0.1))
+                            )
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+    }
+    
     @ViewBuilder
     private func headerView() -> some View {
         let userEmail = authManager.session?.user.email
@@ -165,6 +212,11 @@ extension HomeTabView {
                     user:users(*)
                 """)
                 .eq("status", value: "active")
+                
+            // Apply intent filter (Phase 2)
+            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                query = query.eq("intent", value: intent.rawValue)
+            }
 
             if enableDomainFilter {
                 var userEmail: String? = authManager.session?.user.email
@@ -226,13 +278,20 @@ extension HomeTabView {
             let from = currentPage * pageSize
             let to = from + pageSize - 1
 
-            let response: [ListingWithUser] = try await supabase
+            var query = supabase
                 .from("listings")
                 .select("""
                     *,
                     user:users(*)
                 """)
                 .eq("status", value: "active")
+                
+            // Apply intent filter (Phase 2)
+            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                query = query.eq("intent", value: intent.rawValue)
+            }
+            
+            let response: [ListingWithUser] = try await query
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -311,14 +370,33 @@ struct ListingCard: View {
                 HStack {
                     Text(listing.title).font(.headline).lineLimit(2)
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("$\(listing.price, specifier: "%.2f")")
-                            .font(.title3).fontWeight(.bold)
-                            .foregroundColor(Color("ThemeColor"))
-                        let totalWithFee = listing.price * 1.029 + 0.30 // Include 2.9% + $0.30
-                        Text("$\(totalWithFee, specifier: "%.2f") total")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                    if AppConfig.enableSeekMode && listing.intent == .seek {
+                        // Show budget for seek posts
+                        VStack(alignment: .trailing, spacing: 2) {
+                            if let min = listing.budgetMin, let max = listing.budgetMax {
+                                Text("$\(min, specifier: "%.0f")-$\(max, specifier: "%.0f")")
+                                    .font(.title3).fontWeight(.bold)
+                                    .foregroundColor(Color("ThemeColor"))
+                            } else if let max = listing.budgetMax {
+                                Text("Up to $\(max, specifier: "%.0f")")
+                                    .font(.title3).fontWeight(.bold)
+                                    .foregroundColor(Color("ThemeColor"))
+                            }
+                            Text("Budget")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        // Show price for offer posts
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("$\(listing.price, specifier: "%.2f")")
+                                .font(.title3).fontWeight(.bold)
+                                .foregroundColor(Color("ThemeColor"))
+                            let totalWithFee = listing.price * 1.029 + 0.30 // Include 2.9% + $0.30
+                            Text("$\(totalWithFee, specifier: "%.2f") total")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
 
@@ -326,15 +404,38 @@ struct ListingCard: View {
                     .font(.body).foregroundColor(.secondary).lineLimit(3)
 
                 HStack {
-                    Text(listing.category)
-                        .font(.caption)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color("ThemeColor").opacity(0.2))
-                        .foregroundColor(Color("ThemeColor"))
-                        .cornerRadius(6)
+                    HStack(spacing: 6) {
+                        if AppConfig.enableSeekMode && listing.intent == .seek {
+                            Text("Wanted")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(6)
+                        }
+                        
+                        Text(listing.category)
+                            .font(.caption)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color("ThemeColor").opacity(0.2))
+                            .foregroundColor(Color("ThemeColor"))
+                            .cornerRadius(6)
+                    }
+                    
                     Spacer()
-                    Text("by \(listing.user.name ?? "Unknown")")
-                        .font(.caption).foregroundColor(.secondary)
+                    
+                    HStack(spacing: 4) {
+                        Text("by \(listing.user.name ?? "Unknown")")
+                            .font(.caption).foregroundColor(.secondary)
+                        
+                        if AppConfig.enableSeekMode && listing.intent == .seek,
+                           let expiresAt = listing.expiresAt {
+                            Text("• Expires \(expiresAt, style: .relative)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 12)

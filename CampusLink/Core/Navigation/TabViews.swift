@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Supabase
 
 struct SearchView: View {
     var body: some View {
@@ -29,19 +30,153 @@ struct PostView: View {
     @State private var serviceDuration = ""
     @State private var selectedServiceLocation = ServiceLocation.onCampus
     @State private var serviceAvailability = ""
+    @State private var selectedServiceType = ServiceType.calendar
+    @State private var slotsAvailable = ""
+    @State private var maxBookingsPerSlot = ""
     @State private var selectedImage: PhotosPickerItem?
     @State private var listingImage: UIImage?
     @State private var isLoading = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var navigateToHome = false
+    @State private var userProfile: User? = nil
+    @State private var isLoadingProfile = true
+    @State private var shouldShowPayoutSetup = false
+    @State private var stripeConnectComplete = false
+    
+    // Seek mode states (Phase 0)
+    @State private var selectedIntent: ListingIntent = .offer
+    @State private var budgetMin = ""
+    @State private var budgetMax = ""
+    @State private var expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60) // 7 days default
     
     // Add focus state for keyboard dismissal
     @FocusState private var isTextFieldFocused: Bool
     
-    let categories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Other"]
+    let categories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
+    
+    // Computed property for button disabled state
+    private var isDisabled: Bool {
+        if isLoading || title.isEmpty || description.isEmpty {
+            return true
+        }
+        
+        if AppConfig.enableSeekMode && selectedIntent == .seek {
+            // For seeks, require at least max budget
+            return budgetMax.isEmpty
+        } else {
+            // For offers, require price
+            return price.isEmpty
+        }
+    }
+    
+    // Helper for button text
+    private func getButtonText() -> String {
+        if AppConfig.enableSeekMode && selectedIntent == .seek {
+            return "Post Wanted"
+        } else {
+            return "Post Listing"
+        }
+    }
     
     var body: some View {
+        NavigationView {
+            if isLoadingProfile {
+                VStack {
+                    ProgressView()
+                        .scaleEffect(1.2)
+                    Text("Checking account status...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if shouldShowPayoutSetup {
+                payoutRequiredView
+            } else {
+                postingFormView
+            }
+        }
+        .onAppear {
+            Task { await checkStripeConnectStatus() }
+        }
+    }
+    
+    private var payoutRequiredView: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "creditcard.circle")
+                .font(.system(size: 80))
+                .foregroundColor(Color("ThemeColor"))
+            
+            VStack(spacing: 12) {
+                Text("Payout Setup Required")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text("To protect buyers and ensure secure transactions, you must set up payouts before posting listings.")
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+            }
+            
+            VStack(spacing: 16) {
+                Text("How to get started:")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("1.")
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                        Text("Go to the Wallet tab")
+                    }
+                    
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("2.")
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                        Text("Complete Stripe Connect onboarding")
+                    }
+                    
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("3.")
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                        Text("Return here to start posting!")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
+            }
+            
+            Text("Tap the Wallet tab at the bottom to get started")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(Color("ThemeColor"))
+                .multilineTextAlignment(.center)
+                .padding()
+                .background(Color("ThemeColor").opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal, 32)
+            
+            Button("Refresh Status") {
+                Task { 
+                    print("🔄 User clicked Refresh Status button")
+                    await checkStripeConnectStatus()
+                }
+            }
+            .foregroundColor(Color("ThemeColor"))
+            .padding(.top, 8)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private var postingFormView: some View {
         ScrollView {
             VStack(spacing: 20) {
                 // Title
@@ -50,6 +185,17 @@ struct PostView: View {
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
+                
+                // Intent Picker (Phase 0 - hidden by default)
+                if AppConfig.enableSeekMode {
+                    Picker("Intent", selection: $selectedIntent) {
+                        ForEach(ListingIntent.allCases, id: \.self) { intent in
+                            Text(intent.displayName).tag(intent)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal)
+                }
                 
                     // Photo Section
                     VStack(spacing: 12) {
@@ -173,8 +319,62 @@ struct PostView: View {
                                     .background(Color(UIColor.systemGray6))
                                     .cornerRadius(12)
                             }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Service Type")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                                
+                                Picker("Service Type", selection: $selectedServiceType) {
+                                    ForEach(ServiceType.allCases, id: \.self) { type in
+                                        VStack(alignment: .leading) {
+                                            Text(type.displayName)
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                            Text(type.description)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .tag(type)
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .padding()
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(12)
+                            }
+                            
+                            // Slot Configuration (only for slots service type)
+                            if selectedServiceType == .slots {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Number of Time Slots Available")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    TextField("e.g., 5, 10, 20", text: $slotsAvailable)
+                                        .focused($isTextFieldFocused)
+                                        .keyboardType(.numberPad)
+                                        .padding()
+                                        .background(Color(UIColor.systemGray6))
+                                        .cornerRadius(12)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Maximum Bookings per Slot")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    TextField("e.g., 1, 2, 5 (leave empty for unlimited)", text: $maxBookingsPerSlot)
+                                        .focused($isTextFieldFocused)
+                                        .keyboardType(.numberPad)
+                                        .padding()
+                                        .background(Color(UIColor.systemGray6))
+                                        .cornerRadius(12)
+                                }
+                            }
                         }
                         
+                        // Price for Offer or Budget for Seek
+                        if !AppConfig.enableSeekMode || selectedIntent == .offer {
+                            // Original price field for selling
                         HStack(spacing: 16) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Price")
@@ -185,7 +385,7 @@ struct PostView: View {
                                         .font(.title2)
                                         .foregroundColor(.secondary)
                                     TextField("0.00", text: $price)
-                                        .focused($isTextFieldFocused)
+                                            .focused($isTextFieldFocused)
                                         .keyboardType(.decimalPad)
                                 }
                                 .padding()
@@ -206,6 +406,74 @@ struct PostView: View {
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
+                                }
+                            }
+                        } else {
+                            // Budget fields for seeking
+                            VStack(spacing: 16) {
+                                HStack(spacing: 16) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Min Budget (Optional)")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        HStack {
+                                            Text("$")
+                                                .font(.title2)
+                                                .foregroundColor(.secondary)
+                                            TextField("0.00", text: $budgetMin)
+                                                .focused($isTextFieldFocused)
+                                                .keyboardType(.decimalPad)
+                                        }
+                                        .padding()
+                                        .background(Color(UIColor.systemGray6))
+                                        .cornerRadius(12)
+                                    }
+                                    
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Max Budget")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        HStack {
+                                            Text("$")
+                                                .font(.title2)
+                                                .foregroundColor(.secondary)
+                                            TextField("0.00", text: $budgetMax)
+                                                .focused($isTextFieldFocused)
+                                                .keyboardType(.decimalPad)
+                                        }
+                                        .padding()
+                                        .background(Color(UIColor.systemGray6))
+                                        .cornerRadius(12)
+                                    }
+                                }
+                                
+                                HStack(spacing: 16) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Category")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        Picker("Category", selection: $selectedCategory) {
+                                            ForEach(categories, id: \.self) { category in
+                                                Text(category).tag(category)
+                                            }
+                                        }
+                                        .pickerStyle(MenuPickerStyle())
+                                        .padding()
+                                        .background(Color(UIColor.systemGray6))
+                                        .cornerRadius(12)
+                                    }
+                                    
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Expires")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        DatePicker("", selection: $expiresDate, in: Date()..., displayedComponents: .date)
+                                            .labelsHidden()
+                                            .padding()
+                                            .background(Color(UIColor.systemGray6))
+                                            .cornerRadius(12)
+                                    }
+                                }
                             }
                         }
                         
@@ -213,6 +481,13 @@ struct PostView: View {
                         Button(action: {
                             // Dismiss keyboard first
                             isTextFieldFocused = false
+                            
+                            // Phase 0: Block seek posts until DB is ready
+                            if AppConfig.enableSeekMode && selectedIntent == .seek {
+                                alertMessage = "Seek mode is coming soon! This feature is currently under development."
+                                showingAlert = true
+                                return
+                            }
                             
                             Task {
                                 await createListing()
@@ -224,7 +499,7 @@ struct PostView: View {
                                         .scaleEffect(0.8)
                                         .foregroundColor(.white)
                                 }
-                                Text(isLoading ? "Posting..." : "Post Listing")
+                                Text(isLoading ? "Posting..." : getButtonText())
                             }
                             .fontWeight(.bold)
                             .foregroundColor(.white)
@@ -233,8 +508,8 @@ struct PostView: View {
                             .background(Color("ThemeColor"))
                             .cornerRadius(25)
                         }
-                        .disabled(isLoading || title.isEmpty || description.isEmpty || price.isEmpty)
-                        .opacity((title.isEmpty || description.isEmpty || price.isEmpty) ? 0.6 : 1.0)
+                        .disabled(isDisabled)
+                        .opacity(isDisabled ? 0.6 : 1.0)
                     }
                     .padding(.horizontal)
                 }
@@ -253,13 +528,188 @@ struct PostView: View {
                 }
             }
             .alert(isPresented: $showingAlert) {
-                Alert(
-                    title: Text(alertMessage.contains("successfully") ? "Success" : "Error"), 
-                    message: Text(alertMessage), 
-                    dismissButton: .default(Text("OK"))
+            Alert(
+                title: Text(alertMessage.contains("successfully") ? "Success" : "Error"), 
+                message: Text(alertMessage), 
+                dismissButton: .default(Text("OK"))
+            )
+        }
+    }
+    
+    private func loadUserProfile() async {
+        guard let userId = authManager.session?.user.id.uuidString else { 
+            print("❌ No user ID found in session")
+            return 
+        }
+        
+        print("🔄 Loading user profile for ID: \(userId)")
+        
+        await MainActor.run {
+            isLoadingProfile = true
+        }
+        
+        do {
+            let profile: User = try await supabase
+                .from("users")
+                .select()
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            
+            print("✅ User profile loaded:")
+            print("   - ID: \(profile.id)")
+            print("   - Name: \(profile.name ?? "nil")")
+            print("   - Email: \(profile.email ?? "nil")")
+            print("   - Stripe Connect ID: \(profile.stripeConnectId ?? "nil")")
+            print("   - Stripe Payouts Enabled: \(profile.stripePayoutsEnabled ?? false)")
+            print("   - Stripe Details Submitted: \(profile.stripeDetailsSubmitted ?? false)")
+            
+            await MainActor.run {
+                self.userProfile = profile
+                self.isLoadingProfile = false
+            }
+        } catch {
+            print("❌ Failed to load user profile: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            await MainActor.run {
+                self.isLoadingProfile = false
+                // Set userProfile to a default state so we don't block the user completely
+                self.userProfile = User(
+                    id: userId,
+                    name: nil,
+                    bio: nil,
+                    profilePic: nil,
+                    email: nil,
+                    createdAt: Date(),
+                    campusEmailVerified: false,
+                    trustScore: nil,
+                    stripeConnectId: nil,
+                    stripePayoutsEnabled: false,
+                    stripeDetailsSubmitted: false
                 )
             }
+        }
     }
+    
+    private func checkStripeConnectStatus() async {
+        print("🔄 Checking Stripe Connect status...")
+        
+        await MainActor.run {
+            isLoadingProfile = true
+            shouldShowPayoutSetup = false
+        }
+        
+        // First, load the user profile to get stripe_connect_id
+        guard let userId = authManager.session?.user.id.uuidString else {
+            print("❌ No user ID found")
+            await MainActor.run {
+                isLoadingProfile = false
+                shouldShowPayoutSetup = true
+            }
+            return
+        }
+        
+        do {
+            // Load user profile
+            let profile: User = try await supabase
+                .from("users")
+                .select()
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            
+            self.userProfile = profile
+            
+            print("✅ User profile loaded: stripe_connect_id = \(profile.stripeConnectId ?? "nil")")
+            
+            // Call connect_onboarding to check status
+            struct OnboardingReq: Encodable { 
+                let return_url: String = "campuslink://wallet/onboarding-complete"
+                let refresh_url: String = "campuslink://wallet/onboarding-refresh"
+            }
+            struct OnboardingRes: Decodable { 
+                let onboarding_url: String?
+                let account_id: String?
+                let onboarding_complete: Bool?
+                let payouts_enabled: Bool?
+            }
+            
+            let response: OnboardingRes = try await supabase.functions.invoke(
+                "connect_onboarding",
+                options: FunctionInvokeOptions(
+                    method: .post,
+                    body: OnboardingReq()
+                )
+            )
+            
+            print("✅ Connect onboarding response:")
+            print("   - onboarding_complete: \(response.onboarding_complete ?? false)")
+            print("   - payouts_enabled: \(response.payouts_enabled ?? false)")
+            print("   - account_id: \(response.account_id ?? "nil")")
+            print("   - has onboarding_url: \(response.onboarding_url != nil)")
+            
+            // The Edge Function returns onboarding_complete: true when ready
+            let isComplete = response.onboarding_complete == true
+            
+            if isComplete {
+                print("✅ Stripe Connect is complete!")
+                
+                // Always update the database when Stripe says it's complete
+                print("🔄 Updating user profile with Stripe status...")
+                
+                struct UserUpdate: Encodable {
+                    let stripe_payouts_enabled: Bool = true
+                    let stripe_details_submitted: Bool = true
+                }
+                
+                try await supabase
+                    .from("users")
+                    .update(UserUpdate())
+                    .eq("id", value: userId)
+                    .execute()
+                
+                print("✅ User profile updated successfully")
+                
+                // Reload the profile to get the updated data
+                let updatedProfile: User = try await supabase
+                    .from("users")
+                    .select()
+                    .eq("id", value: userId)
+                    .single()
+                    .execute()
+                    .value
+                
+                self.userProfile = updatedProfile
+                print("✅ Reloaded profile: stripe_payouts_enabled = \(updatedProfile.stripePayoutsEnabled ?? false)")
+            } else {
+                print("⚠️ Stripe Connect is NOT complete")
+            }
+            
+            await MainActor.run {
+                self.stripeConnectComplete = isComplete
+                self.shouldShowPayoutSetup = !isComplete
+                self.isLoadingProfile = false
+                
+                if !isComplete {
+                    print("⚠️ Showing payout setup screen because Stripe Connect is not complete")
+                }
+            }
+            
+        } catch {
+            print("❌ Error checking Stripe status: \(error)")
+            await MainActor.run {
+                // Default to showing payout setup on error
+                self.shouldShowPayoutSetup = true
+                self.isLoadingProfile = false
+                self.alertMessage = "Failed to verify payout status. Please try again."
+                self.showingAlert = true
+            }
+        }
+    }
+    
+    
     
     private func loadImage(from item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self),
@@ -317,7 +767,16 @@ struct PostView: View {
                 listingType: selectedListingType,
                 serviceDuration: selectedListingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
                 serviceLocation: selectedListingType == .service ? selectedServiceLocation : nil,
-                serviceAvailability: selectedListingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil
+                serviceAvailability: selectedListingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil,
+                serviceType: selectedListingType == .service ? selectedServiceType : nil,
+                slotsAvailable: selectedListingType == .service && selectedServiceType == .slots ? (slotsAvailable.isEmpty ? nil : Int(slotsAvailable)) : nil,
+                maxBookingsPerSlot: selectedListingType == .service && selectedServiceType == .slots ? (maxBookingsPerSlot.isEmpty ? nil : Int(maxBookingsPerSlot)) : nil,
+                archived: false,
+                // Seek mode fields (Phase 2)
+                intent: selectedIntent,
+                budgetMin: selectedIntent == .seek ? (budgetMin.isEmpty ? nil : Double(budgetMin)) : nil,
+                budgetMax: selectedIntent == .seek ? (budgetMax.isEmpty ? nil : Double(budgetMax)) : nil,
+                expiresAt: selectedIntent == .seek ? expiresDate : nil
             )
             
             try await supabase
@@ -351,8 +810,16 @@ struct PostView: View {
         serviceDuration = ""
         selectedServiceLocation = .onCampus
         serviceAvailability = ""
+        selectedServiceType = .calendar
+        slotsAvailable = ""
+        maxBookingsPerSlot = ""
         listingImage = nil
         selectedImage = nil
+        // Seek fields (Phase 0)
+        selectedIntent = .offer
+        budgetMin = ""
+        budgetMax = ""
+        expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60)
     }
 }
 
@@ -492,7 +959,16 @@ struct PaymentsView: View {
                         serviceDuration: listing.serviceDuration,
                         serviceLocation: listing.serviceLocation,
                         serviceAvailability: listing.serviceAvailability,
-                        createdAt: listing.createdAt
+                        serviceType: listing.serviceType,
+                        slotsAvailable: listing.slotsAvailable,
+                        maxBookingsPerSlot: listing.maxBookingsPerSlot,
+                        archived: listing.archived,
+                        createdAt: listing.createdAt,
+                        // Seek mode fields
+                        intent: listing.intent,
+                        budgetMin: listing.budgetMin,
+                        budgetMax: listing.budgetMax,
+                        expiresAt: listing.expiresAt
                     )
                 }
             }
@@ -550,10 +1026,10 @@ struct MyListingCard: View {
                             .font(.headline)
                             .lineLimit(2)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("$\(listing.price, specifier: "%.2f")")
-                                .font(.title3)
-                                .fontWeight(.bold)
-                                .foregroundColor(Color("ThemeColor"))
+                        Text("$\(listing.price, specifier: "%.2f")")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
                             let totalWithFee = listing.price * 1.029 + 0.30
                             Text("$\(totalWithFee, specifier: "%.2f") total")
                                 .font(.caption2)

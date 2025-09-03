@@ -423,3 +423,376 @@ All recommended fields and tables are already in place. The schema supports:
 - Full integration with payment and order system
 
 ### Status: ✅ DATABASE VERIFIED - READY FOR SERVICE IMPLEMENTATION
+
+## Phase 6: Service Flexibility Implementation (UI Updates)
+
+### Date: $(date +"%Y-%m-%d %H:%M")
+
+### Context
+User requested correlating UI updates after we implemented the database schema changes for service flexibility. This includes adding new service fields to the models and UI for creating/editing listings.
+
+### Changes Made
+
+#### 1. **Updated ProductModels.swift**
+- **Added ServiceType enum** with calendar and slots options:
+  ```swift
+  enum ServiceType: String, Codable, CaseIterable {
+      case calendar = "calendar"
+      case slots = "slots"
+      
+      var displayName: String {
+          switch self {
+          case .calendar: return "Calendar-based"
+          case .slots: return "Time Slots"
+          }
+      }
+      
+      var description: String {
+          switch self {
+          case .calendar: return "Flexible scheduling based on your availability"
+          case .slots: return "Pre-defined time slots with limited capacity"
+          }
+      }
+  }
+  ```
+
+- **Updated all listing models** (Listing, ListingCreate, ListingWithUser) to include:
+  - `serviceType: ServiceType?`
+  - `slotsAvailable: Int?`
+  - `maxBookingsPerSlot: Int?`
+  - `archived: Bool?`
+
+- **Updated CodingKeys** to map to database columns:
+  - `service_type`
+  - `slots_available`
+  - `max_bookings_per_slot`
+  - `archived`
+
+#### 2. **Updated PostView in TabViews.swift**
+- **Added new state variables**:
+  ```swift
+  @State private var selectedServiceType = ServiceType.calendar
+  @State private var slotsAvailable = ""
+  @State private var maxBookingsPerSlot = ""
+  ```
+
+- **Added service type UI fields** with conditional logic:
+  - Service Type picker with descriptions
+  - Slots configuration fields (only visible when service_type == .slots)
+  - Number pad keyboard for numeric inputs
+
+- **Updated createListing() function** to include new fields:
+  ```swift
+  serviceType: selectedListingType == .service ? selectedServiceType : nil,
+  slotsAvailable: selectedListingType == .service && selectedServiceType == .slots ? (slotsAvailable.isEmpty ? nil : Int(slotsAvailable)) : nil,
+  maxBookingsPerSlot: selectedListingType == .service && selectedServiceType == .slots ? (maxBookingsPerSlot.isEmpty ? nil : Int(maxBookingsPerSlot)) : nil,
+  archived: false
+  ```
+
+- **Updated clearForm()** to reset new fields
+
+#### 3. **Updated EditListingView.swift**
+- **Enhanced ListingUpdate struct** with new service fields
+- **Added state variables** for editing existing listings
+- **Added conditional UI fields** for service type and slot configuration
+- **Updated initialization** to populate fields from existing listing data
+- **Updated save function** to include new fields in database update
+
+### Key Features Implemented
+
+#### Service Type Selection
+- **Calendar-based**: Flexible scheduling for services like tutoring, consulting
+- **Time Slots**: Fixed slots with capacity limits for services like study sessions, workshops
+
+#### Slot Configuration (when service_type = "slots")
+- **Number of Time Slots**: How many different time slots are available
+- **Max Bookings per Slot**: Capacity limit per slot (optional for unlimited)
+
+#### Smart Field Visibility
+- Service fields only show when listing_type = "service"
+- Slot configuration only shows when service_type = "slots"
+- Maintains clean, intuitive UI flow
+
+### Database Integration
+- All new fields properly mapped to database columns
+- Safe handling of optional/nullable fields
+- Backward compatibility with existing listings (new fields are optional)
+
+### UI/UX Improvements
+- Clear field labels and placeholder text
+- Numeric keypad for slot-related fields
+- Descriptive picker options with explanations
+- Consistent styling with existing form fields
+
+### Testing Readiness
+The implementation is complete and ready for testing:
+- **Create new service listings** with both calendar and slots types
+- **Edit existing service listings** to add slot configuration
+- **Form validation** for numeric fields
+- **Database storage** of all new service fields
+
+### Next Steps
+Ready for user testing of the enhanced service creation/editing flow with the new flexibility options.
+
+### Status: ✅ SERVICE UI IMPLEMENTATION COMPLETE
+
+## Compilation Error Fixes
+
+### Date: $(date +"%Y-%m-%d %H:%M")
+
+### Issue
+After implementing the new service fields, there were compilation errors due to missing arguments in constructor calls for `Listing` and `ListingWithUser` objects.
+
+### Errors Fixed
+
+#### 1. **TabViews.swift - toggleSoldStatus function**
+- **Location**: Line ~820 in `toggleSoldStatus()` function
+- **Issue**: `Listing(...)` constructor missing new service fields
+- **Fix**: Added missing parameters:
+  ```swift
+  serviceType: listing.serviceType,
+  slotsAvailable: listing.slotsAvailable,
+  maxBookingsPerSlot: listing.maxBookingsPerSlot,
+  archived: listing.archived,
+  ```
+
+#### 2. **ActionButton.swift - Preview data**
+- **Location**: Line ~240 in `ActionButton_Previews`
+- **Issue**: `ListingWithUser(...)` constructor in preview missing new service fields
+- **Fix**: Added missing parameters:
+  ```swift
+  serviceType: nil,
+  slotsAvailable: nil,
+  maxBookingsPerSlot: nil,
+  archived: false,
+  ```
+
+### Verification
+- ✅ All linting errors resolved
+- ✅ No compilation errors found
+- ✅ All constructor calls now include required service fields
+
+### Status: ✅ ALL COMPILATION ERRORS FIXED
+
+## Phase 7: Time Slot Booking System Implementation
+
+### Date: $(date +"%Y-%m-%d %H:%M")
+
+### Context
+User requested implementation of the buyer-facing time slot selection interface. Previously, we had only implemented the seller side (posting services with time slots), but buyers had no way to select specific time slots when booking slot-based services.
+
+### Major Features Implemented
+
+#### 1. **Time Slot Data Models** (`TimeSlotModels.swift`)
+- **TimeSlot**: Core model representing available time slots
+  - Properties: start/end time, max bookings, current bookings, status
+  - Computed properties: isAvailable, spotsRemaining, formatted strings
+- **TimeSlotBooking**: Represents individual user bookings
+  - Statuses: reserved (temp), confirmed (paid), cancelled, completed
+- **SlotStatus & BookingStatus**: Enums with display properties
+- **API Models**: TimeSlotCreate, SlotBookingCreate for database operations
+
+#### 2. **Time Slot Service** (`TimeSlotService.swift`)
+- **Core Functionality**:
+  - `getTimeSlotsForListing()`: Fetch available slots for a service
+  - `reserveTimeSlot()`: Temporarily reserve a slot (10-min expiration)
+  - `confirmBooking()`: Confirm reservation after payment
+  - `cancelReservation()`: Cancel temporary reservation
+  - `cleanupExpiredReservations()`: Remove expired temp reservations
+- **Business Logic**:
+  - Prevents double-booking same user/slot
+  - Automatic booking count updates
+  - Slot status management (available → full)
+
+#### 3. **Time Slot Selection UI** (`TimeSlotSelectionView.swift`)
+- **Modern Interface**:
+  - Service header with photo, title, price
+  - Scrollable list of available time slots
+  - Real-time capacity display ("3/8 spots remaining")
+  - Visual status indicators (Available, Full, etc.)
+  - Slot selection with confirmation dialog
+- **Smart UX**:
+  - Empty state when no slots available
+  - Selected slot summary at bottom
+  - 10-minute reservation warning
+  - Disabled state for full/unavailable slots
+
+#### 4. **Enhanced Buyer Flow** (`ListingDetailView.swift`)
+- **Service Type Detection**:
+  - Calendar services: Direct payment (existing flow)
+  - Slot services: Time slot selection → payment
+- **New Flow**: Browse Service → Select Slot → Choose Payment → Confirm
+- **State Management**:
+  - Time slots loading/caching
+  - Selected slot preservation through payment flow
+  - Error handling for slot operations
+
+#### 5. **Order System Integration** (`OrderModels.swift` & `OrderService.swift`)
+- **Enhanced Models**:
+  - Added `timeSlotId` to Order, OrderCreate, OrderInsert
+  - Proper database column mapping
+  - Backward compatibility with non-slot orders
+- **Order Creation**: Links orders to specific time slots
+- **Future-ready**: Foundation for slot-specific order management
+
+#### 6. **Database Schema** (`time_slots_schema.sql`)
+- **New Tables**:
+  - `time_slots`: Core slot data with constraints
+  - `time_slot_bookings`: Individual user bookings
+- **Enhanced Orders**: Added `time_slot_id` foreign key
+- **Advanced Features**:
+  - Automatic booking count triggers
+  - Expired reservation cleanup function
+  - Comprehensive RLS policies
+  - Performance indexes
+
+### User Experience Flow
+
+#### **For Slot-Based Services:**
+```
+1. Browse Service Listing
+2. Tap "Book Service"
+3. → Time Slot Selection Interface Appears
+4. View available slots with capacity
+5. Select desired time slot
+6. Confirm reservation (10-min hold)
+7. → Payment Method Selection
+8. Complete payment
+9. → Booking Confirmed with Slot Details
+```
+
+#### **For Calendar Services:**
+```
+1. Browse Service Listing  
+2. Tap "Book Service"
+3. → Direct to Payment (existing flow)
+4. Complete payment
+5. → Coordinate timing separately with seller
+```
+
+### Technical Implementation Highlights
+
+#### **Smart UI Disclosure**
+- Time slot selection only appears for `serviceType == .slots`
+- Calendar services use existing direct payment flow
+- Seamless integration with existing payment system
+
+#### **Reservation System**
+- 10-minute temporary reservations prevent double-booking
+- Automatic cleanup of expired reservations
+- Real-time capacity tracking and updates
+
+#### **Database Integrity**
+- Foreign key relationships ensure data consistency
+- Triggers automatically maintain booking counts
+- RLS policies protect user data and seller permissions
+
+#### **Error Handling**
+- Graceful handling of slot unavailability
+- User-friendly error messages
+- Fallback to contact seller option
+
+### Current Status
+
+#### **✅ Fully Implemented**
+- Time slot data models and service logic
+- Modern, intuitive slot selection UI
+- Complete buyer booking flow for slot services
+- Order system integration with slot tracking
+- Database schema with advanced features
+
+#### **🚧 Requires Database Setup**
+- Run `time_slots_schema.sql` in Supabase to create tables
+- Apply RLS policies and triggers
+- Optionally add sample data for testing
+
+#### **📱 Ready for Testing**
+The implementation is complete and ready for end-to-end testing:
+1. Create slot-based service listings
+2. Browse and select time slots as buyer
+3. Complete payment with slot reservation
+4. Verify order includes slot information
+
+### Next Steps
+- Apply database schema in Supabase
+- Test complete slot booking flow
+- Add seller dashboard for managing time slots
+- Implement slot modification/cancellation features
+
+### Status: ✅ TIME SLOT BOOKING SYSTEM COMPLETE
+
+## Phase 0 - Seek Mode Feature Flag & Stubs (Completed)
+
+**Human explanation:** Added a feature flag to safely merge Seek UI while keeping it hidden until database supports NULL price for seek posts.
+
+**What was done:**
+1. Created `AppConfig.swift` with `enableSeekMode` flag (default false)
+2. Added `ListingIntent` enum (.offer/.seek) to ProductModels
+3. Added `Offer` model for seller responses to seeks
+4. Updated PostView with:
+   - Seek mode state variables (intent, budgetMin, budgetMax, expiresDate)
+   - Conditional UI showing Sell|Seek toggle when flag enabled
+   - Budget fields instead of price for seeks
+   - Validation and button text changes
+   - Guard to block seek posts with "coming soon" message
+5. Created stub components:
+   - `OfferComposeView` - for sellers to respond to seeks
+   - `OffersListView` - for seekers to view/manage offers
+
+**Key decisions:**
+- Feature flag defaults to false for safety
+- Seek UI is fully hidden when flag is off
+- When enabled, UI shows but posting is blocked with friendly message
+- All new code compiles without errors
+- Ready for Phase 1 database indexes
+
+**Next steps:** Run Phase 1 SQL in Supabase to add indexes and RLS policies.
+
+## Phase 2 - Client Models & UI (Completed)
+
+**Completed all Phase 2 tasks:**
+
+1. **✅ Updated Models with Seek Fields**
+   - Added `ListingIntent` enum (offer/seek)
+   - Added `Offer` struct for future use
+   - Updated `Listing`, `ListingCreate`, and `ListingWithUser` with:
+     - `intent: ListingIntent`
+     - `budgetMin: Double?`
+     - `budgetMax: Double?`
+     - `expiresAt: Date?`
+   - Fixed all compilation errors related to model changes
+
+2. **✅ Updated PostView createListing()**
+   - Modified `createListing()` in TabViews.swift to send new seek fields
+   - Updated `toggleSoldStatus()` to include seek fields
+   - Fixed ActionButton.swift preview data
+
+3. **✅ Added Feed/Profile Filters**
+   - Created `ListingFilter` enum in HomeTabView (All/For Sale/Wanted)
+   - Added filter UI with pills that toggle between filters
+   - Updated `loadListings()` and `loadMoreListings()` to apply intent filter
+   - Filter only shows when `AppConfig.enableSeekMode = true`
+
+4. **✅ Added Wanted Badges to Seek Cards**
+   - Updated ListingCard to show:
+     - Orange "Wanted" badge for seek posts
+     - Budget range instead of price
+     - Expiration date if available
+   - Proper formatting for budget ranges (min-max or "Up to max")
+
+5. **✅ Updated ListingDetailView**
+   - Shows budget instead of price for seek posts
+   - Added seek-specific action buttons:
+     - For sellers: "Offer My Item" and "Contact Seeker"
+     - For seekers: "View Offers", "Edit", and "Delete"
+   - Added stub functions for future implementation:
+     - `handleOfferMyItem()` - will navigate to OfferComposeView
+     - `handleViewOffers()` - will navigate to OffersListView
+
+**Technical Notes:**
+- All changes are feature-flagged behind `AppConfig.enableSeekMode`
+- UI properly handles both offer and seek posts
+- Code compiles without errors
+- Ready for Phase 3 database changes
+
+**Next steps:** Phase 3 - Update database constraint to allow null prices for seek posts.

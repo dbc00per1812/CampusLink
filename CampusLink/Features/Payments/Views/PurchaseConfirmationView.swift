@@ -311,7 +311,7 @@ struct PurchaseConfirmationView: View {
                 
                 Button(action: {
                     onContactSeller?()
-                    onDismiss()
+                    // Don't call onDismiss() immediately - let the chat navigation happen first
                 }) {
                     HStack {
                         Image(systemName: "message")
@@ -678,6 +678,7 @@ struct PurchaseConfirmationView_Previews: PreviewProvider {
             stripeEscrowAccountId: "escrow_sample_123",
             marketplaceFeeCents: 0,
             stripePaymentIntentId: "pi_sample_123",
+            timeSlotId: nil,
             listing: Listing.sampleListing
         )
     }
