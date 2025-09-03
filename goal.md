@@ -3,7 +3,7 @@
 ## 🎯 North-Star Objective  
 Build and maintain a **production-grade iOS Campus Marketplace** that lets college students safely buy and sell goods & services on-campus with **zero friction**—from sign-up to checkout—in under **60 seconds** on a fresh install.
 
----
+---M
 
 ### What Cursor Should Always Optimize For
 1. **Student Trust & Safety**  
