@@ -22,6 +22,10 @@ struct HomeTabView: View {
     @State private var isSearchActive = false
     @State private var showingSearchResults = false
     @State private var searchWorkItem: DispatchWorkItem?
+    
+    // Navigation states
+    @State private var selectedListing: ListingWithUser?
+    @State private var showingListingDetail = false
 
     private let pageSize = 10
     private let enableDomainFilter = false  // Disabled for v1.0 release
@@ -73,6 +77,11 @@ struct HomeTabView: View {
             }
         }
         .navigationBarHidden(true)
+        .navigationDestination(isPresented: $showingListingDetail) {
+            if let listing = selectedListing {
+                ListingDetailView(listing: listing)
+            }
+        }
         .sheet(isPresented: $showingSearchResults) {
             if AppConfig.enableSearch {
                 NavigationView {
@@ -80,7 +89,11 @@ struct HomeTabView: View {
                         searchQuery: searchQuery,
                         onListingTapped: { listing in
                             showingSearchResults = false
-                            // TODO: Navigate to listing detail
+                            // Navigate to listing detail after dismissing sheet
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                selectedListing = listing
+                                showingListingDetail = true
+                            }
                         }
                     )
                     .navigationTitle("Search Results")
