@@ -14,6 +14,9 @@ struct ProfileTabView: View {
     
     // Stats
     @State private var postsCount = 0
+    // Ratings
+    @State private var ratingsSummary: UserRatingsSummary?
+    @State private var isLoadingRatings = false
 
     var body: some View {
         NavigationView {
@@ -37,6 +40,9 @@ struct ProfileTabView: View {
             Task {
                 await loadUser()
                 await loadUserListings()
+                if AppConfig.enableRatings, let uid = authManager.currentUserId {
+                    await loadRatings(userId: uid)
+                }
             }
         }
         .sheet(isPresented: $showEditProfile) {
@@ -101,6 +107,15 @@ extension ProfileTabView {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
+                
+                // Ratings Summary (Phase 2)
+                if AppConfig.enableRatings {
+                    if let summary = ratingsSummary {
+                        RatingSummaryView(summary: summary)
+                    } else if isLoadingRatings {
+                        ProgressView().padding(.top, 4)
+                    }
+                }
             }
             
             // Edit Profile Button
@@ -117,6 +132,17 @@ extension ProfileTabView {
                     .cornerRadius(8)
             }
             .padding(.horizontal, 40)
+            
+            if AppConfig.enableRatings {
+                NavigationLink(destination: RatingsHistoryView(userId: authManager.currentUserId ?? "")) {
+                    HStack {
+                        Image(systemName: "list.bullet.rectangle")
+                        Text("View Ratings History")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(Color("ThemeColor"))
+                }
+            }
         }
         .padding(.vertical, 20)
         .padding(.horizontal, 16)
@@ -203,18 +229,43 @@ extension ProfileTabView {
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                     
-                    HStack(spacing: 4) {
-                        Text(String(format: "$%.2f", listing.price))
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.red)
-                        let totalWithFee = listing.price * 1.029 + 0.30
-                        Text("($\(totalWithFee, specifier: "%.2f") w/ fee)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    if AppConfig.enableSeekMode && listing.intent == .seek {
+                        // Show budget for seek posts
+                        HStack(spacing: 4) {
+                            if let min = listing.budgetMin, let max = listing.budgetMax {
+                                Text("$\(min, specifier: "%.0f")-$\(max, specifier: "%.0f")")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+                            } else if let max = listing.budgetMax {
+                                Text("Up to $\(max, specifier: "%.0f")")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+                            }
+                            Text("budget")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        // Show price for offer posts
+                        HStack(spacing: 4) {
+                            Text(String(format: "$%.2f", listing.price))
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.red)
+                            Text("($\(listing.price * 1.029 + 0.30, specifier: "%.2f") w/ fee)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
                     HStack(spacing: 8) {
+                        // Show "Buying" badge for seek posts
+                        if AppConfig.enableSeekMode && listing.intent == .seek {
+                            StatusBadge(text: "Buying", color: .orange)
+                        }
+                        
                         // Status badge - assuming listing has status
                         if listing.isSold {
                             StatusBadge(text: "Sold", color: .gray)
@@ -364,6 +415,16 @@ extension ProfileTabView {
             }
         } catch {
             print("Failed to load profile image: \(error)")
+        }
+    }
+    
+    private func loadRatings(userId: String) async {
+        await MainActor.run { isLoadingRatings = true }
+        do {
+            let summary = try await RatingService.shared.getUserRatingsSummary(userId: userId)
+            await MainActor.run { self.ratingsSummary = summary; self.isLoadingRatings = false }
+        } catch {
+            await MainActor.run { self.isLoadingRatings = false }
         }
     }
 }

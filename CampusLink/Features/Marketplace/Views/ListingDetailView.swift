@@ -137,30 +137,18 @@ struct ListingDetailView: View {
                                     .foregroundColor(Color("ThemeColor"))
                                 
                                 // Always show estimated processing fee
-                                let estimatedFee = listing.price * 0.029 + 0.30 // 2.9% + $0.30
-                                let totalWithFee = listing.price + estimatedFee
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text("+ $\(estimatedFee, specifier: "%.2f") fee")
+                                    Text("Est. total $\(listing.price + (listing.price * 0.029 + 0.30), specifier: "%.2f")")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
-                                    Text("Total: $\(totalWithFee, specifier: "%.2f")")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.primary)
                                 }
                             }
-
-                            if listing.isSold {
-                                Text("SOLD")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.red)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(6)
-                            }
                         }
+                    }
+                    
+                    // Seller rating summary (Phase 2)
+                    if AppConfig.enableRatings {
+                        SellerRatingSummaryView(userId: listing.user.id)
                     }
                 }
 
@@ -221,10 +209,6 @@ struct ListingDetailView: View {
                             Text(listing.user.name ?? "Unknown Seller")
                                 .font(.headline)
                                 .foregroundColor(.primary)
-
-                            Text(listing.user.email ?? "")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
 
                             Text("Member since \(formatDate(listing.createdAt))")
                                 .font(.caption)
@@ -348,6 +332,7 @@ struct ListingDetailView: View {
                 Spacer(minLength: 100)
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(false)

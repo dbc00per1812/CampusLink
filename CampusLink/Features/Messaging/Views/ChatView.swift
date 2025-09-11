@@ -83,6 +83,8 @@ struct ChatView: View {
         .hideKeyboardOnTap()
         .onAppear {
             if let userId = authManager.session?.user.id.uuidString { Task { await viewModel.initialize(userId: userId) } }
+            // Best-effort mark as read when view appears
+            Task { await viewModel.markMessagesAsRead() }
         }
     }
     
@@ -208,10 +210,15 @@ struct MessageBubble: View {
                 )
                 .frame(maxWidth: UIScreen.main.bounds.width * 0.72, alignment: isFromCurrentUser ? .trailing : .leading)
 
-            Text(timeString)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .padding(isFromCurrentUser ? .trailing : .leading, 6)
+            HStack(spacing: 6) {
+                Text(timeString)
+                if isFromCurrentUser, let _ = message.readAt {
+                    Text("Seen")
+                }
+            }
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .padding(isFromCurrentUser ? .trailing : .leading, 6)
         }
     }
 }
@@ -225,8 +232,13 @@ private struct AvatarView: View {
         ZStack {
             Circle()
                 .fill(Color(UIColor.systemGray5))
-            if let user = user, let first = user.name?.first?.uppercased() ?? user.email?.first?.uppercased() {
+            if let user = user, let first = user.name?.first?.uppercased() {
                 Text(first)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("?")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)

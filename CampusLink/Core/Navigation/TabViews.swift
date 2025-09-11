@@ -26,6 +26,8 @@ struct PostView: View {
     @State private var description = ""
     @State private var price = ""
     @State private var selectedCategory = "Electronics"
+    @State private var customCategory = ""
+    @State private var showingCustomCategoryField = false
     @State private var selectedListingType = ListingType.product
     @State private var serviceDuration = ""
     @State private var selectedServiceLocation = ServiceLocation.onCampus
@@ -53,7 +55,16 @@ struct PostView: View {
     // Add focus state for keyboard dismissal
     @FocusState private var isTextFieldFocused: Bool
     
-    let categories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
+    // Product categories
+    let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
+    
+    // Service categories
+    let serviceCategories = ["Tutoring", "Moving", "Cleaning", "Other"]
+    
+    // Computed property for current categories based on listing type
+    private var currentCategories: [String] {
+        selectedListingType == .product ? productCategories : serviceCategories
+    }
     
     // Computed property for button disabled state
     private var isDisabled: Bool {
@@ -73,7 +84,7 @@ struct PostView: View {
     // Helper for button text
     private func getButtonText() -> String {
         if AppConfig.enableSeekMode && selectedIntent == .seek {
-            return "Post Wanted"
+            return "Post Buying"
         } else {
             return "Post Listing"
         }
@@ -398,14 +409,27 @@ struct PostView: View {
                                     .font(.headline)
                                     .foregroundColor(.secondary)
                                 Picker("Category", selection: $selectedCategory) {
-                                    ForEach(categories, id: \.self) { category in
+                                    ForEach(currentCategories, id: \.self) { category in
                                         Text(category).tag(category)
+                                    }
+                                }
+                                .onChange(of: selectedCategory) { newValue in
+                                    showingCustomCategoryField = (newValue == "Other")
+                                    if newValue != "Other" {
+                                        customCategory = ""
                                     }
                                 }
                                 .pickerStyle(MenuPickerStyle())
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
+                                
+                                // Custom category text field (appears when "Other" is selected)
+                                if showingCustomCategoryField {
+                                    TextField("Enter custom category", text: $customCategory)
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        .padding(.top, 8)
+                                }
                                 }
                             }
                         } else {
@@ -453,14 +477,27 @@ struct PostView: View {
                                             .font(.headline)
                                             .foregroundColor(.secondary)
                                         Picker("Category", selection: $selectedCategory) {
-                                            ForEach(categories, id: \.self) { category in
+                                            ForEach(currentCategories, id: \.self) { category in
                                                 Text(category).tag(category)
+                                            }
+                                        }
+                                        .onChange(of: selectedCategory) { newValue in
+                                            showingCustomCategoryField = (newValue == "Other")
+                                            if newValue != "Other" {
+                                                customCategory = ""
                                             }
                                         }
                                         .pickerStyle(MenuPickerStyle())
                                         .padding()
                                         .background(Color(UIColor.systemGray6))
                                         .cornerRadius(12)
+                                        
+                                        // Custom category text field (appears when "Other" is selected)
+                                        if showingCustomCategoryField {
+                                            TextField("Enter custom category", text: $customCategory)
+                                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                                .padding(.top, 8)
+                                        }
                                     }
                                     
                                     VStack(alignment: .leading, spacing: 8) {
@@ -560,7 +597,6 @@ struct PostView: View {
             print("✅ User profile loaded:")
             print("   - ID: \(profile.id)")
             print("   - Name: \(profile.name ?? "nil")")
-            print("   - Email: \(profile.email ?? "nil")")
             print("   - Stripe Connect ID: \(profile.stripeConnectId ?? "nil")")
             print("   - Stripe Payouts Enabled: \(profile.stripePayoutsEnabled ?? false)")
             print("   - Stripe Details Submitted: \(profile.stripeDetailsSubmitted ?? false)")
@@ -762,7 +798,7 @@ struct PostView: View {
                 title: title,
                 description: description,
                 price: priceValue,
-                category: selectedCategory,
+                category: selectedCategory == "Other" && !customCategory.isEmpty ? customCategory : selectedCategory,
                 photo: photoURL,
                 listingType: selectedListingType,
                 serviceDuration: selectedListingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
@@ -806,6 +842,8 @@ struct PostView: View {
         description = ""
         price = ""
         selectedCategory = "Electronics"
+        customCategory = ""
+        showingCustomCategoryField = false
         selectedListingType = .product
         serviceDuration = ""
         selectedServiceLocation = .onCampus
@@ -877,6 +915,7 @@ struct PaymentsView: View {
                                         await toggleSoldStatus(listing)
                                     }
                                 })
+                                .frame(maxWidth: .infinity)
                             }
                         }
                         .padding()
@@ -1026,12 +1065,12 @@ struct MyListingCard: View {
                             .font(.headline)
                             .lineLimit(2)
                         VStack(alignment: .leading, spacing: 2) {
-                        Text("$\(listing.price, specifier: "%.2f")")
-                            .font(.title3)
-                            .fontWeight(.bold)
-                            .foregroundColor(Color("ThemeColor"))
-                            let totalWithFee = listing.price * 1.029 + 0.30
-                            Text("$\(totalWithFee, specifier: "%.2f") total")
+                            Text("$\(listing.price, specifier: "%.2f")")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color("ThemeColor"))
+                            
+                            Text("$\(listing.price * 1.029 + 0.30, specifier: "%.2f") total")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
@@ -1095,6 +1134,7 @@ struct MyListingCard: View {
         .background(Color(UIColor.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

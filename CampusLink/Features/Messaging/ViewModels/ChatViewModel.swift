@@ -23,6 +23,8 @@ class ChatViewModel: ObservableObject {
     func initialize(userId: String) async {
         self.currentUserId = userId
         await loadMessages()
+        // After loading, try to mark any unread incoming messages as read
+        await markMessagesAsRead()
         await setupRealtimeSubscription()
     }
     
@@ -131,7 +133,7 @@ class ChatViewModel: ObservableObject {
         let channel = supabase.realtimeV2.channel("messages:\(conversation.id.uuidString)")
         
         // Subscribe to INSERT events on messages table for this conversation
-        let subscription = channel.onPostgresChange(
+        _ = channel.onPostgresChange(
             InsertAction.self,
             schema: "public",
             table: "messages",
@@ -165,10 +167,38 @@ class ChatViewModel: ObservableObject {
                         // Sort by created date to maintain order
                         self.messages.sort { $0.createdAt < $1.createdAt }
                     }
+
+                    // If the new message is from the other user, immediately mark as read
+                    if newMessage.senderId.lowercased() != userId.lowercased() {
+                        await self.markMessagesAsRead()
+                    }
                     
                 } catch {
                     #if DEBUG
                     print("Failed to parse realtime message: \(error)")
+                    #endif
+                }
+            }
+        }
+
+        // Subscribe to UPDATE events to receive read_at changes
+        let _ = channel.onPostgresChange(
+            UpdateAction.self,
+            schema: "public",
+            table: "messages",
+            filter: "conversation_id=eq.\(conversation.id.uuidString)"
+        ) { [weak self] change in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                do {
+                    let messageData = try JSONEncoder().encode(change.record)
+                    let updatedMessage = try JSONDecoder().decode(Message.self, from: messageData)
+                    if let index = self.messages.firstIndex(where: { $0.id == updatedMessage.id }) {
+                        self.messages[index] = updatedMessage
+                    }
+                } catch {
+                    #if DEBUG
+                    print("Failed to parse message update: \(error)")
                     #endif
                 }
             }
@@ -199,7 +229,29 @@ class ChatViewModel: ObservableObject {
     
     /// Mark messages as read (future implementation)
     func markMessagesAsRead() async {
-        // Future: Update read_at timestamp for messages
-        // This would require adding read tracking to the schema
+        guard let userId = currentUserId else { return }
+        do {
+            // Update all messages in this conversation not sent by me and not yet read
+            // Note: requires DB to have read_at column and RLS to allow recipient update
+            let now = ISO8601DateFormatter().string(from: Date())
+            _ = try await supabase
+                .from("messages")
+                .update(["read_at": now])
+                .eq("conversation_id", value: conversation.id.uuidString)
+                .neq("sender_id", value: userId)
+                .is("read_at", value: nil)
+                .execute()
+
+            // Update local cache
+            for i in messages.indices {
+                if messages[i].senderId.lowercased() != userId.lowercased() && messages[i].readAt == nil {
+                    messages[i].readAt = Date()
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to mark messages as read: \(error)")
+            #endif
+        }
     }
 }

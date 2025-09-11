@@ -5,6 +5,7 @@ struct WalletView: View {
     @StateObject private var viewModel = WalletViewModel()
     @EnvironmentObject private var authManager: AuthManager
     @State private var selectedTransaction: PaymentTransaction?
+    @State private var selectedOrder: Order?
     
     var body: some View {
         NavigationView {
@@ -236,36 +237,130 @@ struct WalletView: View {
         }
     }
     
-    // MARK: - Transaction Row
+    // MARK: - Transaction Row (Order Widget)
     private func transactionRow(_ transaction: PaymentTransaction) -> some View {
-        HStack {
-            // Icon
-            Image(systemName: transaction.isCompleted ? "checkmark.circle.fill" : "clock.fill")
-                .foregroundColor(transaction.isCompleted ? .green : .orange)
-                .font(.title3)
-            
-            // Details
-            VStack(alignment: .leading, spacing: 2) {
-                Text(transaction.listing?.title ?? "Transaction")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                
-                Text(transaction.createdAt, style: .date)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        Button(action: {
+            Task {
+                await loadOrderForTransaction(transaction)
             }
-            
-            Spacer()
-            
-            // Amount
-            Text(transaction.formattedAmount)
-                .font(.system(.body, design: .rounded))
-                .fontWeight(.semibold)
-                .foregroundColor(transaction.buyerId == authManager.currentUserId ? .red : .green)
+        }) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(transaction.listing?.title ?? "Order")
+                            .font(.headline)
+                            .lineLimit(2)
+                            .foregroundColor(.primary)
+                        Text(transaction.formattedAmount)
+                            .font(.subheadline)
+                            .foregroundColor(Color("ThemeColor"))
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 4) {
+                        // Status badge
+                        Text(transaction.isCompleted ? "Completed" : "Pending")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background((transaction.isCompleted ? Color.green : Color.orange).opacity(0.15))
+                            .foregroundColor(transaction.isCompleted ? .green : .orange)
+                            .cornerRadius(8)
+                        
+                        Text(transaction.createdAt.formatted(date: .abbreviated, time: .omitted))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Summary badges row
+                HStack(spacing: 8) {
+                    if transaction.isDisputed {
+                        badge(text: "Disputed", color: .orange)
+                    }
+                    if transaction.isCompleted {
+                        badge(text: "Completed", color: .green)
+                    }
+                    if transaction.status.lowercased() == "succeeded" || transaction.status.lowercased() == "completed" {
+                        badge(text: "Paid", color: .green)
+                    }
+                }
+
+                // Action buttons row
+                HStack(spacing: 12) {
+                    Button(action: {}) {
+                        Text("View Details")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundColor(.blue)
+                            .cornerRadius(8)
+                    }
+                    
+                    Spacer()
+                    
+                    // Arrow indicator
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding()
+            .background(Color(UIColor.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
         }
-        .padding()
-        .contentShape(Rectangle())
+        .buttonStyle(PlainButtonStyle())
+        .sheet(item: $selectedOrder) { order in
+            OrderDetailView(order: order)
+                .environmentObject(authManager)
+        }
+    }
+    
+    // MARK: - Badge Helper
+    private func badge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2)
+            .fontWeight(.medium)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.15))
+            .foregroundColor(color)
+            .cornerRadius(6)
+    }
+    
+    // MARK: - Order Loading
+    private func loadOrderForTransaction(_ transaction: PaymentTransaction) async {
+        guard let listingId = transaction.listingId,
+              let currentUserId = authManager.currentUserId else {
+            return
+        }
+        
+        do {
+            // Try to find the order by listing ID and user ID
+            let orders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("listing_id", value: listingId.uuidString)
+                .or("buyer_id.eq.\(currentUserId),seller_id.eq.\(currentUserId)")
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                if let order = orders.first {
+                    self.selectedOrder = order
+                }
+            }
+        } catch {
+            print("Failed to load order for transaction: \(error)")
+        }
     }
     
 

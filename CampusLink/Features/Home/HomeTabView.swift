@@ -14,20 +14,42 @@ struct HomeTabView: View {
     
     // Seek mode filter (Phase 2)
     @State private var selectedFilter: ListingFilter = .all
+    // Ratings trust filter (Phase 3)
+    @State private var selectedTrustFilter: TrustFilter = .all
+    
+    // Search functionality (Phase 1)
+    @State private var searchQuery = SearchQuery()
+    @State private var isSearchActive = false
+    @State private var showingSearchResults = false
+    @State private var searchWorkItem: DispatchWorkItem?
 
     private let pageSize = 10
     private let enableDomainFilter = false  // Disabled for v1.0 release
     
     enum ListingFilter: String, CaseIterable {
         case all = "All"
-        case forSale = "For Sale"
-        case wanted = "Wanted"
+        case forSale = "Selling"
+        case wanted = "Buying"
         
         var intentFilter: ListingIntent? {
             switch self {
             case .all: return nil
             case .forSale: return .offer
             case .wanted: return .seek
+            }
+        }
+    }
+
+    enum TrustFilter: String, CaseIterable {
+        case all = "All Trust"
+        case reliable = "60+"
+        case trusted = "80+"
+        
+        var minScore: Int? {
+            switch self {
+            case .all: return nil
+            case .reliable: return 60
+            case .trusted: return 80
             }
         }
     }
@@ -51,6 +73,28 @@ struct HomeTabView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showingSearchResults) {
+            if AppConfig.enableSearch {
+                NavigationView {
+                    SearchResultsView(
+                        searchQuery: searchQuery,
+                        onListingTapped: { listing in
+                            showingSearchResults = false
+                            // TODO: Navigate to listing detail
+                        }
+                    )
+                    .navigationTitle("Search Results")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showingSearchResults = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -78,6 +122,27 @@ extension HomeTabView {
                             )
                     }
                 }
+                
+                if AppConfig.enableRatings {
+                    Divider().frame(height: 24)
+                    ForEach(TrustFilter.allCases, id: \.self) { filter in
+                        Button(action: {
+                            selectedTrustFilter = filter
+                            Task { await refreshListings() }
+                        }) {
+                            Text(filter.rawValue)
+                                .font(.caption)
+                                .fontWeight(selectedTrustFilter == filter ? .semibold : .regular)
+                                .foregroundColor(selectedTrustFilter == filter ? .white : Color("ThemeColor"))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(selectedTrustFilter == filter ? Color("ThemeColor") : Color("ThemeColor").opacity(0.1))
+                                )
+                        }
+                    }
+                }
             }
             .padding(.horizontal)
         }
@@ -86,23 +151,25 @@ extension HomeTabView {
     
     @ViewBuilder
     private func headerView() -> some View {
-        let userEmail = authManager.session?.user.email
-        let greeting = (userEmail?.split(separator: "@").first.map(String.init)) ?? userEmail ?? "there"
-
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             HStack {
-                VStack(alignment: .leading) {
-                    Text("Hello, \(greeting)!")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    Text("Welcome to CampusLink")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
                 Image(systemName: "graduationcap.circle.fill")
                     .font(.system(size: 40))
                     .foregroundColor(Color("ThemeColor"))
+                Spacer()
+            }
+            
+            // Search bar (Phase 1)
+            if AppConfig.enableSearch {
+                SearchBarWithFiltersView(
+                    searchQuery: $searchQuery,
+                    onSearchChanged: { query in
+                        handleSearchChanged(query)
+                    },
+                    onSearchSubmitted: { query in
+                        performSearch(query)
+                    }
+                )
             }
         }
         .padding()
@@ -237,6 +304,7 @@ extension HomeTabView {
             }
 
             let response: [ListingWithUser] = try await query
+                .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -291,7 +359,13 @@ extension HomeTabView {
                 query = query.eq("intent", value: intent.rawValue)
             }
             
+            // Apply trust filter (Phase 3)
+            if AppConfig.enableRatings, let minScore = selectedTrustFilter.minScore {
+                query = query.gte("user.trust_score", value: minScore)
+            }
+
             let response: [ListingWithUser] = try await query
+                .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -329,6 +403,7 @@ extension HomeTabView {
                     user:users(*)
                 """)
                 .eq("status", value: "active")
+                .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
                 .order("created_at", ascending: false)
                 .range(from: 0, to: pageSize - 1)
                 .execute()
@@ -351,14 +426,20 @@ extension HomeTabView {
 
 struct ListingCard: View {
     let listing: ListingWithUser
+    @State private var ratingSummary: UserRatingsSummary?
+    @State private var isLoadingRating = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let photoURL = listing.photo, let url = URL(string: photoURL) {
                 AsyncImage(url: url) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
                 } placeholder: {
-                    Rectangle().fill(Color(UIColor.systemGray5)).overlay(ProgressView())
+                    Rectangle()
+                        .fill(Color(UIColor.systemGray5))
+                        .overlay(ProgressView())
                 }
                 .frame(height: 200)
                 .frame(maxWidth: .infinity)
@@ -392,10 +473,27 @@ struct ListingCard: View {
                             Text("$\(listing.price, specifier: "%.2f")")
                                 .font(.title3).fontWeight(.bold)
                                 .foregroundColor(Color("ThemeColor"))
-                            let totalWithFee = listing.price * 1.029 + 0.30 // Include 2.9% + $0.30
-                            Text("$\(totalWithFee, specifier: "%.2f") total")
+                            Text("$\(listing.price * 1.029 + 0.30, specifier: "%.2f") total")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                // Ratings row (Phase 2)
+                if AppConfig.enableRatings {
+                    HStack(spacing: 8) {
+                        if let summary = ratingSummary {
+                            StarRatingView(rating: summary.averageRating, size: 12)
+                            Text(summary.displayRating)
+                                .font(.caption)
+                            Text("(\(summary.totalRatings))")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            TrustBadgeView(trustLevel: summary.trustLevel, showText: false)
+                        } else if isLoadingRating {
+                            ProgressView().scaleEffect(0.6)
                         }
                     }
                 }
@@ -406,7 +504,7 @@ struct ListingCard: View {
                 HStack {
                     HStack(spacing: 6) {
                         if AppConfig.enableSeekMode && listing.intent == .seek {
-                            Text("Wanted")
+                            Text("Buying")
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -444,5 +542,63 @@ struct ListingCard: View {
         .background(Color(UIColor.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .task {
+            if AppConfig.enableRatings {
+                await loadRatingSummary()
+            }
+        }
+    }
+
+    private func loadRatingSummary() async {
+        guard AppConfig.enableRatings else { return }
+        await MainActor.run { isLoadingRating = true }
+        do {
+            let summary = try await RatingService.shared.getUserRatingsSummary(userId: listing.user.id)
+            await MainActor.run { self.ratingSummary = summary; self.isLoadingRating = false }
+        } catch {
+            await MainActor.run { self.isLoadingRating = false }
+        }
+    }
+}
+
+// MARK: - Search Methods Extension
+
+extension HomeTabView {
+    private func handleSearchChanged(_ query: SearchQuery) {
+        guard AppConfig.enableSearch else { return }
+        
+        searchQuery = query
+        
+        // Cancel previous search work item
+        searchWorkItem?.cancel()
+        
+        // Create new search work item with debouncing
+        // SwiftUI views are structs; use value capture instead of [weak self]
+        let currentQuery = query
+        let workItem = DispatchWorkItem {
+            Task { @MainActor in
+                // Only trigger search if query is active (has text or filters)
+                if currentQuery.isActive {
+                    performSearch(currentQuery)
+                }
+            }
+        }
+        
+        searchWorkItem = workItem
+        
+        // Execute after 500ms delay for debouncing
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+    
+    private func performSearch(_ query: SearchQuery) {
+        guard AppConfig.enableSearch && query.isActive else { return }
+        
+        searchQuery = query
+        showingSearchResults = true
+        
+        // Save search query for analytics (Phase 3)
+        Task {
+            await SearchService.shared.saveRecentSearch(query, resultCount: 0)
+        }
     }
 }

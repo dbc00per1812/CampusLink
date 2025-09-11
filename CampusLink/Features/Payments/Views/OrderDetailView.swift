@@ -13,6 +13,12 @@ struct OrderDetailView: View {
     @State private var successMessage = ""
     @State private var currentOrder: Order
     @State private var showOrderInfo = false
+    @State private var showRatingSheet = false
+    @State private var ratingType: RatingType?
+    @State private var canRateSeller = false
+    @State private var canRateBuyer = false
+    @State private var hasRatedSeller = false
+    @State private var hasRatedBuyer = false
     @Environment(\.dismiss) private var dismiss
     
     init(order: Order) {
@@ -104,14 +110,27 @@ struct OrderDetailView: View {
             }
             .environmentObject(authManager)
         }
-        .sheet(isPresented: $showContactSheet) {
-            if let conversation = activeConversation {
-                ChatView(conversation: conversation)
-                    .environmentObject(authManager)
+                    .sheet(isPresented: $showContactSheet) {
+                if let conversation = activeConversation {
+                    ChatView(conversation: conversation)
+                        .environmentObject(authManager)
+                }
             }
-        }
+            .sheet(isPresented: $showRatingSheet) {
+                if let ratingType = ratingType {
+                    RatingComposeView(order: currentOrder, ratingType: ratingType)
+                        .environmentObject(authManager)
+                        .onDisappear {
+                            // Refresh rating status when sheet closes
+                            Task { await checkRatingStatus() }
+                        }
+                }
+            }
         .onAppear {
-            Task { await loadOrderData() }
+            Task { 
+                await loadOrderData() 
+                await checkRatingStatus()
+            }
         }
     }
     
@@ -346,6 +365,11 @@ struct OrderDetailView: View {
                     }
                 }
                 
+                // Show rating prompts for completed orders
+                if currentOrder.orderStatus == .completed && AppConfig.enableRatings {
+                    ratingSection
+                }
+                
                 // Show message when no actions are available
                 if !canConfirmReceived && !canMarkDelivered && currentOrder.orderStatus == .completed {
                     VStack(spacing: 8) {
@@ -390,6 +414,88 @@ struct OrderDetailView: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+    }
+    
+    // MARK: - Rating Section
+    private var ratingSection: some View {
+        VStack(spacing: 16) {
+            Text("Rate Your Experience")
+                .font(.headline)
+                .fontWeight(.semibold)
+            
+            VStack(spacing: 12) {
+                // Rate seller button (for buyers)
+                if isBuyer && canRateSeller && !hasRatedSeller {
+                    Button(action: {
+                        ratingType = .buyerToSeller
+                        showRatingSheet = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "star.fill")
+                                .font(.headline)
+                            Text("Rate Seller")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.yellow.opacity(0.8))
+                        .cornerRadius(12)
+                    }
+                } else if isBuyer && hasRatedSeller {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.star.fill")
+                            .font(.headline)
+                        Text("You rated the seller")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.green)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(12)
+                }
+                
+                // Rate buyer button (for sellers)
+                if isSeller && canRateBuyer && !hasRatedBuyer {
+                    Button(action: {
+                        ratingType = .sellerToBuyer
+                        showRatingSheet = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "star.fill")
+                                .font(.headline)
+                            Text("Rate Buyer")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.yellow.opacity(0.8))
+                        .cornerRadius(12)
+                    }
+                } else if isSeller && hasRatedBuyer {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.star.fill")
+                            .font(.headline)
+                        Text("You rated the buyer")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.green)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(12)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(16)
     }
     
     // MARK: - Collapsible Order Information Section
@@ -606,6 +712,49 @@ struct OrderDetailView: View {
         }
         await MainActor.run {
             isLoading = false
+        }
+    }
+    
+    // MARK: - Rating Status
+    
+    private func checkRatingStatus() async {
+        guard AppConfig.enableRatings,
+              currentOrder.orderStatus == .completed,
+              let currentUserId = authManager.currentUserId else {
+            return
+        }
+        
+        do {
+            // Check if current user can rate seller (if they're the buyer)
+            if isBuyer {
+                let canRate = try await RatingService.shared.canSubmitRating(
+                    orderId: currentOrder.id,
+                    raterId: currentUserId,
+                    ratedId: currentOrder.sellerId.uuidString
+                )
+                
+                await MainActor.run {
+                    canRateSeller = canRate
+                    hasRatedSeller = !canRate // If can't rate, they already rated
+                }
+            }
+            
+            // Check if current user can rate buyer (if they're the seller)
+            if isSeller {
+                let canRate = try await RatingService.shared.canSubmitRating(
+                    orderId: currentOrder.id,
+                    raterId: currentUserId,
+                    ratedId: currentOrder.buyerId.uuidString
+                )
+                
+                await MainActor.run {
+                    canRateBuyer = canRate
+                    hasRatedBuyer = !canRate // If can't rate, they already rated
+                }
+            }
+            
+        } catch {
+            print("Failed to check rating status: \(error)")
         }
     }
     

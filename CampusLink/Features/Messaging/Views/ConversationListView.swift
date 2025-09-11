@@ -148,10 +148,20 @@ struct ConversationRow: View {
                     }
                 }
                 
-                Text(conversation.previewText)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    Text(conversation.previewText)
+                        .lineLimit(2)
+                    // Unread dot if the last message exists and is from other user and unread
+                    if let last = conversation.lastMessage,
+                       last.senderId.lowercased() != currentUserId.lowercased(),
+                       last.readAt == nil {
+                        Circle()
+                            .fill(Color("ThemeColor"))
+                            .frame(width: 8, height: 8)
+                    }
+                }
+                .font(.subheadline)
+                .foregroundColor(.secondary)
                 
                 if let listing = conversation.listing {
                     HStack(spacing: 4) {

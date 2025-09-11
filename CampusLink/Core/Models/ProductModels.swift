@@ -23,7 +23,7 @@ enum ListingIntent: String, Codable, CaseIterable {
         case .offer:
             return "Sell"
         case .seek:
-            return "Seek"
+            return "Buy"
         }
     }
 }

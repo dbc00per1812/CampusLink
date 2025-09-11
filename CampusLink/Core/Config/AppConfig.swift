@@ -4,8 +4,16 @@ struct AppConfig {
     // MARK: - Feature Flags
     
     /// Controls whether Seek mode is enabled in the app
-    /// Phase 0: Keep this false until database supports NULL price for seeks
-    static let enableSeekMode = false
+    /// Phase 3: Enabled after database supports NULL price for seeks
+    static let enableSeekMode = true
+    
+    /// Controls whether Ratings system is enabled in the app
+    /// Phase 0: Keep this false until database ratings table is created
+    static let enableRatings = false
+    
+    /// Controls whether Search functionality is enabled in the app
+    /// Phase 0: Ready for testing - basic search infrastructure complete
+    static let enableSearch = true
     
     // MARK: - Campus Domain Filter
     

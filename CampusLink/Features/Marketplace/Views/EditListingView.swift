@@ -50,7 +50,16 @@ struct EditListingView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    private let categories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
+    // Product categories
+    private let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
+    
+    // Service categories
+    private let serviceCategories = ["Tutoring", "Moving", "Cleaning", "Other"]
+    
+    // Computed property for current categories based on listing type
+    private var currentCategories: [String] {
+        listingType == .product ? productCategories : serviceCategories
+    }
 
     init(listing: ListingWithUser, onUpdated: @escaping () -> Void) {
         self.listing = listing
@@ -135,7 +144,7 @@ struct EditListingView: View {
 
                         LabeledField(title: "Category") {
                             Picker("Category", selection: $category) {
-                                ForEach(categories, id: \.self) { Text($0).tag($0) }
+                                ForEach(currentCategories, id: \.self) { Text($0).tag($0) }
                             }
                             .pickerStyle(MenuPickerStyle())
                             .padding()

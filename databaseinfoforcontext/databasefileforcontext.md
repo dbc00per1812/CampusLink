@@ -10,9 +10,9 @@ CREATE TABLE public.conversations (
   created_at timestamp with time zone DEFAULT now(),
   order_id uuid,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
-  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT conversations_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
-  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
+  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.disputes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -22,15 +22,15 @@ CREATE TABLE public.disputes (
   status text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT disputes_pkey PRIMARY KEY (id),
-  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id),
-  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
+  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.listings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   title text NOT NULL,
   description text,
-  price numeric NOT NULL CHECK (price > 0::numeric),
+  price numeric CHECK (price > 0::numeric),
   category text,
   photo text,
   is_sold boolean NOT NULL DEFAULT false,
@@ -63,8 +63,8 @@ CREATE TABLE public.messages (
   created_at timestamp with time zone DEFAULT now(),
   order_id uuid,
   CONSTRAINT messages_pkey PRIMARY KEY (id),
-  CONSTRAINT messages_sender_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id),
-  CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
+  CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id),
+  CONSTRAINT messages_sender_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.offers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -77,10 +77,10 @@ CREATE TABLE public.offers (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT offers_pkey PRIMARY KEY (id),
-  CONSTRAINT offers_offer_listing_id_fkey FOREIGN KEY (offer_listing_id) REFERENCES public.listings(id),
   CONSTRAINT offers_seeker_id_fkey FOREIGN KEY (seeker_id) REFERENCES public.users(id),
+  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT offers_seek_listing_id_fkey FOREIGN KEY (seek_listing_id) REFERENCES public.listings(id),
-  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+  CONSTRAINT offers_offer_listing_id_fkey FOREIGN KEY (offer_listing_id) REFERENCES public.listings(id)
 );
 CREATE TABLE public.orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -105,11 +105,11 @@ CREATE TABLE public.orders (
   buyer_confirmed_at timestamp with time zone,
   time_slot_id uuid,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
-  CONSTRAINT orders_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id),
   CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id),
   CONSTRAINT orders_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
-  CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+  CONSTRAINT orders_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id)
 );
 CREATE TABLE public.payments (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -135,9 +135,9 @@ CREATE TABLE public.payments (
   escrow_release_status text DEFAULT 'held'::text CHECK (escrow_release_status = ANY (ARRAY['held'::text, 'released'::text, 'disputed'::text])),
   stripe_escrow_account_id text,
   CONSTRAINT payments_pkey PRIMARY KEY (id),
-  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
   CONSTRAINT payments_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
-  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
+  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
+  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.payouts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -163,6 +163,25 @@ CREATE TABLE public.payouts (
   CONSTRAINT payouts_pkey PRIMARY KEY (id),
   CONSTRAINT payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.ratings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  rater_id uuid NOT NULL,
+  rated_id uuid NOT NULL,
+  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment text,
+  rating_type text NOT NULL CHECK (rating_type = ANY (ARRAY['buyer_to_seller'::text, 'seller_to_buyer'::text])),
+  is_anonymous boolean DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  is_reported boolean DEFAULT false,
+  is_hidden boolean DEFAULT false,
+  moderation_status text DEFAULT 'approved'::text CHECK (moderation_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  CONSTRAINT ratings_pkey PRIMARY KEY (id),
+  CONSTRAINT ratings_rated_id_fkey FOREIGN KEY (rated_id) REFERENCES public.users(id),
+  CONSTRAINT ratings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT ratings_rater_id_fkey FOREIGN KEY (rater_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -200,9 +219,9 @@ CREATE TABLE public.time_slot_bookings (
   status text NOT NULL DEFAULT 'reserved'::text,
   reserved_at timestamp with time zone DEFAULT now(),
   CONSTRAINT time_slot_bookings_pkey PRIMARY KEY (id),
-  CONSTRAINT time_slot_bookings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT time_slot_bookings_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id),
   CONSTRAINT time_slot_bookings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
-  CONSTRAINT time_slot_bookings_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id)
+  CONSTRAINT time_slot_bookings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.time_slots (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
