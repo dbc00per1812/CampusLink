@@ -72,19 +72,33 @@ struct HomeTabView: View {
                 if AppConfig.enableSeekMode {
                     filterView()
                     
-                    // Visual Debug Panel
+                    // NUCLEAR DEBUG PANEL
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("🔧 FILTER DEBUG:")
+                        Text("🚨 NUCLEAR DEBUG:")
                             .font(.caption)
                             .fontWeight(.bold)
-                        Text("✅ Filters Visible | Current: \(selectedFilter.rawValue)")
-                        Text("📊 Listings Count: \(listings.count)")
-                        Text("🎯 Last Tapped: \(lastFilterTapped.isEmpty ? "None" : lastFilterTapped)")
-                        Text("📋 Query Results: \(queryResultCount)")
-                        Text("🔍 DB Intents: \(Array(databaseIntents).joined(separator: ", "))")
+                            .foregroundColor(.red)
+                        Text("🔥 SELECTED: \(selectedFilter.rawValue) (intent: \(selectedFilter.intentFilter?.rawValue ?? "NONE"))")
+                        Text("🔥 ENABLE_SEEK: \(AppConfig.enableSeekMode)")
+                        Text("🔥 LISTINGS.COUNT: \(listings.count)")
+                        Text("🔥 QUERY_RESULTS: \(queryResultCount)")
+                        Text("🔥 DB_INTENTS: \(Array(databaseIntents).joined(separator: ", "))")
+                        Text("🔥 LAST_TAPPED: \(lastFilterTapped.isEmpty ? "NONE" : lastFilterTapped)")
                         if !debugMessage.isEmpty {
-                            Text("⚠️ \(debugMessage)")
+                            Text("🔥 STATUS: \(debugMessage)")
                                 .foregroundColor(.red)
+                        }
+                        
+                        // Show first few actual listings
+                        Text("🔥 ACTUAL_LISTINGS:")
+                        if listings.isEmpty {
+                            Text("  ❌ EMPTY ARRAY!")
+                                .foregroundColor(.red)
+                        } else {
+                            ForEach(listings.prefix(3), id: \.id) { listing in
+                                Text("  • \(listing.title) (\(listing.intent.rawValue))")
+                                    .font(.caption2)
+                            }
                         }
                     }
                     .font(.caption)
@@ -157,13 +171,22 @@ extension HomeTabView {
             HStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
+                        print("🚨🚨🚨 BUTTON TAPPED: \(filter.rawValue)")
+                        print("🚨 BEFORE - selectedFilter: \(selectedFilter.rawValue)")
+                        print("🚨 BEFORE - listings.count: \(listings.count)")
+                        
                         lastFilterTapped = filter.rawValue
-                        debugMessage = "Button tapped: \(filter.rawValue)"
+                        debugMessage = "🚨 BUTTON TAPPED: \(filter.rawValue)"
                         selectedFilter = filter
+                        
+                        print("🚨 AFTER - selectedFilter: \(selectedFilter.rawValue)")
+                        print("🚨 INTENT FILTER: \(filter.intentFilter?.rawValue ?? "NONE")")
+                        
                         Task { 
-                            debugMessage = "Loading \(filter.rawValue)..."
+                            debugMessage = "🚨 STARTING REFRESH FOR: \(filter.rawValue)..."
                             await refreshListings() 
-                            debugMessage = "Finished loading \(filter.rawValue)"
+                            debugMessage = "🚨 FINISHED REFRESH FOR: \(filter.rawValue)"
+                            print("🚨 FINAL - listings.count: \(listings.count)")
                         }
                     }) {
                         Text(filter.rawValue)
@@ -483,14 +506,42 @@ extension HomeTabView {
     }
 
     private func refreshListings() async {
+        print("🚨🚨🚨 refreshListings() CALLED")
+        print("🚨 Current selectedFilter: \(selectedFilter.rawValue)")
+        print("🚨 Current selectedFilter.intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "NONE")")
+        print("🚨 AppConfig.enableSeekMode: \(AppConfig.enableSeekMode)")
+        
         await MainActor.run {
             currentPage = 0
             hasMorePages = true
+            debugMessage = "🚨 STARTING refreshListings for \(selectedFilter.rawValue)"
+        }
+
+        // BASIC CONNECTION TEST FIRST
+        print("🚨 TESTING BASIC SUPABASE CONNECTION...")
+        do {
+            let connectionTest: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .limit(1)
+                .execute()
+                .value
+            print("🚨 CONNECTION TEST: Got \(connectionTest.count) listings")
+            if let first = connectionTest.first {
+                print("🚨 CONNECTION TEST: First listing = \(first.title)")
+            }
+        } catch {
+            print("🚨 CONNECTION TEST FAILED: \(error)")
+            await MainActor.run {
+                debugMessage = "❌ SUPABASE CONNECTION FAILED: \(error.localizedDescription)"
+            }
+            return
         }
 
         // TEMPORARY DEBUG: Test each filter explicitly
         await testFilters()
 
+        print("🚨 About to execute REAL Supabase query...")
         do {
             // Build query more explicitly without conditional variable modification
             let baseQuery = supabase
@@ -530,6 +581,13 @@ extension HomeTabView {
                 .range(from: 0, to: pageSize - 1)
                 .execute()
                 .value
+
+            print("🚨🚨🚨 SUPABASE QUERY COMPLETED")
+            print("🚨 Response count: \(response.count)")
+            print("🚨 Response listings:")
+            for (i, listing) in response.enumerated() {
+                print("🚨   \(i): \(listing.title) - intent: \(listing.intent.rawValue)")
+            }
 
             // Visual debug info will be shown in UI panel above
 
