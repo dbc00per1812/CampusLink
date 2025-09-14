@@ -22,8 +22,8 @@ CREATE TABLE public.disputes (
   status text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT disputes_pkey PRIMARY KEY (id),
-  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
-  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id)
+  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id),
+  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
 );
 CREATE TABLE public.listings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -77,9 +77,9 @@ CREATE TABLE public.offers (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT offers_pkey PRIMARY KEY (id),
-  CONSTRAINT offers_seeker_id_fkey FOREIGN KEY (seeker_id) REFERENCES public.users(id),
   CONSTRAINT offers_offer_listing_id_fkey FOREIGN KEY (offer_listing_id) REFERENCES public.listings(id),
   CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT offers_seeker_id_fkey FOREIGN KEY (seeker_id) REFERENCES public.users(id),
   CONSTRAINT offers_seek_listing_id_fkey FOREIGN KEY (seek_listing_id) REFERENCES public.listings(id)
 );
 CREATE TABLE public.orders (
@@ -161,8 +161,8 @@ CREATE TABLE public.payouts (
   updated_at timestamp with time zone,
   paid_at timestamp with time zone,
   CONSTRAINT payouts_pkey PRIMARY KEY (id),
-  CONSTRAINT payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+  CONSTRAINT payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.ratings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -179,9 +179,9 @@ CREATE TABLE public.ratings (
   is_hidden boolean DEFAULT false,
   moderation_status text DEFAULT 'approved'::text CHECK (moderation_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
   CONSTRAINT ratings_pkey PRIMARY KEY (id),
+  CONSTRAINT ratings_rater_id_fkey FOREIGN KEY (rater_id) REFERENCES public.users(id),
   CONSTRAINT ratings_rated_id_fkey FOREIGN KEY (rated_id) REFERENCES public.users(id),
-  CONSTRAINT ratings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
-  CONSTRAINT ratings_rater_id_fkey FOREIGN KEY (rater_id) REFERENCES public.users(id)
+  CONSTRAINT ratings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
 );
 CREATE TABLE public.reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -219,9 +219,9 @@ CREATE TABLE public.time_slot_bookings (
   status text NOT NULL DEFAULT 'reserved'::text,
   reserved_at timestamp with time zone DEFAULT now(),
   CONSTRAINT time_slot_bookings_pkey PRIMARY KEY (id),
+  CONSTRAINT time_slot_bookings_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id),
   CONSTRAINT time_slot_bookings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
-  CONSTRAINT time_slot_bookings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT time_slot_bookings_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id)
+  CONSTRAINT time_slot_bookings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.time_slots (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

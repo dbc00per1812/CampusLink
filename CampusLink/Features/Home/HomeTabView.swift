@@ -27,6 +27,12 @@ struct HomeTabView: View {
     // Navigation states
     @State private var selectedListing: ListingWithUser?
     @State private var showingListingDetail = false
+    
+    // Debug states for visual debugging
+    @State private var debugMessage = ""
+    @State private var lastFilterTapped = ""
+    @State private var queryResultCount = 0
+    @State private var databaseIntents: Set<String> = []
 
     private let pageSize = 10
     private let enableDomainFilter = false  // Disabled for v1.0 release
@@ -65,8 +71,37 @@ struct HomeTabView: View {
                 headerView()
                 if AppConfig.enableSeekMode {
                     filterView()
+                    
+                    // Visual Debug Panel
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("🔧 FILTER DEBUG:")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                        Text("✅ Filters Visible | Current: \(selectedFilter.rawValue)")
+                        Text("📊 Listings Count: \(listings.count)")
+                        Text("🎯 Last Tapped: \(lastFilterTapped.isEmpty ? "None" : lastFilterTapped)")
+                        Text("📋 Query Results: \(queryResultCount)")
+                        Text("🔍 DB Intents: \(Array(databaseIntents).joined(separator: ", "))")
+                        if !debugMessage.isEmpty {
+                            Text("⚠️ \(debugMessage)")
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+                } else {
+                    Text("❌ FILTERS HIDDEN - enableSeekMode = false")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal)
                 }
                 contentView()
+                    .id("\(selectedFilter.rawValue)-\(listings.count)") // Force refresh when filter or count changes
             }
             // keep this screen interactable even if a parent mistakenly disabled it
             .disabled(false)
@@ -74,6 +109,7 @@ struct HomeTabView: View {
             .onAppear {
                 PaymentService.shared.paymentResult = nil
                 PaymentService.shared.paymentSheet  = nil
+                debugMessage = "App started - enableSeekMode: \(AppConfig.enableSeekMode)"
                 Task { await loadListings() }
             }
         }
@@ -121,8 +157,14 @@ extension HomeTabView {
             HStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
+                        lastFilterTapped = filter.rawValue
+                        debugMessage = "Button tapped: \(filter.rawValue)"
                         selectedFilter = filter
-                        Task { await refreshListings() }
+                        Task { 
+                            debugMessage = "Loading \(filter.rawValue)..."
+                            await refreshListings() 
+                            debugMessage = "Finished loading \(filter.rawValue)"
+                        }
                     }) {
                         Text(filter.rawValue)
                             .font(.subheadline)
@@ -292,7 +334,8 @@ extension HomeTabView {
             let from = 0
             let to = pageSize - 1
 
-            var query = supabase
+            // Build query more explicitly 
+            let baseQuery = supabase
                 .from("listings")
                 .select("""
                     *,
@@ -302,43 +345,36 @@ extension HomeTabView {
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
                 
-            // Apply intent filter (Phase 2)
-            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-                #if DEBUG
-                print("📋 HomeTabView: Applying intent filter - \(intent.rawValue)")
-                #endif
-                query = query.eq("intent", value: intent.rawValue)
-            } else {
-                #if DEBUG
-                print("📋 HomeTabView: No intent filter applied (showing all)")
-                #endif
+            // Apply intent filter (Phase 2) - FIXED: Explicit query building
+            let filteredQuery: PostgrestTransformBuilder
+            
+            // Debug: Check what's happening
+            await MainActor.run {
+                debugMessage = "🔍 AppConfig.enableSeekMode: \(AppConfig.enableSeekMode), selectedFilter: \(selectedFilter.rawValue), intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "nil")"
             }
             
-            // Apply trust filter (Phase 3)
-            if AppConfig.enableRatings, let minScore = selectedTrustFilter.minScore {
-                query = query.gte("user.trust_score", value: minScore)
+            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                #if DEBUG
+                print("📋 HomeTabView: loadListings - Applying intent filter - \(intent.rawValue) for filter: \(selectedFilter.rawValue)")
+                #endif
+                await MainActor.run {
+                    debugMessage = "🎯 APPLYING FILTER: intent = '\(intent.rawValue)'"
+                }
+                filteredQuery = baseQuery.eq("intent", value: intent.rawValue)
+            } else {
+                #if DEBUG
+                print("📋 HomeTabView: loadListings - Showing all listings (All filter selected) - no intent filter")
+                #endif
+                await MainActor.run {
+                    debugMessage = "🎯 NO FILTER: showing all listings"
+                }
+                filteredQuery = baseQuery
             }
 
-            if enableDomainFilter {
-                var userEmail: String? = authManager.session?.user.email
-                if userEmail == nil, let userId = authManager.session?.user.id.uuidString {
-                    do {
-                        let userResponse: [UserEmailFetch] = try await supabase
-                            .from("users")
-                            .select("email")
-                            .eq("id", value: userId)
-                            .execute()
-                            .value
-                        userEmail = userResponse.first?.email
-                    } catch { /* ignore filter on failure */ }
-                }
-                if let email = userEmail, let domain = email.split(separator: "@").last {
-                    query = query.ilike("user.email", pattern: "%@\(domain)")
-                }
-            }
+            // Domain filter temporarily disabled for debugging
+            // if enableDomainFilter { ... }
 
-            let response: [ListingWithUser] = try await query
-                .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
+            let response: [ListingWithUser] = try await filteredQuery
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -352,6 +388,14 @@ extension HomeTabView {
                 print("📋 HomeTabView: loadListings() - Listing \(index): \"\(listing.title)\", intent: \(listing.intent.rawValue), price: \(listing.price)")
             }
             #endif
+            
+            // Update debug UI
+            await MainActor.run {
+                let intents = response.map { $0.intent.rawValue }
+                let uniqueIntents = Set(intents)
+                databaseIntents = uniqueIntents
+                queryResultCount = response.count
+            }
 
             // Ensure we're on the main thread and the response is valid
             await MainActor.run {
@@ -389,7 +433,8 @@ extension HomeTabView {
             let from = currentPage * pageSize
             let to = from + pageSize - 1
 
-            var query = supabase
+            // Build query more explicitly 
+            let baseQuery = supabase
                 .from("listings")
                 .select("""
                     *,
@@ -399,25 +444,21 @@ extension HomeTabView {
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
                 
-            // Apply intent filter (Phase 2)
+            // Apply intent filter (Phase 2) - FIXED: Explicit query building
+            let filteredQuery: PostgrestTransformBuilder
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
                 #if DEBUG
-                print("📋 HomeTabView: Applying intent filter - \(intent.rawValue)")
+                print("📋 HomeTabView: loadMoreListings - Applying intent filter - \(intent.rawValue) for filter: \(selectedFilter.rawValue)")
                 #endif
-                query = query.eq("intent", value: intent.rawValue)
+                filteredQuery = baseQuery.eq("intent", value: intent.rawValue)
             } else {
                 #if DEBUG
-                print("📋 HomeTabView: No intent filter applied (showing all)")
+                print("📋 HomeTabView: loadMoreListings - Showing all listings (All filter selected) - no intent filter")
                 #endif
-            }
-            
-            // Apply trust filter (Phase 3)
-            if AppConfig.enableRatings, let minScore = selectedTrustFilter.minScore {
-                query = query.gte("user.trust_score", value: minScore)
+                filteredQuery = baseQuery
             }
 
-            let response: [ListingWithUser] = try await query
-                .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
+            let response: [ListingWithUser] = try await filteredQuery
                 .order("created_at", ascending: false)
                 .range(from: from, to: to)
                 .execute()
@@ -448,12 +489,11 @@ extension HomeTabView {
         }
 
         // TEMPORARY DEBUG: Test each filter explicitly
-        #if DEBUG
         await testFilters()
-        #endif
 
         do {
-            var query = supabase
+            // Build query more explicitly without conditional variable modification
+            let baseQuery = supabase
                 .from("listings")
                 .select("""
                     *,
@@ -462,44 +502,62 @@ extension HomeTabView {
                 .eq("status", value: "active")
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
-                
-            // Apply intent filter (Phase 2)
+            
+            // Apply intent filter (Phase 2) - FIXED: Explicit query building
+            let filteredQuery: PostgrestTransformBuilder
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                await MainActor.run {
+                    debugMessage = "🔍 Filtering by intent: \(intent.rawValue)"
+                }
                 #if DEBUG
-                print("📋 HomeTabView: Applying intent filter - \(intent.rawValue)")
+                print("🔥 CRITICAL: Applying .eq(\"intent\", value: \"\(intent.rawValue)\") to query")
                 #endif
-                query = query.eq("intent", value: intent.rawValue)
+                filteredQuery = baseQuery.eq("intent", value: intent.rawValue)
             } else {
+                await MainActor.run {
+                    debugMessage = "🔍 Showing all listings (no intent filter)"
+                }
                 #if DEBUG
-                print("📋 HomeTabView: No intent filter applied (showing all)")
+                print("🔥 CRITICAL: NO intent filter applied - showing ALL listings")
                 #endif
+                filteredQuery = baseQuery
             }
             
-            // Apply trust filter (Phase 3)
-            if AppConfig.enableRatings, let minScore = selectedTrustFilter.minScore {
-                query = query.gte("user.trust_score", value: minScore)
-            }
-
-            let response: [ListingWithUser] = try await query
-                .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
+            // Apply trust filter (Phase 3) - Not implemented yet
+            
+            let response: [ListingWithUser] = try await filteredQuery
                 .order("created_at", ascending: false)
                 .range(from: 0, to: pageSize - 1)
                 .execute()
                 .value
 
-            #if DEBUG
-            print("📋 HomeTabView: refreshListings() - Selected filter: \(selectedFilter.rawValue)")
-            print("📋 HomeTabView: refreshListings() - Intent filter: \(selectedFilter.intentFilter?.rawValue ?? "none")")
-            print("📋 HomeTabView: refreshListings() - Response count: \(response.count)")
-            for (index, listing) in response.enumerated() {
-                print("📋 HomeTabView: refreshListings() - Listing \(index): \"\(listing.title)\", intent: \(listing.intent.rawValue), price: \(listing.price)")
-            }
-            #endif
+            // Visual debug info will be shown in UI panel above
 
             await MainActor.run {
+                queryResultCount = response.count
+                
+                // CRITICAL DEBUG: Log before and after updating listings
+                print("🔥 BEFORE UPDATE - Current listings count: \(listings.count)")
+                print("🔥 NEW RESPONSE - Response count: \(response.count)")
+                
                 listings = response
+                
+                print("🔥 AFTER UPDATE - Updated listings count: \(listings.count)")
+                
                 currentPage = 1
                 hasMorePages = response.count == pageSize
+                
+                // Debug: Show intent values in the actual response
+                let responseIntents = response.map { $0.intent.rawValue }
+                let uniqueResponseIntents = Set(responseIntents)
+                databaseIntents = uniqueResponseIntents
+                
+                debugMessage = "✅ Loaded \(response.count) listings for \(selectedFilter.rawValue). Intents: \(Array(uniqueResponseIntents).joined(separator: ", "))"
+                
+                // Extra debug: print first few listing titles
+                for (index, listing) in listings.prefix(3).enumerated() {
+                    print("🔥 Listing \(index): \(listing.title) - intent: \(listing.intent.rawValue)")
+                }
             }
         } catch {
             #if DEBUG
@@ -690,7 +748,6 @@ extension HomeTabView {
     }
     
     // TEMPORARY DEBUG METHOD
-    #if DEBUG
     private func testFilters() async {
         print("🧪 TESTING FILTERS EXPLICITLY:")
         
@@ -703,39 +760,29 @@ extension HomeTabView {
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
                 .order("created_at", ascending: false)
-                .limit(5)
+                .limit(10)
                 .execute()
                 .value
             print("🧪 ALL LISTINGS: \(allListings.count)")
             for listing in allListings {
                 print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
             }
-        } catch {
-            print("🧪 Error getting all listings: \(error)")
-        }
-        
-        // Test 2: Only offers
-        do {
-            let offerListings: [ListingWithUser] = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .eq("intent", value: "offer")
-                .order("created_at", ascending: false)
-                .limit(5)
-                .execute()
-                .value
-            print("🧪 OFFER LISTINGS: \(offerListings.count)")
-            for listing in offerListings {
-                print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
+            
+            // Check if all listings have intent values
+            let intents = allListings.map { $0.intent.rawValue }
+            let uniqueIntents = Set(intents)
+            await MainActor.run {
+                databaseIntents = uniqueIntents
             }
+            
         } catch {
-            print("🧪 Error getting offer listings: \(error)")
+            await MainActor.run {
+                debugMessage = "❌ Error loading listings: \(error.localizedDescription)"
+            }
+            print("🧪 ERROR in test: \(error)")
         }
         
-        // Test 3: Only seeks
+        // Test 2: Seek listings only  
         do {
             let seekListings: [ListingWithUser] = try await supabase
                 .from("listings")
@@ -745,16 +792,44 @@ extension HomeTabView {
                 .eq("is_sold", value: false)
                 .eq("intent", value: "seek")
                 .order("created_at", ascending: false)
-                .limit(5)
                 .execute()
                 .value
             print("🧪 SEEK LISTINGS: \(seekListings.count)")
             for listing in seekListings {
-                print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
+                print("🧪   - SEEK: \"\(listing.title)\": intent=\(listing.intent.rawValue)")
             }
         } catch {
-            print("🧪 Error getting seek listings: \(error)")
+            print("🧪 ERROR loading seek listings: \(error)")
+        }
+        
+        // Test 3: Offer listings only
+        do {
+            let offerListings: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "offer")
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            print("🧪 OFFER LISTINGS: \(offerListings.count)")
+            for listing in offerListings {
+                print("🧪   - OFFER: \"\(listing.title)\": intent=\(listing.intent.rawValue)")
+            }
+        } catch {
+            print("🧪 ERROR loading offer listings: \(error)")
+        }
+        
+        // TEMPORARY: If DB Intents is empty, it means listings don't have intent values
+        // This helps confirm our diagnosis
+        await MainActor.run {
+            if databaseIntents.isEmpty {
+                debugMessage = "❌ ISSUE: No intent values found in test query!"
+            } else {
+                debugMessage = "✅ Intent values found: \(Array(databaseIntents).joined(separator: ", "))"
+            }
         }
     }
-    #endif
 }
