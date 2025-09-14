@@ -1,6 +1,12 @@
 import Foundation
 import Supabase
 
+// Create supabase client for SearchService
+private let supabase = SupabaseClient(
+    supabaseURL: Secrets.supabaseURL,
+    supabaseKey: Secrets.supabaseKey
+)
+
 // MARK: - Search Service
 
 final class SearchService: ObservableObject {
@@ -26,20 +32,17 @@ final class SearchService: ObservableObject {
             let params = buildSearchParameters(from: query, limit: limit, offset: offset)
             
             // Call the search_listings PostgreSQL function
-            let searchResponse: [SearchListingRow] = try await supabase
+            let searchResponse: [SearchListing] = try await supabase
                 .rpc("search_listings", params: params)
                 .execute()
                 .value
             
             // Parse the response
-            var listings: [SearchListing] = []
+            let listings = searchResponse
             var searchRank: [UUID: Float] = [:]
             
-            for row in searchResponse {
-                if let listingData = row.listing_data {
-                    listings.append(listingData)
-                    searchRank[listingData.id] = row.search_rank
-                }
+            for listing in listings {
+                searchRank[listing.id] = listing.relevance_score
             }
             
             // Calculate if there are more results
@@ -239,14 +242,14 @@ final class SearchService: ObservableObject {
     private func buildSearchParameters(from query: SearchQuery, limit: Int, offset: Int) -> RpcSearchParams {
         let filters = query.filters
         return RpcSearchParams(
-            search_term: query.text,
+            query_text: query.text.isEmpty ? nil : query.text,
             category_filter: filters.category,
-            intent_filter: filters.intent?.rawValue,
             min_price: filters.priceRange?.min,
             max_price: filters.priceRange?.max,
-            location_filter: filters.location?.rawValue,
-            listing_type_filter: filters.listingType?.rawValue,
-            trust_score_min: filters.minTrustScore,
+            intent_filter: filters.intent?.rawValue,
+            service_location_filter: filters.location?.rawValue,
+            trust_min: filters.minTrustScore,
+            trust_max: nil, // Not implemented yet
             sort_by: query.sortBy.rawValue,
             limit_count: limit,
             offset_count: offset
@@ -255,14 +258,14 @@ final class SearchService: ObservableObject {
 
     // Encodable RPC parameter payload matching SQL function signature
     private struct RpcSearchParams: Encodable {
-        let search_term: String
+        let query_text: String?
         let category_filter: String?
-        let intent_filter: String?
         let min_price: Double?
         let max_price: Double?
-        let location_filter: String?
-        let listing_type_filter: String?
-        let trust_score_min: Int?
+        let intent_filter: String?
+        let service_location_filter: String?
+        let trust_min: Int?
+        let trust_max: Int?
         let sort_by: String
         let limit_count: Int
         let offset_count: Int
@@ -278,6 +281,17 @@ final class SearchService: ObservableObject {
         #if DEBUG
         print("SearchService Error: \(error)")
         #endif
+        
+        // Check for common Supabase/PostgreSQL errors
+        let errorMessage = error.localizedDescription.lowercased()
+        
+        if errorMessage.contains("function") && errorMessage.contains("does not exist") {
+            return .databaseError
+        }
+        
+        if errorMessage.contains("network") || errorMessage.contains("connection") {
+            return .networkError
+        }
         
         return .networkError
     }
@@ -306,7 +320,7 @@ enum SearchServiceError: Error, LocalizedError {
         case .networkError:
             return "Network connection error"
         case .databaseError:
-            return "Database error occurred"
+            return "Search functions not found. Please run the database setup script."
         }
     }
     
@@ -323,7 +337,7 @@ enum SearchServiceError: Error, LocalizedError {
         case .networkError:
             return "Please check your internet connection and try again"
         case .databaseError:
-            return "Please try again in a moment"
+            return "Run create_search_functions.sql in Supabase SQL editor"
         }
     }
 }

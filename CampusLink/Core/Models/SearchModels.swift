@@ -127,7 +127,7 @@ struct SearchSuggestionRow: Codable {
 }
 
 // MARK: - Search Listing Model for Search Results
-// This is a flattened version with user data from database joins
+// This matches the exact output of the search_listings PostgreSQL function
 struct SearchListing: Codable, Identifiable {
     let id: UUID
     let user_id: UUID
@@ -135,36 +135,36 @@ struct SearchListing: Codable, Identifiable {
     let description: String?
     let price: Double?
     let category: String?
-    let photo: String?
-    let is_sold: Bool
-    let created_at: Date
-    let listing_type: ListingType
-    let service_duration: String?
-    let service_location: ServiceLocation?
-    let service_availability: String?
+    let condition: String?
+    let images: [String]? // JSON array from database
+    let intent: String // Raw string from database
     let status: String
     let archived: Bool
-    let intent: ListingIntent
-    let budget_min: Double?
-    let budget_max: Double?
-    let expires_at: Date?
+    let service_location: String?
+    let created_at: Date
+    let relevance_score: Float
     
     // User information from joined query
     let user_name: String?
     let user_email: String?
+    let user_avatar_url: String?
     let user_trust_score: Int?
-    let user_profile_pic: String?
+    
+    // Custom CodingKeys to handle different JSON field names
+    enum CodingKeys: String, CodingKey {
+        case id, user_id, title, description, price, category, condition, images
+        case intent, status, archived, service_location, created_at, relevance_score
+        case user_name, user_email, user_avatar_url, user_trust_score
+    }
     
     // Convert to ListingWithUser for compatibility with existing views
     func toListingWithUser() -> ListingWithUser {
-        // Order and labels must match User's memberwise initializer:
-        // id, name, bio, profilePic, email, createdAt, campusEmailVerified, trustScore,
-        // stripeConnectId, stripePayoutsEnabled, stripeDetailsSubmitted
+        // Create User object from search result data
         let user = User(
             id: user_id.uuidString,
             name: user_name,
             bio: nil,
-            profilePic: user_profile_pic,
+            profilePic: user_avatar_url,
             email: user_email,
             createdAt: created_at,
             campusEmailVerified: true,
@@ -174,6 +174,12 @@ struct SearchListing: Codable, Identifiable {
             stripeDetailsSubmitted: false
         )
         
+        // Convert intent string to enum
+        let listingIntent = ListingIntent(rawValue: intent) ?? .offer
+        
+        // Get first image URL if available
+        let photo = images?.first
+        
         return ListingWithUser(
             id: id,
             title: title,
@@ -181,21 +187,21 @@ struct SearchListing: Codable, Identifiable {
             price: price ?? 0,
             category: category ?? "",
             photo: photo,
-            isSold: is_sold,
-            listingType: listing_type,
-            serviceDuration: service_duration,
-            serviceLocation: service_location,
-            serviceAvailability: service_availability,
-            serviceType: nil, // Not available in search results
-            slotsAvailable: nil, // Not available in search results
-            maxBookingsPerSlot: nil, // Not available in search results
+            isSold: false, // Default for active listings
+            listingType: .product, // Default, could be enhanced later
+            serviceDuration: nil,
+            serviceLocation: ServiceLocation(rawValue: service_location ?? ""),
+            serviceAvailability: nil,
+            serviceType: nil,
+            slotsAvailable: nil,
+            maxBookingsPerSlot: nil,
             archived: archived,
             createdAt: created_at,
             user: user,
-            intent: intent,
-            budgetMin: budget_min,
-            budgetMax: budget_max,
-            expiresAt: expires_at
+            intent: listingIntent,
+            budgetMin: nil, // Not in current search results
+            budgetMax: nil, // Not in current search results
+            expiresAt: nil // Not in current search results
         )
     }
 }

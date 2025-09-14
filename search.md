@@ -1,410 +1,275 @@
-# 🔍 Search & Discovery Implementation Plan
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
 
-## 🎯 **Goal**
-Add powerful search and discovery capabilities to the home page that enable users to quickly find relevant listings through text search, advanced filtering, and smart suggestions. Enhance the marketplace experience with intuitive search patterns similar to modern e-commerce platforms.
-
-**Schema awareness**: Leverage existing `public.listings.tsv` tsvector field for full-text search, existing category/price/location fields for filtering, and current pagination patterns. No breaking database changes required.
-
----
-
-## 📋 **Implementation Steps**
-
-### **Phase 0 — Search Foundation & Feature Flag**
-**Human explanation:**
-- Add search infrastructure with feature flag to safely deploy search UI while ensuring backend readiness.
-
-**Steps done in IDE by AI:**
-- Add `enableSearch` config flag (default false)
-- Create SearchModels.swift with search query, filter, and result models  
-- Add SearchService stub for database operations
-- Create basic SearchBarView component behind feature flag
-
-**Steps done outside IDE by human:**
-- Run database optimization SQL for search performance
-
-### **Phase 1 — Basic Text Search**
-**Human explanation:**
-- Implement core text search using PostgreSQL full-text search capabilities with the existing tsv field.
-
-**Steps done in IDE by AI:**
-- Implement SearchService with full-text search queries
-- Add SearchBarView to HomeTabView header
-- Create SearchResultsView for displaying search results
-- Integrate search with existing listing pagination
-- Add search state management and debouncing
-
-### **Phase 2 — Advanced Filters & Sorting**
-**Human explanation:**
-- Add comprehensive filtering options and sorting capabilities to refine search results.
-
-**Steps done in IDE by AI:**
-- Create SearchFiltersSheet with category, price range, location, type filters
-- Add SortOptionsSheet with relevance, price, date, trust score sorting
-- Integrate filters with search queries
-- Add filter chips and active filter indicators
-- Implement filter persistence across sessions
-
-### **Phase 3 — Search Suggestions & History**
-**Human explanation:**
-- Add intelligent search suggestions, recent searches, and popular search terms.
-
-**Steps done in IDE by AI:**
-- Implement search suggestions based on existing listing titles/categories
-- Add recent search history storage and display
-- Create SearchSuggestionsView for autocomplete
-- Add popular searches and trending categories
-- Implement search analytics tracking
-
-### **Phase 4 — Smart Discovery & Recommendations**
-**Human explanation:**
-- Add personalized recommendations and smart discovery features based on user behavior.
-
-**Steps done in IDE by AI:**
-- Implement "Recommended for You" based on search/view history
-- Add "Similar Items" suggestions on listing details
-- Create discovery sections (trending, new, popular)
-- Add location-based recommendations
-- Implement saved searches and alerts
-
----
-
-## 🗄️ **Database Schema (Postgres/Supabase)**
-
-```sql
--- No new tables required! Using existing schema optimally
-
--- Phase 0: Performance optimization indexes (safe to run now)
-BEGIN;
-
--- Optimize existing full-text search
-CREATE INDEX IF NOT EXISTS idx_listings_tsv_gin ON public.listings USING GIN(tsv);
-
--- Search performance indexes
-CREATE INDEX IF NOT EXISTS idx_listings_search_active ON public.listings(status, archived) 
-WHERE status = 'active' AND archived = false;
-
-CREATE INDEX IF NOT EXISTS idx_listings_price_range ON public.listings(price) 
-WHERE price IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_listings_category_search ON public.listings(category, status)
-WHERE status = 'active';
-
-CREATE INDEX IF NOT EXISTS idx_listings_location_search ON public.listings(service_location, status)
-WHERE status = 'active' AND service_location IS NOT NULL;
-
--- Compound index for filtered searches
-CREATE INDEX IF NOT EXISTS idx_listings_search_compound ON public.listings(
-  status, archived, category, intent, created_at
-) WHERE status = 'active' AND archived = false;
-
-COMMIT;
-
--- Search ranking function (Phase 1)
-CREATE OR REPLACE FUNCTION search_listings(
-  search_term text DEFAULT '',
-  category_filter text DEFAULT NULL,
-  intent_filter text DEFAULT NULL,
-  min_price numeric DEFAULT NULL,
-  max_price numeric DEFAULT NULL,
-  location_filter text DEFAULT NULL,
-  listing_type_filter text DEFAULT NULL,
-  trust_score_min integer DEFAULT NULL,
-  sort_by text DEFAULT 'relevance',
-  limit_count integer DEFAULT 20,
-  offset_count integer DEFAULT 0
-)
-RETURNS TABLE(
-  listing_data json,
-  search_rank real
-) AS $$
-BEGIN
-  RETURN QUERY
-  SELECT 
-    row_to_json(listings_with_user.*) as listing_data,
-    CASE 
-      WHEN search_term = '' THEN 0
-      ELSE ts_rank(tsv, plainto_tsquery('simple', search_term))
-    END as search_rank
-  FROM (
-    SELECT 
-      l.*,
-      u.name as user_name,
-      u.email as user_email,
-      u.trust_score as user_trust_score,
-      u.profile_pic as user_profile_pic
-    FROM public.listings l
-    JOIN public.users u ON l.user_id = u.id
-    WHERE l.status = 'active' 
-      AND l.archived = false
-      AND (search_term = '' OR tsv @@ plainto_tsquery('simple', search_term))
-      AND (category_filter IS NULL OR l.category = category_filter)
-      AND (intent_filter IS NULL OR l.intent = intent_filter)
-      AND (min_price IS NULL OR l.price >= min_price)
-      AND (max_price IS NULL OR l.price <= max_price)
-      AND (location_filter IS NULL OR l.service_location = location_filter)
-      AND (listing_type_filter IS NULL OR l.listing_type = listing_type_filter)
-      AND (trust_score_min IS NULL OR u.trust_score >= trust_score_min)
-  ) as listings_with_user
-  ORDER BY 
-    CASE sort_by
-      WHEN 'relevance' THEN search_rank
-      WHEN 'price_low' THEN -COALESCE(price, 0)
-      WHEN 'price_high' THEN COALESCE(price, 0)
-      WHEN 'newest' THEN EXTRACT(EPOCH FROM created_at)
-      WHEN 'trust_score' THEN COALESCE(user_trust_score, 0)
-      ELSE search_rank
-    END DESC
-  LIMIT limit_count
-  OFFSET offset_count;
-END;
-$$ LANGUAGE plpgsql;
-
--- Search suggestions function (Phase 3)
-CREATE OR REPLACE FUNCTION get_search_suggestions(partial_term text, max_suggestions integer DEFAULT 10)
-RETURNS TABLE(suggestion text, category text, count bigint) AS $$
-BEGIN
-  RETURN QUERY
-  WITH word_suggestions AS (
-    SELECT DISTINCT
-      unnest(string_to_array(title, ' ')) as word,
-      category,
-      1 as count
-    FROM public.listings
-    WHERE status = 'active' 
-      AND archived = false
-      AND unnest(string_to_array(lower(title), ' ')) LIKE lower(partial_term) || '%'
-      AND char_length(unnest(string_to_array(title, ' '))) > 2
-  ),
-  title_suggestions AS (
-    SELECT DISTINCT
-      title as word,
-      category,
-      1 as count
-    FROM public.listings
-    WHERE status = 'active'
-      AND archived = false  
-      AND lower(title) LIKE '%' || lower(partial_term) || '%'
-  )
-  SELECT w.word, w.category, SUM(w.count)::bigint
-  FROM (
-    SELECT * FROM word_suggestions
-    UNION ALL
-    SELECT * FROM title_suggestions
-  ) w
-  GROUP BY w.word, w.category
-  ORDER BY SUM(w.count) DESC, char_length(w.word) ASC
-  LIMIT max_suggestions;
-END;
-$$ LANGUAGE plpgsql;
-```
-
----
-
-## 📱 **Swift Models**
-
-```swift
-// MARK: - Search Models
-
-struct SearchQuery: Codable {
-    var text: String = ""
-    var filters: SearchFilters = SearchFilters()
-    var sortBy: SortOption = .relevance
-    var isActive: Bool {
-        !text.isEmpty || filters.hasActiveFilters
-    }
-}
-
-struct SearchFilters: Codable {
-    var category: String?
-    var intent: ListingIntent?
-    var priceRange: PriceRange?
-    var location: ServiceLocation?
-    var listingType: ListingType?
-    var minTrustScore: Int?
-    
-    var hasActiveFilters: Bool {
-        category != nil || intent != nil || priceRange != nil || 
-        location != nil || listingType != nil || minTrustScore != nil
-    }
-    
-    var activeFilterCount: Int {
-        [category != nil, intent != nil, priceRange != nil, 
-         location != nil, listingType != nil, minTrustScore != nil]
-        .filter { $0 }.count
-    }
-}
-
-struct PriceRange: Codable {
-    var min: Double?
-    var max: Double?
-    
-    var isValid: Bool {
-        if let min = min, let max = max {
-            return min <= max && min >= 0
-        }
-        return (min ?? 0) >= 0 && (max ?? Double.greatestFiniteMagnitude) > 0
-    }
-}
-
-enum SortOption: String, CaseIterable, Codable {
-    case relevance = "relevance"
-    case priceLow = "price_low"
-    case priceHigh = "price_high"
-    case newest = "newest"
-    case trustScore = "trust_score"
-    
-    var displayName: String {
-        switch self {
-        case .relevance: return "Relevance"
-        case .priceLow: return "Price: Low to High"
-        case .priceHigh: return "Price: High to Low"
-        case .newest: return "Newest First"
-        case .trustScore: return "Highest Rated"
-        }
-    }
-    
-    var icon: String {
-        switch self {
-        case .relevance: return "star.fill"
-        case .priceLow: return "arrow.up.circle"
-        case .priceHigh: return "arrow.down.circle"
-        case .newest: return "clock.fill"
-        case .trustScore: return "shield.checkered"
-        }
-    }
-}
-
-struct SearchSuggestion: Codable, Identifiable {
-    let id = UUID()
-    let text: String
-    let category: String?
-    let count: Int
-    let type: SuggestionType
-    
-    enum SuggestionType: String, Codable {
-        case recent, suggestion, trending, category
-    }
-}
-
-struct SearchResult: Codable {
-    let listings: [ListingWithUser]
-    let totalCount: Int
-    let searchRank: [UUID: Float] // listing_id -> relevance score
-    let suggestions: [SearchSuggestion]
-    let hasMore: Bool
-}
-
-struct RecentSearch: Codable, Identifiable {
-    let id = UUID()
-    let query: SearchQuery
-    let timestamp: Date
-    let resultCount: Int
-}
-```
-
----
-
-## 🎨 **UI Components & Flow**
-
-### **1. Search Interface**
-- **SearchBarView**: Modern search bar with voice input and clear button
-- **SearchSuggestionsView**: Dropdown with autocomplete and recent searches  
-- **SearchFiltersSheet**: Comprehensive filter panel with sections
-- **SortOptionsSheet**: Sort selection with visual indicators
-
-### **2. Results Display**
-- **SearchResultsView**: Grid/list toggle with infinite scroll
-- **SearchEmptyStateView**: No results with suggestions and clear filters
-- **SearchLoadingView**: Skeleton loading with search context
-- **ActiveFiltersView**: Horizontal scrollable filter chips
-
-### **3. Discovery Features**
-- **TrendingSearchesView**: Popular search terms and categories
-- **RecommendedListingsView**: Personalized suggestions
-- **SavedSearchesView**: Manage search alerts and bookmarks
-- **SearchAnalyticsView**: User search insights (optional)
-
-### **4. Integration Points**
-- **HomeTabView**: Search bar in header, trending below filters
-- **ListingDetailView**: "Search similar" button and related items
-- **CategoryView**: Pre-filtered search integration
-- **Navigation**: Deep link support for search URLs
-
----
-
-## 🔍 **Search Algorithm & Relevance**
-
-**Full-Text Search Scoring (PostgreSQL tsv):**
-- **Exact title matches**: Highest weight (boost: 1.0)
-- **Partial title matches**: High weight (boost: 0.8)  
-- **Description matches**: Medium weight (boost: 0.4)
-- **Category matches**: Low weight (boost: 0.2)
-
-**Ranking Factors:**
-- **Text relevance**: Base ts_rank score from PostgreSQL
-- **Recency boost**: Newer listings get slight boost (0.1x days_fresh)
-- **Trust score**: High-trust users get visibility boost (0.05x trust_score)
-- **Engagement**: View count and interaction frequency (future)
-- **Location**: Campus-specific boosts for local services
-
-**Filter Priority:**
-1. Active status and non-archived (hard filter)
-2. Exact category matches (when specified)
-3. Price range (when specified)  
-4. Intent type (offer/seek)
-5. Location and listing type
-6. Trust score threshold
-
----
-
-## 📊 **Success Metrics**
-
-### **User Engagement**
-- **Search usage**: >60% of users perform searches weekly
-- **Search satisfaction**: <10% of searches result in filter changes
-- **Discovery rate**: >30% of purchases come from search
-- **Conversion**: Search results have 2x higher conversion than browse
-
-### **Performance Metrics**
-- **Search speed**: <200ms for text search, <500ms with filters
-- **Relevance**: >80% of top 5 results considered relevant by users
-- **Coverage**: Search finds >95% of active listings with correct keywords
-- **Error rate**: <1% of searches result in errors or empty results
-
-### **Business Impact**
-- **Listing visibility**: All listings get discovered within 24 hours
-- **User retention**: Search users have 40% higher 30-day retention
-- **Transaction volume**: 25% increase in overall marketplace transactions
-- **Support reduction**: 50% fewer "can't find item" support requests
-
----
-
-## 🚀 **Implementation Timeline**
-
-**Phase 0** (Week 1): Database optimization + search foundation + feature flag  
-**Phase 1** (Week 2): Basic text search + results display + sorting  
-**Phase 2** (Week 3): Advanced filters + saved filters + performance tuning  
-**Phase 3** (Week 4): Search suggestions + history + analytics integration  
-**Phase 4** (Week 5): Smart discovery + recommendations + search alerts  
-
----
-
-## ✅ **Database Alignment Verification**
-
-**Verified against current schema:**
-- ✅ `public.listings.tsv` exists as tsvector for full-text search (line 53)
-- ✅ All filter fields exist: category, price, intent, service_location, listing_type (lines 34-41,49)
-- ✅ `public.users.trust_score` exists for ranking (line 246)
-- ✅ Existing pagination patterns support search results
-- ✅ RLS policies allow authenticated search access
-- ✅ Foreign key relationships support joined queries (user data)
-
-**Optimization opportunities:**
-- 🔄 Add GIN index on tsv for faster text search
-- 🔄 Add compound indexes for common filter combinations  
-- 🔄 Implement search result caching for popular queries
-- 🔄 Add search analytics table for usage tracking (optional)
-
-**Ready for implementation** - All database references are accurate and search can leverage existing schema efficiently.
-
-Darragh
+CREATE TABLE public.conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  listing_id uuid,
+  buyer_id uuid NOT NULL,
+  seller_id uuid NOT NULL,
+  last_message_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  order_id uuid,
+  CONSTRAINT conversations_pkey PRIMARY KEY (id),
+  CONSTRAINT conversations_seller_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT conversations_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
+  CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.disputes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  opened_by uuid NOT NULL,
+  reason text NOT NULL,
+  status text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT disputes_pkey PRIMARY KEY (id),
+  CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.listings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  description text,
+  price numeric CHECK (price > 0::numeric),
+  category text,
+  photo text,
+  is_sold boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  listing_type character varying NOT NULL DEFAULT 'product'::character varying CHECK (listing_type::text = ANY (ARRAY['product'::character varying, 'service'::character varying]::text[])),
+  service_duration text,
+  service_location character varying CHECK (service_location IS NULL OR (service_location::text = ANY (ARRAY['on_campus'::character varying, 'off_campus'::character varying, 'remote'::character varying]::text[]))),
+  service_availability text,
+  status text DEFAULT 'active'::text,
+  reserved_by uuid,
+  reserved_until timestamp with time zone,
+  service_type text DEFAULT 'calendar'::text CHECK (service_type = ANY (ARRAY['calendar'::text, 'slots'::text])),
+  slots_available integer,
+  max_bookings_per_slot integer,
+  archived boolean DEFAULT false,
+  intent text NOT NULL DEFAULT 'offer'::text CHECK (intent = ANY (ARRAY['offer'::text, 'seek'::text])),
+  budget_min numeric CHECK (budget_min IS NULL OR budget_min >= 0::numeric),
+  budget_max numeric CHECK (budget_max IS NULL OR budget_max >= 0::numeric),
+  expires_at timestamp with time zone,
+  tsv tsvector DEFAULT to_tsvector('simple'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(description, ''::text))),
+  CONSTRAINT listings_pkey PRIMARY KEY (id),
+  CONSTRAINT listings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL,
+  sender_id uuid NOT NULL,
+  content text NOT NULL,
+  message_type character varying DEFAULT 'text'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  order_id uuid,
+  CONSTRAINT messages_pkey PRIMARY KEY (id),
+  CONSTRAINT messages_sender_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id),
+  CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
+);
+CREATE TABLE public.offers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  seek_listing_id uuid NOT NULL,
+  offer_listing_id uuid NOT NULL,
+  seeker_id uuid NOT NULL,
+  seller_id uuid NOT NULL,
+  message text,
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'withdrawn'::text, 'expired'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT offers_pkey PRIMARY KEY (id),
+  CONSTRAINT offers_seeker_id_fkey FOREIGN KEY (seeker_id) REFERENCES public.users(id),
+  CONSTRAINT offers_offer_listing_id_fkey FOREIGN KEY (offer_listing_id) REFERENCES public.listings(id),
+  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT offers_seek_listing_id_fkey FOREIGN KEY (seek_listing_id) REFERENCES public.listings(id)
+);
+CREATE TABLE public.orders (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL,
+  buyer_id uuid NOT NULL,
+  seller_id uuid NOT NULL,
+  price_cents integer NOT NULL,
+  payment_method text NOT NULL,
+  payment_status text NOT NULL,
+  order_status text NOT NULL,
+  auto_release_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  stripe_escrow_account_id text,
+  marketplace_fee_cents integer DEFAULT 0,
+  stripe_payment_intent_id text,
+  seller_confirmed_at timestamp with time zone,
+  in_progress_at timestamp with time zone,
+  completed_at timestamp with time zone,
+  cancelled_at timestamp with time zone,
+  refunded_at timestamp with time zone,
+  buyer_confirmed_at timestamp with time zone,
+  time_slot_id uuid,
+  CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
+  CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT orders_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id),
+  CONSTRAINT orders_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id)
+);
+CREATE TABLE public.payments (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  listing_id uuid,
+  buyer_id uuid NOT NULL,
+  payment_intent_id text UNIQUE,
+  amount numeric NOT NULL,
+  status text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  seller_id uuid NOT NULL,
+  escrow_release_at timestamp with time zone,
+  delivered_at timestamp with time zone,
+  buyer_confirmed_at timestamp with time zone,
+  seller_proof_urls ARRAY DEFAULT '{}'::text[],
+  dispute_status text DEFAULT 'none'::text CHECK (dispute_status = ANY (ARRAY['none'::text, 'open'::text, 'under_review'::text, 'resolved'::text, 'refunded'::text])),
+  dispute_reason text,
+  dispute_notes text,
+  order_id uuid,
+  payment_method text,
+  auto_release_at timestamp with time zone,
+  stripe_connect_account_id text,
+  marketplace_fee_cents integer DEFAULT 0,
+  escrow_release_status text DEFAULT 'held'::text CHECK (escrow_release_status = ANY (ARRAY['held'::text, 'released'::text, 'disputed'::text])),
+  stripe_escrow_account_id text,
+  CONSTRAINT payments_pkey PRIMARY KEY (id),
+  CONSTRAINT payments_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
+  CONSTRAINT payments_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
+  CONSTRAINT payments_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.payouts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  seller_id uuid NOT NULL,
+  amount_cents integer NOT NULL,
+  destination text NOT NULL,
+  status text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  stripe_payout_id text UNIQUE,
+  payout_type text DEFAULT 'standard'::text CHECK (payout_type = ANY (ARRAY['standard'::text, 'instant'::text])),
+  payout_fee_cents integer DEFAULT 0,
+  stripe_connect_account_id text,
+  destination_type text DEFAULT 'bank'::text CHECK (destination_type = ANY (ARRAY['bank'::text, 'debit_card'::text])),
+  user_id uuid NOT NULL,
+  fee_cents integer DEFAULT 0,
+  net_amount_cents integer DEFAULT 0,
+  payout_method text DEFAULT 'bank'::text,
+  stripe_transfer_id text,
+  error_message text,
+  retry_count integer DEFAULT 0,
+  updated_at timestamp with time zone,
+  paid_at timestamp with time zone,
+  CONSTRAINT payouts_pkey PRIMARY KEY (id),
+  CONSTRAINT payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.ratings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  rater_id uuid NOT NULL,
+  rated_id uuid NOT NULL,
+  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment text,
+  rating_type text NOT NULL CHECK (rating_type = ANY (ARRAY['buyer_to_seller'::text, 'seller_to_buyer'::text])),
+  is_anonymous boolean DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  is_reported boolean DEFAULT false,
+  is_hidden boolean DEFAULT false,
+  moderation_status text DEFAULT 'approved'::text CHECK (moderation_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  CONSTRAINT ratings_pkey PRIMARY KEY (id),
+  CONSTRAINT ratings_rated_id_fkey FOREIGN KEY (rated_id) REFERENCES public.users(id),
+  CONSTRAINT ratings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT ratings_rater_id_fkey FOREIGN KEY (rater_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  reporter_id uuid NOT NULL,
+  reported_user_id uuid,
+  reported_listing_id uuid,
+  report_type text NOT NULL CHECK (report_type = ANY (ARRAY['inappropriate_content'::text, 'scam'::text, 'harassment'::text, 'spam'::text, 'fake_profile'::text, 'other'::text])),
+  description text NOT NULL,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'reviewing'::text, 'resolved'::text, 'dismissed'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone,
+  CONSTRAINT reports_pkey PRIMARY KEY (id),
+  CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES auth.users(id),
+  CONSTRAINT reports_reported_listing_id_fkey FOREIGN KEY (reported_listing_id) REFERENCES public.listings(id),
+  CONSTRAINT reports_reported_user_id_fkey FOREIGN KEY (reported_user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.service_bookings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  transaction_id uuid,
+  scheduled_at timestamp with time zone NOT NULL,
+  duration_minutes integer NOT NULL,
+  location text NOT NULL,
+  special_requests text,
+  status text NOT NULL DEFAULT 'scheduled'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  order_id uuid,
+  CONSTRAINT service_bookings_pkey PRIMARY KEY (id),
+  CONSTRAINT service_bookings_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.payments(id)
+);
+CREATE TABLE public.time_slot_bookings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  time_slot_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  order_id uuid,
+  status text NOT NULL DEFAULT 'reserved'::text,
+  reserved_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT time_slot_bookings_pkey PRIMARY KEY (id),
+  CONSTRAINT time_slot_bookings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT time_slot_bookings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT time_slot_bookings_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id)
+);
+CREATE TABLE public.time_slots (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL,
+  start_time timestamp with time zone NOT NULL,
+  end_time timestamp with time zone NOT NULL,
+  max_bookings integer NOT NULL DEFAULT 1,
+  current_bookings integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'available'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT time_slots_pkey PRIMARY KEY (id),
+  CONSTRAINT time_slots_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
+);
+CREATE TABLE public.users (
+  id uuid NOT NULL,
+  name text,
+  bio text,
+  profile_pic text,
+  email text,
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  campus_email_verified boolean DEFAULT false,
+  trust_score integer,
+  stripe_connect_id text,
+  stripe_payouts_enabled boolean DEFAULT false,
+  stripe_details_submitted boolean DEFAULT false,
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.wallet_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  type text NOT NULL,
+  amount_cents integer NOT NULL,
+  balance_after_cents integer NOT NULL,
+  description text,
+  related_id text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT wallet_transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT wallet_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.wallets (
+  user_id uuid NOT NULL,
+  available_cents integer NOT NULL DEFAULT 0,
+  escrow_cents integer NOT NULL DEFAULT 0,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  stripe_connect_balance_cents integer DEFAULT 0,
+  payout_method text DEFAULT 'standard'::text CHECK (payout_method = ANY (ARRAY['standard'::text, 'instant'::text])),
+  last_payout_at timestamp with time zone,
+  CONSTRAINT wallets_pkey PRIMARY KEY (user_id),
+  CONSTRAINT wallets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
