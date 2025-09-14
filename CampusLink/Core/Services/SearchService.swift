@@ -89,16 +89,13 @@ final class SearchService: ObservableObject {
         
         do {
             // Call the get_search_suggestions PostgreSQL function
-            struct SuggestionRpcParams: Encodable {
-                let query_text: String
-                let limit_count: Int
-            }
+            let params: [String: Any] = [
+                "query_text": partialText,
+                "limit_count": maxSuggestions
+            ]
             
             let suggestionRows: [SearchSuggestionRow] = try await supabase
-                .rpc(
-                    "get_search_suggestions",
-                    params: SuggestionRpcParams(query_text: partialText, limit_count: maxSuggestions)
-                )
+                .rpc("get_search_suggestions", params: params)
                 .execute()
                 .value
             
@@ -242,36 +239,38 @@ final class SearchService: ObservableObject {
     // MARK: - Helper Methods
     
     /// Build search query parameters for database call
-    private func buildSearchParameters(from query: SearchQuery, limit: Int, offset: Int) -> SearchRpcParams {
+    private func buildSearchParameters(from query: SearchQuery, limit: Int, offset: Int) -> [String: Any] {
         let filters = query.filters
-        return SearchRpcParams(
-            query_text: query.text.isEmpty ? nil : query.text,
-            category_filter: filters.category,
-            min_price: filters.priceRange?.min,
-            max_price: filters.priceRange?.max,
-            intent_filter: filters.intent?.rawValue,
-            service_location_filter: filters.location?.rawValue,
-            trust_min: filters.minTrustScore,
-            trust_max: nil,
-            sort_by: query.sortBy.rawValue,
-            limit_count: limit,
-            offset_count: offset
-        )
-    }
-    
-    // Encodable parameters for search_listings RPC
-    private struct SearchRpcParams: Encodable {
-        let query_text: String?
-        let category_filter: String?
-        let min_price: Double?
-        let max_price: Double?
-        let intent_filter: String?
-        let service_location_filter: String?
-        let trust_min: Int?
-        let trust_max: Int?
-        let sort_by: String
-        let limit_count: Int
-        let offset_count: Int
+        var params: [String: Any] = [
+            "sort_by": query.sortBy.rawValue,
+            "limit_count": limit,
+            "offset_count": offset
+        ]
+        
+        // Only include non-nil parameters
+        if !query.text.isEmpty {
+            params["query_text"] = query.text
+        }
+        if let category = filters.category {
+            params["category_filter"] = category
+        }
+        if let minPrice = filters.priceRange?.min {
+            params["min_price"] = minPrice
+        }
+        if let maxPrice = filters.priceRange?.max {
+            params["max_price"] = maxPrice
+        }
+        if let intent = filters.intent?.rawValue {
+            params["intent_filter"] = intent
+        }
+        if let location = filters.location?.rawValue {
+            params["service_location_filter"] = location
+        }
+        if let minTrust = filters.minTrustScore {
+            params["trust_min"] = minTrust
+        }
+        
+        return params
     }
     
     // MARK: - Error Handling

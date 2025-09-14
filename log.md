@@ -1745,3 +1745,41 @@ struct SearchListing {
 - `SearchService.swift` - Fixed RPC parameter format and error handling
 
 **Expected Result:** Search should now work without "Network connection error", Darragh!
+
+## 2025-01-14 - Investigating Search Issues
+
+**Problem:** User reports search is still not working properly despite previous fixes.
+
+**Investigation Started:** Examining current search implementation to identify specific issues.
+
+**Root Cause Found:** 
+- The SearchService was still using `Encodable` structs for RPC parameters
+- The previous fix documented on 2025-01-09 was not actually applied to the code
+- The service still had `SearchRpcParams` struct and `SuggestionRpcParams` struct
+
+**Fix Applied:**
+- Updated `buildSearchParameters()` to return `[String: Any]` dictionary
+- Updated `getSearchSuggestions()` to use dictionary parameters
+- Removed `SearchRpcParams` struct
+- Only including non-nil parameters in dictionary to match SQL function defaults
+
+**Technical Details:**
+- Changed from: `SearchRpcParams` struct with Encodable
+- Changed to: `[String: Any]` dictionary with only non-nil values
+- This matches the pattern used by OrderService and WalletService
+
+**Database Functions Missing:**
+- The PostgreSQL functions `search_listings` and `get_search_suggestions` are not in the database
+- Created `create_search_functions.sql` script to set up all necessary database objects
+
+**Next Steps Required:**
+1. Run `create_search_functions.sql` in Supabase SQL editor
+2. This will create:
+   - GIN index on tsv column for full-text search
+   - Performance indexes on category, price, location, etc.
+   - `search_listings` function with all filtering capabilities
+   - `get_search_suggestions` function for autocomplete
+   - Proper permissions for authenticated users
+   - Trigger to auto-update tsv column
+
+**Status:** ✅ CODE FIXED - AWAITING DATABASE SETUP
