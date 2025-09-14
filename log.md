@@ -1084,6 +1084,49 @@ The implementation is complete and ready for end-to-end testing:
 - Empty states give proper guidance for each filter
 - All query functions use consistent filtering logic
 
+## 2025-01-14 - HOMEPAGE FILTERS STILL NOT WORKING - DEBUGGING
+
+**Problem:** User reports homepage filters still not working - same "Used car" listing appears in All/Selling/Buying
+
+**Analysis:** 
+- Expected behavior: "Used car" ($2,000) should be an offer, so it should appear in "All" and "Selling" but NOT "Buying"
+- Actual behavior: Appears in all three filters
+- This suggests either query filtering isn't working or data inconsistency
+
+**Debug Actions Taken:**
+
+1. **✅ Added Comprehensive Logging**
+   - All query functions now log selected filter, intent filter, and all returned listings
+   - Shows title, intent, and price for each listing returned
+   - Logs exactly which filters are being applied
+
+2. **✅ Added Explicit Filter Testing**
+   - Created `testFilters()` method that runs 3 separate tests:
+     - Test 1: All listings (no intent filter)
+     - Test 2: Only offers (intent = "offer")  
+     - Test 3: Only seeks (intent = "seek")
+   - Uses same query conditions as main queries
+   - Explicitly tests if Supabase query filtering works at all
+
+3. **✅ Added Supabase Import**
+   - Added import Supabase to HomeTabView for debug testing
+   - Ensures test queries can run properly
+
+**Code Changes:**
+- `HomeTabView.swift`: Added comprehensive logging, explicit filter testing, Supabase import
+
+**Status:** 🔍 DEBUGGING ACTIVE - NEED USER TESTING
+
+**Next Steps:**
+1. User should switch between All/Selling/Buying filters while watching Xcode console
+2. Look for lines starting with "📋 HomeTabView:" and "🧪 TESTING FILTERS"
+3. Console will show exactly what filters are applied and what results are returned
+4. This will determine if issue is:
+   - Query construction problem
+   - Database data inconsistency  
+   - Supabase SDK issue
+   - Something else entirely
+
 ## Phase 0 - Ratings System Foundation (Completed)
 
 **Human explanation:** Created the foundational structure for the ratings system including database models, service layer, and UI components behind a feature flag.
