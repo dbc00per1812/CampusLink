@@ -1723,3 +1723,25 @@ struct SearchListing {
 - Updated: `SearchResultsView.swift` - Improved result display
 
 **Search is now fully functional with proper keyword matching, filtering, and ranking**, Darragh!
+
+## 2025-01-09 - Fixed Search Network Connection Error
+
+**Problem:** Search was showing "Network connection error" despite database functions working correctly.
+
+**Root Cause Analysis:** 
+- Database functions were working (tested in SQL Editor)
+- App compilation was successful 
+- Real issue: SearchService was using `Encodable` structs for RPC parameters
+- Other working services (OrderService, WalletService) use `[String: Any]` dictionaries
+- Supabase RPC requires dictionary format, not custom structs
+
+**Solution Applied:**
+- Changed `buildSearchParameters()` to return `[String: Any]` instead of `RpcSearchParams` struct
+- Updated `getSearchSuggestions()` to use dictionary parameters  
+- Improved error handling to show actual errors instead of masking as "network error"
+- Only includes non-nil parameters in dictionary to match SQL function defaults
+
+**Files Changed:**
+- `SearchService.swift` - Fixed RPC parameter format and error handling
+
+**Expected Result:** Search should now work without "Network connection error", Darragh!
