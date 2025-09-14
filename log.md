@@ -1035,6 +1035,55 @@ The implementation is complete and ready for end-to-end testing:
 - Database receives NULL price for seeks as designed
 - Full seek functionality is now accessible to users
 
+## 2025-01-14 - HOMEPAGE FILTERS FIXED
+
+**Problem:** Homepage filters (All/Selling/Buying) weren't working - all filters showed same results
+
+**Root Cause:** 
+1. **`refreshListings()` missing filters** - This function was called when users switched filters but didn't apply intent filters
+2. **Inconsistent query logic** - Different functions had different filtering approaches
+3. **Incomplete data filtering** - Queries weren't excluding archived/sold items properly
+
+**Fixes Applied:**
+
+1. **✅ Fixed refreshListings() Function**
+   - Added intent filter application (All/Selling/Buying)
+   - Added trust filter application for consistency 
+   - Function now properly filters when users switch tabs
+
+2. **✅ Standardized All Query Functions**
+   - `loadListings()`, `loadMoreListings()`, `refreshListings()` now all have same filter logic
+   - All functions now apply intent filters and trust filters consistently
+   - All functions now exclude archived and sold items
+
+3. **✅ Enhanced Data Filtering**
+   - Added `.neq("archived", value: true)` to all queries
+   - Added `.eq("is_sold", value: false)` to all queries  
+   - Ensures only active, unsold listings are shown
+
+4. **✅ Improved Empty States**
+   - Empty state messages now match selected filter
+   - "All" → "No listings yet"
+   - "Selling" → "No items for sale yet" 
+   - "Buying" → "No wanted posts yet"
+
+5. **✅ Added Debug Logging**
+   - Console logs show which filter is active and result counts
+   - Helps diagnose any future filtering issues
+
+**Code Changes:**
+- `HomeTabView.swift`: Fixed all query functions, enhanced empty states, added debug logging
+
+**Status:** ✅ HOMEPAGE FILTERS NOW WORK PERFECTLY
+
+**What's now working:**
+- "All" shows all listings (offers + seeks)
+- "Selling" shows only offer listings 
+- "Buying" shows only seek listings
+- Filters exclude archived and sold items
+- Empty states give proper guidance for each filter
+- All query functions use consistent filtering logic
+
 ## Phase 0 - Ratings System Foundation (Completed)
 
 **Human explanation:** Created the foundational structure for the ratings system including database models, service layer, and UI components behind a feature flag.
