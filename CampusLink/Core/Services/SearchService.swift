@@ -40,8 +40,9 @@ final class SearchService: ObservableObject {
                 let offset_count: Int
             }
             
+            let trimmedQuery = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let params = SearchParams(
-                query_text: query.text.isEmpty ? nil : query.text,
+                query_text: trimmedQuery.isEmpty ? nil : trimmedQuery,
                 category_filter: filters.category,
                 min_price: filters.priceRange?.min,
                 max_price: filters.priceRange?.max,
