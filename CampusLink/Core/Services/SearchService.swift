@@ -1,12 +1,6 @@
 import Foundation
 import Supabase
 
-// Create supabase client for SearchService
-private let supabase = SupabaseClient(
-    supabaseURL: Secrets.supabaseURL,
-    supabaseKey: Secrets.supabaseKey
-)
-
 // MARK: - Search Service
 
 final class SearchService: ObservableObject {
@@ -87,14 +81,13 @@ final class SearchService: ObservableObject {
         
         do {
             // Call the get_search_suggestions PostgreSQL function
-            struct SuggestionParams: Encodable {
-                let partial_term: String
-                let max_suggestions: Int
-            }
             let suggestionRows: [SearchSuggestionRow] = try await supabase
                 .rpc(
                     "get_search_suggestions",
-                    params: SuggestionParams(partial_term: partialText, max_suggestions: maxSuggestions)
+                    params: [
+                        "query_text": partialText,
+                        "limit_count": maxSuggestions
+                    ]
                 )
                 .execute()
                 .value
@@ -239,36 +232,39 @@ final class SearchService: ObservableObject {
     // MARK: - Helper Methods
     
     /// Build search query parameters for database call
-    private func buildSearchParameters(from query: SearchQuery, limit: Int, offset: Int) -> RpcSearchParams {
+    private func buildSearchParameters(from query: SearchQuery, limit: Int, offset: Int) -> [String: Any] {
         let filters = query.filters
-        return RpcSearchParams(
-            query_text: query.text.isEmpty ? nil : query.text,
-            category_filter: filters.category,
-            min_price: filters.priceRange?.min,
-            max_price: filters.priceRange?.max,
-            intent_filter: filters.intent?.rawValue,
-            service_location_filter: filters.location?.rawValue,
-            trust_min: filters.minTrustScore,
-            trust_max: nil, // Not implemented yet
-            sort_by: query.sortBy.rawValue,
-            limit_count: limit,
-            offset_count: offset
-        )
-    }
-
-    // Encodable RPC parameter payload matching SQL function signature
-    private struct RpcSearchParams: Encodable {
-        let query_text: String?
-        let category_filter: String?
-        let min_price: Double?
-        let max_price: Double?
-        let intent_filter: String?
-        let service_location_filter: String?
-        let trust_min: Int?
-        let trust_max: Int?
-        let sort_by: String
-        let limit_count: Int
-        let offset_count: Int
+        var params: [String: Any] = [:]
+        
+        // Only include non-nil parameters to match SQL function defaults
+        if !query.text.isEmpty {
+            params["query_text"] = query.text
+        }
+        if let category = filters.category {
+            params["category_filter"] = category
+        }
+        if let minPrice = filters.priceRange?.min {
+            params["min_price"] = minPrice
+        }
+        if let maxPrice = filters.priceRange?.max {
+            params["max_price"] = maxPrice
+        }
+        if let intent = filters.intent?.rawValue {
+            params["intent_filter"] = intent
+        }
+        if let location = filters.location?.rawValue {
+            params["service_location_filter"] = location
+        }
+        if let trustMin = filters.minTrustScore {
+            params["trust_min"] = trustMin
+        }
+        
+        // Always include these required parameters
+        params["sort_by"] = query.sortBy.rawValue
+        params["limit_count"] = limit
+        params["offset_count"] = offset
+        
+        return params
     }
     
     // MARK: - Error Handling
@@ -280,6 +276,8 @@ final class SearchService: ObservableObject {
         
         #if DEBUG
         print("SearchService Error: \(error)")
+        print("Error type: \(type(of: error))")
+        print("Error description: \(error.localizedDescription)")
         #endif
         
         // Check for common Supabase/PostgreSQL errors
@@ -293,7 +291,8 @@ final class SearchService: ObservableObject {
             return .networkError
         }
         
-        return .networkError
+        // Return database error for better debugging instead of masking as network error
+        return .databaseError
     }
 }
 
