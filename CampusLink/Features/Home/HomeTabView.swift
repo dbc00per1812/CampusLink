@@ -303,7 +303,14 @@ extension HomeTabView {
                 
             // Apply intent filter (Phase 2)
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                #if DEBUG
+                print("📋 HomeTabView: Applying intent filter - \(intent.rawValue)")
+                #endif
                 query = query.eq("intent", value: intent.rawValue)
+            } else {
+                #if DEBUG
+                print("📋 HomeTabView: No intent filter applied (showing all)")
+                #endif
             }
             
             // Apply trust filter (Phase 3)
@@ -340,8 +347,8 @@ extension HomeTabView {
             print("📋 HomeTabView: loadListings() - Selected filter: \(selectedFilter.rawValue)")
             print("📋 HomeTabView: loadListings() - Intent filter: \(selectedFilter.intentFilter?.rawValue ?? "none")")
             print("📋 HomeTabView: loadListings() - Response count: \(response.count)")
-            if let first = response.first {
-                print("📋 HomeTabView: loadListings() - First listing: \(first.title), intent: \(first.intent)")
+            for (index, listing) in response.enumerated() {
+                print("📋 HomeTabView: loadListings() - Listing \(index): \"\(listing.title)\", intent: \(listing.intent.rawValue), price: \(listing.price)")
             }
             #endif
 
@@ -393,7 +400,14 @@ extension HomeTabView {
                 
             // Apply intent filter (Phase 2)
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                #if DEBUG
+                print("📋 HomeTabView: Applying intent filter - \(intent.rawValue)")
+                #endif
                 query = query.eq("intent", value: intent.rawValue)
+            } else {
+                #if DEBUG
+                print("📋 HomeTabView: No intent filter applied (showing all)")
+                #endif
             }
             
             // Apply trust filter (Phase 3)
@@ -445,7 +459,14 @@ extension HomeTabView {
                 
             // Apply intent filter (Phase 2)
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                #if DEBUG
+                print("📋 HomeTabView: Applying intent filter - \(intent.rawValue)")
+                #endif
                 query = query.eq("intent", value: intent.rawValue)
+            } else {
+                #if DEBUG
+                print("📋 HomeTabView: No intent filter applied (showing all)")
+                #endif
             }
             
             // Apply trust filter (Phase 3)
@@ -464,8 +485,8 @@ extension HomeTabView {
             print("📋 HomeTabView: refreshListings() - Selected filter: \(selectedFilter.rawValue)")
             print("📋 HomeTabView: refreshListings() - Intent filter: \(selectedFilter.intentFilter?.rawValue ?? "none")")
             print("📋 HomeTabView: refreshListings() - Response count: \(response.count)")
-            if let first = response.first {
-                print("📋 HomeTabView: refreshListings() - First listing: \(first.title), intent: \(first.intent)")
+            for (index, listing) in response.enumerated() {
+                print("📋 HomeTabView: refreshListings() - Listing \(index): \"\(listing.title)\", intent: \(listing.intent.rawValue), price: \(listing.price)")
             }
             #endif
 
