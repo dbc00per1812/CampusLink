@@ -1831,6 +1831,28 @@ struct SearchListing {
 
 **Status:** ✅ READY FOR FINAL DATABASE DEPLOYMENT
 
+## 2025-01-14 - URGENT: Search Functions Missing from Database
+
+**Problem:** "Search functions not found" error - the database functions don't exist
+
+**Solution:** Created `QUICK_FIX_SEARCH.sql` that has everything needed
+
+**TO FIX NOW:**
+1. Open Supabase SQL Editor
+2. Copy ALL contents of `QUICK_FIX_SEARCH.sql`
+3. Paste and run it
+4. Search will work immediately
+
+**What this script does:**
+- Creates all necessary indexes
+- Drops old functions if they exist
+- Creates search_listings with partial matching
+- Creates get_search_suggestions
+- Grants proper permissions
+- Tests the functions
+
+**Status:** ⚠️ AWAITING DATABASE DEPLOYMENT - RUN QUICK_FIX_SEARCH.sql
+
 ## 2025-01-14 - Search Polish and Partial Matching Fix
 
 **Problem:** Search requires full word matches and some keywords like "levitator" don't work properly
