@@ -23,13 +23,33 @@ final class SearchService: ObservableObject {
             }
             
             // Build parameters for the PostgreSQL function
-            let params = buildSearchParameters(from: query, limit: limit, offset: offset)
+            let filters = query.filters
             
             // Call the search_listings PostgreSQL function
-            let searchResponse: [SearchListing] = try await supabase
-                .rpc("search_listings", params: params)
+            let response = try await supabase
+                .rpc(
+                    "search_listings",
+                    params: [
+                        "query_text": query.text.isEmpty ? nil : query.text,
+                        "category_filter": filters.category,
+                        "min_price": filters.priceRange?.min,
+                        "max_price": filters.priceRange?.max,
+                        "intent_filter": filters.intent?.rawValue,
+                        "service_location_filter": filters.location?.rawValue,
+                        "trust_min": filters.minTrustScore,
+                        "sort_by": query.sortBy.rawValue,
+                        "limit_count": limit,
+                        "offset_count": offset
+                    ].compactMapValues { $0 }
+                )
                 .execute()
-                .value
+                .value as [[String: Any]]
+            
+            // Parse the response
+            let searchResponse: [SearchListing] = try response.compactMap { dict in
+                let data = try JSONSerialization.data(withJSONObject: dict)
+                return try JSONDecoder().decode(SearchListing.self, from: data)
+            }
             
             #if DEBUG
             print("📱 SearchService: Received \(searchResponse.count) results from database")
@@ -89,15 +109,22 @@ final class SearchService: ObservableObject {
         
         do {
             // Call the get_search_suggestions PostgreSQL function
-            let params: [String: Any] = [
-                "query_text": partialText,
-                "limit_count": maxSuggestions
-            ]
-            
-            let suggestionRows: [SearchSuggestionRow] = try await supabase
-                .rpc("get_search_suggestions", params: params)
+            let response = try await supabase
+                .rpc(
+                    "get_search_suggestions",
+                    params: [
+                        "query_text": partialText,
+                        "limit_count": maxSuggestions
+                    ]
+                )
                 .execute()
-                .value
+                .value as [[String: Any]]
+            
+            // Parse the response
+            let suggestionRows: [SearchSuggestionRow] = try response.compactMap { dict in
+                let data = try JSONSerialization.data(withJSONObject: dict)
+                return try JSONDecoder().decode(SearchSuggestionRow.self, from: data)
+            }
             
             // Convert to SearchSuggestion objects
             return suggestionRows.map { row in
@@ -234,43 +261,6 @@ final class SearchService: ObservableObject {
         }
         
         return true
-    }
-    
-    // MARK: - Helper Methods
-    
-    /// Build search query parameters for database call
-    private func buildSearchParameters(from query: SearchQuery, limit: Int, offset: Int) -> [String: Any] {
-        let filters = query.filters
-        var params: [String: Any] = [
-            "sort_by": query.sortBy.rawValue,
-            "limit_count": limit,
-            "offset_count": offset
-        ]
-        
-        // Only include non-nil parameters
-        if !query.text.isEmpty {
-            params["query_text"] = query.text
-        }
-        if let category = filters.category {
-            params["category_filter"] = category
-        }
-        if let minPrice = filters.priceRange?.min {
-            params["min_price"] = minPrice
-        }
-        if let maxPrice = filters.priceRange?.max {
-            params["max_price"] = maxPrice
-        }
-        if let intent = filters.intent?.rawValue {
-            params["intent_filter"] = intent
-        }
-        if let location = filters.location?.rawValue {
-            params["service_location_filter"] = location
-        }
-        if let minTrust = filters.minTrustScore {
-            params["trust_min"] = minTrust
-        }
-        
-        return params
     }
     
     // MARK: - Error Handling

@@ -1783,3 +1783,34 @@ struct SearchListing {
    - Trigger to auto-update tsv column
 
 **Status:** ✅ CODE FIXED - AWAITING DATABASE SETUP
+
+## 2025-01-14 - Fixed Compilation Errors and Database Script
+
+**Problem:** 
+1. Compilation error: "Type 'Any' cannot conform to 'Encodable'" in SearchService
+2. Database error: "cannot change return type of existing function"
+
+**Root Cause:**
+1. Supabase SDK's `.rpc()` method doesn't accept `[String: Any]` variables - it needs inline dictionary literals
+2. Database functions already existed with different signatures
+
+**Fix Applied:**
+
+### 1. Fixed SearchService Compilation
+- Removed the `buildSearchParameters` function
+- Moved parameters inline in the `.rpc()` calls
+- Used `.compactMapValues { $0 }` to remove nil values
+- Cast response as `[[String: Any]]` and manually decode to `SearchListing` objects
+- Same pattern applied to both `searchListings` and `getSearchSuggestions`
+
+### 2. Fixed Database Script
+- Added `DROP FUNCTION IF EXISTS search_listings;` before creating
+- Added `DROP FUNCTION IF EXISTS get_search_suggestions;` before creating
+- This ensures clean function recreation with new signatures
+
+**Technical Details:**
+- The Supabase Swift SDK requires inline dictionary literals for `.rpc()` params
+- Using a variable of type `[String: Any]` causes "cannot conform to Encodable" error
+- Manual JSON decoding is needed when response is cast as `[[String: Any]]`
+
+**Status:** ✅ ALL ERRORS FIXED - READY FOR DATABASE DEPLOYMENT

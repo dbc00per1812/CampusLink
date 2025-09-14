@@ -12,7 +12,10 @@ CREATE INDEX IF NOT EXISTS idx_listings_location ON listings(service_location) W
 CREATE INDEX IF NOT EXISTS idx_listings_intent ON listings(intent);
 CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at DESC);
 
--- 3. Create search_listings function
+-- 3. Drop existing function if it exists (in case of signature changes)
+DROP FUNCTION IF EXISTS search_listings;
+
+-- Create search_listings function
 CREATE OR REPLACE FUNCTION search_listings(
     query_text text DEFAULT NULL,
     category_filter text DEFAULT NULL,
@@ -146,7 +149,10 @@ BEGIN
 END;
 $$;
 
--- 4. Create get_search_suggestions function
+-- 4. Drop existing function if it exists
+DROP FUNCTION IF EXISTS get_search_suggestions;
+
+-- Create get_search_suggestions function
 CREATE OR REPLACE FUNCTION get_search_suggestions(
     query_text text,
     limit_count integer DEFAULT 10
