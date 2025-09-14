@@ -357,51 +357,43 @@ extension HomeTabView {
             let from = 0
             let to = pageSize - 1
 
-            // Build query more explicitly 
-            let baseQuery = supabase
-                .from("listings")
-                .select("""
-                    *,
-                    user:users(*)
-                """)
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                
-            // Apply intent filter (Phase 2) - FIXED: Explicit query building
-            let filteredQuery: PostgrestTransformBuilder
-            
-            // Debug: Check what's happening
-            await MainActor.run {
-                debugMessage = "🔍 AppConfig.enableSeekMode: \(AppConfig.enableSeekMode), selectedFilter: \(selectedFilter.rawValue), intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "nil")"
-            }
+            // SIMPLE APPROACH - Build complete query based on filter
+            let response: [ListingWithUser]
             
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-                #if DEBUG
-                print("📋 HomeTabView: loadListings - Applying intent filter - \(intent.rawValue) for filter: \(selectedFilter.rawValue)")
-                #endif
-                await MainActor.run {
-                    debugMessage = "🎯 APPLYING FILTER: intent = '\(intent.rawValue)'"
-                }
-                filteredQuery = baseQuery.eq("intent", value: intent.rawValue)
+                print("📋 loadListings: APPLYING INTENT FILTER: \(intent.rawValue)")
+                
+                response = try await supabase
+                    .from("listings")
+                    .select("""
+                        *,
+                        user:users(*)
+                    """)
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: intent.rawValue)
+                    .order("created_at", ascending: false)
+                    .range(from: from, to: to)
+                    .execute()
+                    .value
             } else {
-                #if DEBUG
-                print("📋 HomeTabView: loadListings - Showing all listings (All filter selected) - no intent filter")
-                #endif
-                await MainActor.run {
-                    debugMessage = "🎯 NO FILTER: showing all listings"
-                }
-                filteredQuery = baseQuery
+                print("📋 loadListings: NO INTENT FILTER")
+                
+                response = try await supabase
+                    .from("listings")
+                    .select("""
+                        *,
+                        user:users(*)
+                    """)
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .order("created_at", ascending: false)
+                    .range(from: from, to: to)
+                    .execute()
+                    .value
             }
-
-            // Domain filter temporarily disabled for debugging
-            // if enableDomainFilter { ... }
-
-            let response: [ListingWithUser] = try await filteredQuery
-                .order("created_at", ascending: false)
-                .range(from: from, to: to)
-                .execute()
-                .value
 
             #if DEBUG
             print("📋 HomeTabView: loadListings() - Selected filter: \(selectedFilter.rawValue)")
@@ -456,36 +448,43 @@ extension HomeTabView {
             let from = currentPage * pageSize
             let to = from + pageSize - 1
 
-            // Build query more explicitly 
-            let baseQuery = supabase
-                .from("listings")
-                .select("""
-                    *,
-                    user:users(*)
-                """)
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                
-            // Apply intent filter (Phase 2) - FIXED: Explicit query building
-            let filteredQuery: PostgrestTransformBuilder
+            // SIMPLE APPROACH - Build complete query based on filter
+            let response: [ListingWithUser]
+            
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-                #if DEBUG
-                print("📋 HomeTabView: loadMoreListings - Applying intent filter - \(intent.rawValue) for filter: \(selectedFilter.rawValue)")
-                #endif
-                filteredQuery = baseQuery.eq("intent", value: intent.rawValue)
+                print("📋 loadMoreListings: APPLYING INTENT FILTER: \(intent.rawValue)")
+                
+                response = try await supabase
+                    .from("listings")
+                    .select("""
+                        *,
+                        user:users(*)
+                    """)
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: intent.rawValue)
+                    .order("created_at", ascending: false)
+                    .range(from: from, to: to)
+                    .execute()
+                    .value
             } else {
-                #if DEBUG
-                print("📋 HomeTabView: loadMoreListings - Showing all listings (All filter selected) - no intent filter")
-                #endif
-                filteredQuery = baseQuery
+                print("📋 loadMoreListings: NO INTENT FILTER")
+                
+                response = try await supabase
+                    .from("listings")
+                    .select("""
+                        *,
+                        user:users(*)
+                    """)
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .order("created_at", ascending: false)
+                    .range(from: from, to: to)
+                    .execute()
+                    .value
             }
-
-            let response: [ListingWithUser] = try await filteredQuery
-                .order("created_at", ascending: false)
-                .range(from: from, to: to)
-                .execute()
-                .value
 
             await MainActor.run {
                 // Ensure no duplicate listings are added
@@ -543,44 +542,49 @@ extension HomeTabView {
 
         print("🚨 About to execute REAL Supabase query...")
         do {
-            // Build query more explicitly without conditional variable modification
-            let baseQuery = supabase
-                .from("listings")
-                .select("""
-                    *,
-                    user:users(*)
-                """)
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
+            // SIMPLE APPROACH - Build complete query based on filter
+            let response: [ListingWithUser]
             
-            // Apply intent filter (Phase 2) - FIXED: Explicit query building
-            let filteredQuery: PostgrestTransformBuilder
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
                 await MainActor.run {
                     debugMessage = "🔍 Filtering by intent: \(intent.rawValue)"
                 }
-                #if DEBUG
-                print("🔥 CRITICAL: Applying .eq(\"intent\", value: \"\(intent.rawValue)\") to query")
-                #endif
-                filteredQuery = baseQuery.eq("intent", value: intent.rawValue)
+                print("🔥 APPLYING INTENT FILTER: \(intent.rawValue)")
+                
+                response = try await supabase
+                    .from("listings")
+                    .select("""
+                        *,
+                        user:users(*)
+                    """)
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: intent.rawValue)  // THE ACTUAL FILTER
+                    .order("created_at", ascending: false)
+                    .range(from: 0, to: pageSize - 1)
+                    .execute()
+                    .value
             } else {
                 await MainActor.run {
                     debugMessage = "🔍 Showing all listings (no intent filter)"
                 }
-                #if DEBUG
-                print("🔥 CRITICAL: NO intent filter applied - showing ALL listings")
-                #endif
-                filteredQuery = baseQuery
+                print("🔥 NO INTENT FILTER - SHOWING ALL")
+                
+                response = try await supabase
+                    .from("listings")
+                    .select("""
+                        *,
+                        user:users(*)
+                    """)
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .order("created_at", ascending: false)
+                    .range(from: 0, to: pageSize - 1)
+                    .execute()
+                    .value
             }
-            
-            // Apply trust filter (Phase 3) - Not implemented yet
-            
-            let response: [ListingWithUser] = try await filteredQuery
-                .order("created_at", ascending: false)
-                .range(from: 0, to: pageSize - 1)
-                .execute()
-                .value
 
             print("🚨🚨🚨 SUPABASE QUERY COMPLETED")
             print("🚨 Response count: \(response.count)")
