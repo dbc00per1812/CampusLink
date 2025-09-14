@@ -31,6 +31,14 @@ final class SearchService: ObservableObject {
                 .execute()
                 .value
             
+            #if DEBUG
+            print("📱 SearchService: Received \(searchResponse.count) results from database")
+            if !searchResponse.isEmpty {
+                print("📱 SearchService: First result title: \(searchResponse.first?.title ?? "nil")")
+                print("📱 SearchService: First result ID: \(searchResponse.first?.id ?? UUID())")
+            }
+            #endif
+            
             // Parse the response
             let listings = searchResponse
             var searchRank: [UUID: Float] = [:]
