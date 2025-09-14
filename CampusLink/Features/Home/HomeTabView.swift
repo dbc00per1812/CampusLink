@@ -214,13 +214,19 @@ extension HomeTabView {
     private func emptyStateView() -> some View {
         Spacer()
         VStack(spacing: 16) {
-            Image(systemName: "list.bullet.below.rectangle")
+            Image(systemName: selectedFilter == .wanted ? "magnifyingglass" : "list.bullet.below.rectangle")
                 .font(.system(size: 50))
                 .foregroundColor(.gray)
-            Text("No listings yet")
+            
+            Text(selectedFilter == .all ? "No listings yet" : 
+                 selectedFilter == .forSale ? "No items for sale yet" : 
+                 "No wanted posts yet")
                 .font(.title2)
                 .fontWeight(.semibold)
-            Text("Be the first to post something for sale!")
+            
+            Text(selectedFilter == .all ? "Be the first to post something!" :
+                 selectedFilter == .forSale ? "Be the first to post something for sale!" :
+                 "Be the first to post what you're looking for!")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -292,10 +298,17 @@ extension HomeTabView {
                     user:users(*)
                 """)
                 .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
                 
             // Apply intent filter (Phase 2)
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
                 query = query.eq("intent", value: intent.rawValue)
+            }
+            
+            // Apply trust filter (Phase 3)
+            if AppConfig.enableRatings, let minScore = selectedTrustFilter.minScore {
+                query = query.gte("user.trust_score", value: minScore)
             }
 
             if enableDomainFilter {
@@ -322,6 +335,15 @@ extension HomeTabView {
                 .range(from: from, to: to)
                 .execute()
                 .value
+
+            #if DEBUG
+            print("📋 HomeTabView: loadListings() - Selected filter: \(selectedFilter.rawValue)")
+            print("📋 HomeTabView: loadListings() - Intent filter: \(selectedFilter.intentFilter?.rawValue ?? "none")")
+            print("📋 HomeTabView: loadListings() - Response count: \(response.count)")
+            if let first = response.first {
+                print("📋 HomeTabView: loadListings() - First listing: \(first.title), intent: \(first.intent)")
+            }
+            #endif
 
             // Ensure we're on the main thread and the response is valid
             await MainActor.run {
@@ -366,6 +388,8 @@ extension HomeTabView {
                     user:users(*)
                 """)
                 .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
                 
             // Apply intent filter (Phase 2)
             if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
@@ -409,18 +433,41 @@ extension HomeTabView {
         }
 
         do {
-            let response: [ListingWithUser] = try await supabase
+            var query = supabase
                 .from("listings")
                 .select("""
                     *,
                     user:users(*)
                 """)
                 .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                
+            // Apply intent filter (Phase 2)
+            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+                query = query.eq("intent", value: intent.rawValue)
+            }
+            
+            // Apply trust filter (Phase 3)
+            if AppConfig.enableRatings, let minScore = selectedTrustFilter.minScore {
+                query = query.gte("user.trust_score", value: minScore)
+            }
+
+            let response: [ListingWithUser] = try await query
                 .order(AppConfig.enableRatings ? "user.trust_score" : "created_at", ascending: false)
                 .order("created_at", ascending: false)
                 .range(from: 0, to: pageSize - 1)
                 .execute()
                 .value
+
+            #if DEBUG
+            print("📋 HomeTabView: refreshListings() - Selected filter: \(selectedFilter.rawValue)")
+            print("📋 HomeTabView: refreshListings() - Intent filter: \(selectedFilter.intentFilter?.rawValue ?? "none")")
+            print("📋 HomeTabView: refreshListings() - Response count: \(response.count)")
+            if let first = response.first {
+                print("📋 HomeTabView: refreshListings() - First listing: \(first.title), intent: \(first.intent)")
+            }
+            #endif
 
             await MainActor.run {
                 listings = response
