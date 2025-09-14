@@ -210,10 +210,7 @@ $$;
 GRANT EXECUTE ON FUNCTION search_listings TO authenticated;
 GRANT EXECUTE ON FUNCTION get_search_suggestions TO authenticated;
 
--- 6. Update tsv column for existing listings (if any exist without tsv)
-UPDATE listings 
-SET tsv = to_tsvector('simple', COALESCE(title, '') || ' ' || COALESCE(description, ''))
-WHERE tsv IS NULL;
+-- 6. Note: tsv is a generated column, it will be automatically populated
 
 -- 7. Create trigger to automatically update tsv on insert/update
 CREATE OR REPLACE FUNCTION update_listing_tsv()

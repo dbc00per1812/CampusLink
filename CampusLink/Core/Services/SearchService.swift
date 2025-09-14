@@ -25,31 +25,40 @@ final class SearchService: ObservableObject {
             // Build parameters for the PostgreSQL function
             let filters = query.filters
             
-            // Call the search_listings PostgreSQL function
-            let response = try await supabase
-                .rpc(
-                    "search_listings",
-                    params: [
-                        "query_text": query.text.isEmpty ? nil : query.text,
-                        "category_filter": filters.category,
-                        "min_price": filters.priceRange?.min,
-                        "max_price": filters.priceRange?.max,
-                        "intent_filter": filters.intent?.rawValue,
-                        "service_location_filter": filters.location?.rawValue,
-                        "trust_min": filters.minTrustScore,
-                        "sort_by": query.sortBy.rawValue,
-                        "limit_count": limit,
-                        "offset_count": offset
-                    ].compactMapValues { $0 }
-                )
-                .execute()
-                .value as [[String: Any]]
-            
-            // Parse the response
-            let searchResponse: [SearchListing] = try response.compactMap { dict in
-                let data = try JSONSerialization.data(withJSONObject: dict)
-                return try JSONDecoder().decode(SearchListing.self, from: data)
+            // Create parameter struct
+            struct SearchParams: Encodable {
+                let query_text: String?
+                let category_filter: String?
+                let min_price: Double?
+                let max_price: Double?
+                let intent_filter: String?
+                let service_location_filter: String?
+                let trust_min: Int?
+                let trust_max: Int?
+                let sort_by: String
+                let limit_count: Int
+                let offset_count: Int
             }
+            
+            let params = SearchParams(
+                query_text: query.text.isEmpty ? nil : query.text,
+                category_filter: filters.category,
+                min_price: filters.priceRange?.min,
+                max_price: filters.priceRange?.max,
+                intent_filter: filters.intent?.rawValue,
+                service_location_filter: filters.location?.rawValue,
+                trust_min: filters.minTrustScore,
+                trust_max: nil,
+                sort_by: query.sortBy.rawValue,
+                limit_count: limit,
+                offset_count: offset
+            )
+            
+            // Call the search_listings PostgreSQL function
+            let searchResponse: [SearchListing] = try await supabase
+                .rpc("search_listings", params: params)
+                .execute()
+                .value
             
             #if DEBUG
             print("📱 SearchService: Received \(searchResponse.count) results from database")
@@ -108,23 +117,22 @@ final class SearchService: ObservableObject {
         }
         
         do {
-            // Call the get_search_suggestions PostgreSQL function
-            let response = try await supabase
-                .rpc(
-                    "get_search_suggestions",
-                    params: [
-                        "query_text": partialText,
-                        "limit_count": maxSuggestions
-                    ]
-                )
-                .execute()
-                .value as [[String: Any]]
-            
-            // Parse the response
-            let suggestionRows: [SearchSuggestionRow] = try response.compactMap { dict in
-                let data = try JSONSerialization.data(withJSONObject: dict)
-                return try JSONDecoder().decode(SearchSuggestionRow.self, from: data)
+            // Create parameter struct
+            struct SuggestionParams: Encodable {
+                let query_text: String
+                let limit_count: Int
             }
+            
+            let params = SuggestionParams(
+                query_text: partialText,
+                limit_count: maxSuggestions
+            )
+            
+            // Call the get_search_suggestions PostgreSQL function
+            let suggestionRows: [SearchSuggestionRow] = try await supabase
+                .rpc("get_search_suggestions", params: params)
+                .execute()
+                .value
             
             // Convert to SearchSuggestion objects
             return suggestionRows.map { row in
