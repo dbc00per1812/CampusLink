@@ -85,11 +85,13 @@ struct OfferComposeView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Message (optional)")
                                     .font(.headline)
-                                TextField("Add a message to the seeker...", text: $message, axis: .vertical)
-                                    .lineLimit(3...6)
-                                    .padding()
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(12)
+                            TextField("Add a message to the seeker...", text: $message, axis: .vertical)
+                                .lineLimit(3...6)
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(12)
+                                .accessibilityLabel("Message to seeker")
+                                .accessibilityHint("Optional message to include with your offer")
                             }
                             
                             // Submit button
@@ -108,6 +110,8 @@ struct OfferComposeView: View {
                                 .cornerRadius(12)
                             }
                             .disabled(selectedListing == nil || isLoading)
+                            .accessibilityLabel(selectedListing == nil ? "Send offer button, disabled" : "Send offer")
+                            .accessibilityHint(selectedListing == nil ? "Select a listing first to enable this button" : "Sends your selected item as an offer to the seeker")
                         }
                         .padding()
                     }
@@ -238,6 +242,8 @@ struct OfferComposeView: View {
             
             await MainActor.run {
                 isLoading = false
+                // Analytics: Track offer creation
+                print("📊 Analytics: Offer created - Seek: \(seekListingId), Offer: \(offerListingId)")
                 dismiss()
             }
             

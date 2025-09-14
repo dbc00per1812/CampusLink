@@ -821,6 +821,13 @@ struct PostView: View {
                 .execute()
             
             await MainActor.run {
+                // Analytics: Track listing creation
+                if selectedIntent == .seek {
+                    print("📊 Analytics: Seek posted - Category: \(newListing.category), Budget: \(newListing.budgetMin ?? 0)-\(newListing.budgetMax ?? 0)")
+                } else {
+                    print("📊 Analytics: Listing posted - Category: \(newListing.category), Type: \(newListing.listingType), Price: \(newListing.price)")
+                }
+                
                 alertMessage = "Listing posted successfully! 🎉"
                 showingAlert = true
                 isLoading = false

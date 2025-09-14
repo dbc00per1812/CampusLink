@@ -30,6 +30,13 @@ struct OffersListView: View {
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal)
+                            
+                            Text("💡 Tip: Make sure your wanted post has a clear description and reasonable budget to attract offers.")
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal)
+                                .padding(.top, 8)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
@@ -167,6 +174,9 @@ struct OffersListView: View {
                 .execute()
                 .value
             
+            // Analytics: Track offer acceptance
+            print("📊 Analytics: Offer accepted - Seek: \(seekListing.id), Offer: \(offer.id)")
+            
             // Refresh offers list
             await loadOffers()
             
@@ -185,6 +195,9 @@ struct OffersListView: View {
                 .eq("id", value: offer.id.uuidString)
                 .execute()
                 .value
+            
+            // Analytics: Track offer decline
+            print("📊 Analytics: Offer declined - Seek: \(seekListing.id), Offer: \(offer.id)")
             
             // Refresh offers list
             await loadOffers()
@@ -287,11 +300,15 @@ struct OfferRowView: View {
                         onAction(.accept)
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Accept offer")
+                    .accessibilityHint("Accepts this offer and creates an order")
                     
                     Button("Decline") {
                         onAction(.decline)
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityLabel("Decline offer")
+                    .accessibilityHint("Declines this offer")
                     
                     Spacer()
                     
@@ -300,6 +317,8 @@ struct OfferRowView: View {
                     }
                     .font(.caption)
                     .foregroundColor(Color("ThemeColor"))
+                    .accessibilityLabel("View offered listing")
+                    .accessibilityHint("Shows details of the item being offered")
                 }
             }
         }
