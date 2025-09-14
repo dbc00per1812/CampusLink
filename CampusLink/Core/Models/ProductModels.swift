@@ -142,7 +142,7 @@ struct ListingCreate: Codable {
     let userId: String
     let title: String
     let description: String
-    let price: Double
+    let price: Double? // Optional for seek posts
     let category: String
     let photo: String?
     let listingType: ListingType

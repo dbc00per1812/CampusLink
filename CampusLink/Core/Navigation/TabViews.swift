@@ -519,12 +519,7 @@ struct PostView: View {
                             // Dismiss keyboard first
                             isTextFieldFocused = false
                             
-                            // Phase 0: Block seek posts until DB is ready
-                            if AppConfig.enableSeekMode && selectedIntent == .seek {
-                                alertMessage = "Seek mode is coming soon! This feature is currently under development."
-                                showingAlert = true
-                                return
-                            }
+                            // Seek mode is now fully implemented and ready
                             
                             Task {
                                 await createListing()
@@ -757,8 +752,14 @@ struct PostView: View {
     }
     
     private func createListing() async {
-        guard let userId = authManager.session?.user.id.uuidString,
-              let priceValue = Double(price) else { return }
+        guard let userId = authManager.session?.user.id.uuidString else { return }
+        
+        // For offers, price is required. For seeks, price is nil and budget is used instead.
+        var priceValue: Double? = nil
+        if selectedIntent == .offer {
+            guard let price = Double(price) else { return }
+            priceValue = price
+        }
         
         await MainActor.run {
             isLoading = true
