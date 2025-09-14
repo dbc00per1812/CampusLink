@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 // Simple struct just for fetching email
 private struct UserEmailFetch: Codable { let email: String? }
@@ -446,6 +447,11 @@ extension HomeTabView {
             hasMorePages = true
         }
 
+        // TEMPORARY DEBUG: Test each filter explicitly
+        #if DEBUG
+        await testFilters()
+        #endif
+
         do {
             var query = supabase
                 .from("listings")
@@ -682,4 +688,73 @@ extension HomeTabView {
             await SearchService.shared.saveRecentSearch(query, resultCount: 0)
         }
     }
+    
+    // TEMPORARY DEBUG METHOD
+    #if DEBUG
+    private func testFilters() async {
+        print("🧪 TESTING FILTERS EXPLICITLY:")
+        
+        // Test 1: All listings (no filter)
+        do {
+            let allListings: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .order("created_at", ascending: false)
+                .limit(5)
+                .execute()
+                .value
+            print("🧪 ALL LISTINGS: \(allListings.count)")
+            for listing in allListings {
+                print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
+            }
+        } catch {
+            print("🧪 Error getting all listings: \(error)")
+        }
+        
+        // Test 2: Only offers
+        do {
+            let offerListings: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "offer")
+                .order("created_at", ascending: false)
+                .limit(5)
+                .execute()
+                .value
+            print("🧪 OFFER LISTINGS: \(offerListings.count)")
+            for listing in offerListings {
+                print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
+            }
+        } catch {
+            print("🧪 Error getting offer listings: \(error)")
+        }
+        
+        // Test 3: Only seeks
+        do {
+            let seekListings: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "seek")
+                .order("created_at", ascending: false)
+                .limit(5)
+                .execute()
+                .value
+            print("🧪 SEEK LISTINGS: \(seekListings.count)")
+            for listing in seekListings {
+                print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
+            }
+        } catch {
+            print("🧪 Error getting seek listings: \(error)")
+        }
+    }
+    #endif
 }
