@@ -1830,3 +1830,41 @@ struct SearchListing {
 **Key Learning:** Supabase Swift SDK's `.rpc()` method requires Encodable parameter structs, not dictionaries
 
 **Status:** ✅ READY FOR FINAL DATABASE DEPLOYMENT
+
+## 2025-01-14 - Search Polish and Partial Matching Fix
+
+**Problem:** Search requires full word matches and some keywords like "levitator" don't work properly
+
+**Issues Found:**
+1. Search uses `plainto_tsquery` which only matches complete words
+2. No partial/prefix matching support (e.g., "lev" won't find "levitator")
+3. Search is too strict - needs fuzzy matching capabilities
+
+**Solutions Created:**
+
+### 1. Simple Search Fix (simple_search_fix.sql) - RECOMMENDED
+- Uses ILIKE for case-insensitive partial matching
+- Works on title, description, and category fields
+- Simple relevance scoring:
+  - Exact match: 3.0
+  - Starts with: 2.0
+  - Contains in title: 1.5
+  - Contains in description: 0.5
+- No complex PostgreSQL extensions needed
+
+### 2. Advanced Search (improve_search_functions.sql) - Optional
+- Uses prefix matching with `:*` operator
+- Multiple search methods combined
+- Requires pg_trgm extension for fuzzy matching
+- More complex but potentially more powerful
+
+**Next Steps:**
+1. Run `simple_search_fix.sql` in Supabase (simpler, more reliable)
+2. Test with partial words like "lev" for "levitator"
+3. If needed, try the advanced version
+
+**Key Improvements:**
+- Partial word matching (e.g., "guit" finds "guitar")
+- Case-insensitive search
+- Search in title, description, and category
+- Better relevance scoring for more accurate results
