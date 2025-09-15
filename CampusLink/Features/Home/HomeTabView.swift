@@ -67,7 +67,7 @@ struct HomeTabView: View {
             VStack(spacing: 0) {
                 headerView()
                 if AppConfig.enableSeekMode {
-                    simpleFilterView()
+                    filterView()
                 }
                 contentView()
             }
@@ -119,49 +119,21 @@ struct HomeTabView: View {
 
 extension HomeTabView {
     @ViewBuilder
-    private func simpleFilterView() -> some View {
-        HStack(spacing: 12) {
-            Button("All") {
-                Task { await loadAllListings() }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color("ThemeColor"))
-            .foregroundColor(.white)
-            .cornerRadius(20)
-            
-            Button("Selling") {
-                Task { await loadOfferListings() }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color("ThemeColor"))
-            .foregroundColor(.white)
-            .cornerRadius(20)
-            
-            Button("Buying") {
-                Task { await loadSeekListings() }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color("ThemeColor"))
-            .foregroundColor(.white)
-            .cornerRadius(20)
-        }
-        .padding(.horizontal)
-    }
-    
-    @ViewBuilder
     private func filterView() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
-                        print("🔍 BUTTON TAPPED: \(filter.rawValue)")
                         selectedFilter = filter
-                        print("🔍 selectedFilter set to: \(selectedFilter.rawValue)")
-                        Task { 
-                            await nuclearTest(filter: filter)
+                        Task {
+                            switch filter {
+                            case .all:
+                                await loadAllListings()
+                            case .forSale:
+                                await loadOfferListings()
+                            case .wanted:
+                                await loadSeekListings()
+                            }
                         }
                     }) {
                         Text(filter.rawValue)
@@ -364,109 +336,18 @@ extension HomeTabView {
     // If we filter client-side for trust, fetch extra rows so we can still fill a page visually.
     private var overscanMultiplier: Int { minTrustScore() == nil ? 1 : 3 }
 
-    private func fetchPage(page: Int, size: Int) async throws -> [ListingWithUser] {
-        let from = page * size
-        let to = from + (size * overscanMultiplier) - 1
-
-        let response: [ListingWithUser]
-        
-        switch selectedFilter {
-        case .all:
-            print("🔍 EXECUTING: .all (no intent filter)")
-            response = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .order("created_at", ascending: false)
-                .range(from: from, to: to)
-                .execute()
-                .value
-                
-        case .forSale:
-            print("🔍 EXECUTING: .forSale (intent = offer)")
-            response = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .eq("intent", value: "offer")
-                .order("created_at", ascending: false)
-                .range(from: from, to: to)
-                .execute()
-                .value
-                
-        case .wanted:
-            print("🔍 EXECUTING: .wanted (intent = seek)")
-            response = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .eq("intent", value: "seek")
-                .order("created_at", ascending: false)
-                .range(from: from, to: to)
-                .execute()
-                .value
-        }
-
-        print("🔍 QUERY RETURNED: \(response.count) listings")
-        for (i, listing) in response.enumerated() {
-            print("🔍   \(i): \(listing.title) - intent: \(listing.intent.rawValue)")
-        }
-
-        let filtered = await applyTrustFilter(response)
-        return Array(filtered.prefix(size))
-    }
 
     private func loadListings() async {
-        await MainActor.run {
-            isLoading = true
-            isLoadingMore = false
-            hasMorePages = true
-            currentPage = 0
-        }
-
-        do {
-            let first = try await fetchPage(page: 0, size: pageSize)
-
-            await MainActor.run {
-                listings = first
-                isLoading = false
-                currentPage = 1
-                hasMorePages = first.count == pageSize
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to load listings: \(error)")
-            #endif
-            await MainActor.run { isLoading = false }
-        }
+        // Just load all listings - simple and clean
+        await loadAllListings()
     }
 
     private func loadMoreListings() async {
-        guard !isLoadingMore, hasMorePages else { return }
-        await MainActor.run { isLoadingMore = true }
-
-        do {
-            let next = try await fetchPage(page: currentPage, size: pageSize)
-
-            await MainActor.run {
-                let existing = Set(listings.map { $0.id })
-                let newOnes = next.filter { !existing.contains($0.id) }
-                listings.append(contentsOf: newOnes)
-                currentPage += 1
-                hasMorePages = next.count == pageSize
-                isLoadingMore = false
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to load more listings: \(error)")
-            #endif
-            await MainActor.run { isLoadingMore = false }
+        // Simplified - no pagination needed for basic filters
+        // This keeps the UI happy if it tries to load more
+        await MainActor.run { 
+            isLoadingMore = false
+            hasMorePages = false
         }
     }
 
@@ -544,147 +425,10 @@ extension HomeTabView {
         }
     }
 
-    private func isolatedOfferTest() async {
-        print("🔴 ISOLATED OFFER TEST STARTING")
-        do {
-            let offerListings: [ListingWithUser] = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("intent", value: "offer")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .order("created_at", ascending: false)
-                .execute()
-                .value
-            
-            print("🔴 OFFER RESULTS: \(offerListings.count) listings")
-            for listing in offerListings {
-                print("🔴   - \(listing.title) (intent: \(listing.intent.rawValue))")
-            }
-            
-            await MainActor.run {
-                listings = offerListings
-            }
-        } catch {
-            print("🔴 OFFER ERROR: \(error)")
-        }
-    }
-    
-    private func isolatedSeekTest() async {
-        print("🔵 ISOLATED SEEK TEST STARTING")
-        do {
-            let seekListings: [ListingWithUser] = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("intent", value: "seek")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .order("created_at", ascending: false)
-                .execute()
-                .value
-            
-            print("🔵 SEEK RESULTS: \(seekListings.count) listings")
-            for listing in seekListings {
-                print("🔵   - \(listing.title) (intent: \(listing.intent.rawValue))")
-            }
-            
-            await MainActor.run {
-                listings = seekListings
-            }
-        } catch {
-            print("🔵 SEEK ERROR: \(error)")
-        }
-    }
-
-    private func nuclearTest(filter: ListingFilter) async {
-        print("🚨 NUCLEAR TEST: \(filter.rawValue)")
-        
-        do {
-            let result: [ListingWithUser]
-            
-            switch filter {
-            case .all:
-                print("🚨 TESTING: ALL")
-                result = try await supabase
-                    .from("listings")
-                    .select("*, user:users(*)")
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .order("created_at", ascending: false)
-                    .limit(10)
-                    .execute()
-                    .value
-                    
-            case .forSale:
-                print("🚨 TESTING: SELLING (offer)")
-                result = try await supabase
-                    .from("listings")
-                    .select("*, user:users(*)")
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .eq("intent", value: "offer")
-                    .order("created_at", ascending: false)
-                    .limit(10)
-                    .execute()
-                    .value
-                    
-            case .wanted:
-                print("🚨 TESTING: BUYING (seek)")
-                result = try await supabase
-                    .from("listings")
-                    .select("*, user:users(*)")
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .eq("intent", value: "seek")
-                    .order("created_at", ascending: false)
-                    .limit(10)
-                    .execute()
-                    .value
-            }
-            
-            print("🚨 RESULT: \(result.count) listings")
-            for listing in result {
-                print("🚨   - \(listing.title): \(listing.intent.rawValue)")
-            }
-            
-            await MainActor.run {
-                listings = result
-                isLoading = false
-            }
-            
-        } catch {
-            print("🚨 ERROR: \(error)")
-        }
-    }
 
     private func refreshListings() async {
-        print("🔍 refreshListings() called with selectedFilter: \(selectedFilter.rawValue)")
-        await MainActor.run {
-            currentPage = 0
-            hasMorePages = true
-            isLoading = true
-            isLoadingMore = false
-            ratingCache.removeAll()
-        }
-
-        do {
-            print("🔍 Calling fetchPage with selectedFilter: \(selectedFilter.rawValue)")
-            let first = try await fetchPage(page: 0, size: pageSize)
-
-            await MainActor.run {
-                listings = first
-                currentPage = 1
-                hasMorePages = first.count == pageSize
-                isLoading = false
-            }
-        } catch {
-            await MainActor.run { isLoading = false }
-        }
+        // Simple refresh - just reload all listings
+        await loadAllListings()
     }
 }
 
