@@ -29,12 +29,6 @@ struct HomeTabView: View {
     @State private var showingListingDetail = false
     
     // Debug states for visual debugging
-    @State private var debugMessage = ""
-    @State private var lastFilterTapped = ""
-    @State private var queryResultCount = 0
-    @State private var databaseIntents: Set<String> = []
-
-    // ------- NEW: ratings cache for client-side trust filtering
     @State private var ratingCache: [String: UserRatingsSummary] = [:]
     
     private let pageSize = 10
@@ -74,44 +68,6 @@ struct HomeTabView: View {
                 headerView()
                 if AppConfig.enableSeekMode {
                     filterView()
-                    
-                    // NUCLEAR DEBUG PANEL
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("🚨 NUCLEAR DEBUG:")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.red)
-                        Text("🔥 SELECTED: \(selectedFilter.rawValue) (intent: \(selectedFilter.intentFilter?.rawValue ?? "NONE"))")
-                        Text("🔥 TRUST: \(selectedTrustFilter.rawValue)")
-                        Text("🔥 ENABLE_SEEK: \(AppConfig.enableSeekMode)")
-                        Text("🔥 LISTINGS.COUNT: \(listings.count)")
-                        Text("🔥 QUERY_RESULTS: \(queryResultCount)")
-                        Text("🔥 DB_INTENTS: \(Array(databaseIntents).joined(separator: ", "))")
-                        Text("🔥 LAST_TAPPED: \(lastFilterTapped.isEmpty ? "NONE" : lastFilterTapped)")
-                        if !debugMessage.isEmpty {
-                            Text("🔥 STATUS: \(debugMessage)")
-                                .foregroundColor(.red)
-                        }
-                        
-                        // Show first few actual listings
-                        Text("🔥 ACTUAL_LISTINGS:")
-                        if listings.isEmpty {
-                            Text("  ❌ EMPTY ARRAY!")
-                                .foregroundColor(.red)
-                        } else {
-                            ForEach(listings.prefix(3), id: \.id) { listing in
-                                Text("  • \(listing.title) (\(listing.intent.rawValue))")
-                                    .font(.caption2)
-                            }
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundColor(.blue)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(8)
-                    .padding(.horizontal)
                 } else {
                     Text("❌ FILTERS HIDDEN - enableSeekMode = false")
                         .font(.caption)
@@ -119,8 +75,6 @@ struct HomeTabView: View {
                         .padding(.horizontal)
                 }
                 contentView()
-                    // Force refresh when either filter or count changes
-                    .id("\(selectedFilter.rawValue)-\(selectedTrustFilter.rawValue)-\(listings.count)")
             }
             // keep this screen interactable even if a parent mistakenly disabled it
             .disabled(false)
@@ -128,7 +82,6 @@ struct HomeTabView: View {
             .onAppear {
                 PaymentService.shared.paymentResult = nil
                 PaymentService.shared.paymentSheet  = nil
-                debugMessage = "App started - enableSeekMode: \(AppConfig.enableSeekMode)"
                 Task { await loadListings() }
             }
         }
@@ -176,23 +129,9 @@ extension HomeTabView {
             HStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
-                        print("💥💥💥 BUTTON TAPPED: \(filter.rawValue)")
-                        print("💥 BEFORE - selectedFilter: \(selectedFilter.rawValue)")
-                        print("💥 FILTER OBJECT: \(filter)")
-                        print("💥 FILTER.intentFilter: \(filter.intentFilter?.rawValue ?? "NIL")")
-                        
-                        lastFilterTapped = filter.rawValue
-                        debugMessage = "💥 BUTTON TAPPED: \(filter.rawValue)"
                         selectedFilter = filter
-                        
-                        print("💥 AFTER ASSIGNMENT - selectedFilter: \(selectedFilter.rawValue)")
-                        print("💥 AFTER ASSIGNMENT - selectedFilter.intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "NIL")")
-                        print("💥 AppConfig.enableSeekMode: \(AppConfig.enableSeekMode)")
-                        
                         Task { 
-                            debugMessage = "💥 CALLING refreshListings()..."
                             await refreshListings() 
-                            debugMessage = "💥 FINISHED refreshListings()"
                         }
                     }) {
                         Text(filter.rawValue)
@@ -399,16 +338,10 @@ extension HomeTabView {
         let from = page * size
         let to = from + (size * overscanMultiplier) - 1
 
-        print("⚡⚡⚡ FETCHPAGE CALLED - selectedFilter: \(selectedFilter.rawValue)")
-        print("⚡ selectedFilter.intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "NIL")")
-        print("⚡ AppConfig.enableSeekMode: \(AppConfig.enableSeekMode)")
-
-        // NUCLEAR OPTION - Explicit switch statement for each filter
         let response: [ListingWithUser]
         
         switch selectedFilter {
         case .all:
-            print("⚡ CASE: ALL - No filtering")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -421,7 +354,6 @@ extension HomeTabView {
                 .value
                 
         case .forSale:
-            print("⚡ CASE: SELLING - Filter by offer")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -435,7 +367,6 @@ extension HomeTabView {
                 .value
                 
         case .wanted:
-            print("⚡ CASE: BUYING - Filter by seek")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -447,11 +378,6 @@ extension HomeTabView {
                 .range(from: from, to: to)
                 .execute()
                 .value
-        }
-        
-        print("⚡ QUERY RESULT: \(response.count) listings")
-        for (i, listing) in response.enumerated() {
-            print("⚡   \(i): \(listing.title) - intent: \(listing.intent.rawValue)")
         }
 
         let filtered = await applyTrustFilter(response)
@@ -474,8 +400,6 @@ extension HomeTabView {
                 isLoading = false
                 currentPage = 1
                 hasMorePages = first.count == pageSize
-                queryResultCount = first.count
-                databaseIntents = Set(first.map { $0.intent.rawValue })
             }
         } catch {
             #if DEBUG
@@ -509,63 +433,24 @@ extension HomeTabView {
     }
 
     private func refreshListings() async {
-        print("🚨🚨🚨 refreshListings() CALLED")
-        print("🚨 Current selectedFilter: \(selectedFilter.rawValue)")
-        print("🚨 Current selectedFilter.intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "NONE")")
-        print("🚨 AppConfig.enableSeekMode: \(AppConfig.enableSeekMode)")
-        
         await MainActor.run {
             currentPage = 0
             hasMorePages = true
-            debugMessage = "🚨 STARTING refreshListings for \(selectedFilter.rawValue)"
             isLoading = true
             isLoadingMore = false
-            // Clear cache to avoid stale rating thresholds across trust changes
             ratingCache.removeAll()
         }
 
-        // BASIC CONNECTION TEST (optional)
-        print("🚨 TESTING BASIC SUPABASE CONNECTION...")
-        do {
-            let connectionTest: [ListingWithUser] = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .limit(1)
-                .execute()
-                .value
-            print("🚨 CONNECTION TEST: Got \(connectionTest.count) listings")
-            if let first = connectionTest.first {
-                print("🚨 CONNECTION TEST: First listing = \(first.title)")
-            }
-        } catch {
-            print("🚨 CONNECTION TEST FAILED: \(error)")
-            await MainActor.run {
-                debugMessage = "❌ SUPABASE CONNECTION FAILED: \(error.localizedDescription)"
-                isLoading = false
-            }
-            return
-        }
-
-        // REAL load
         do {
             let first = try await fetchPage(page: 0, size: pageSize)
 
             await MainActor.run {
-                queryResultCount = first.count
                 listings = first
                 currentPage = 1
                 hasMorePages = first.count == pageSize
-
-                let responseIntents = first.map { $0.intent.rawValue }
-                databaseIntents = Set(responseIntents)
-                
-                debugMessage = "✅ Loaded \(first.count) listings for \(selectedFilter.rawValue) • Trust: \(selectedTrustFilter.rawValue)"
                 isLoading = false
             }
         } catch {
-            #if DEBUG
-            print("Failed to refresh listings: \(error)")
-            #endif
             await MainActor.run { isLoading = false }
         }
     }
@@ -774,12 +659,10 @@ extension HomeTabView {
             let intents = allListings.map { $0.intent.rawValue }
             let uniqueIntents = Set(intents)
             await MainActor.run {
-                databaseIntents = uniqueIntents
             }
             
         } catch {
             await MainActor.run {
-                debugMessage = "❌ Error loading listings: \(error.localizedDescription)"
             }
             print("🧪 ERROR in test: \(error)")
         }
@@ -825,11 +708,6 @@ extension HomeTabView {
         }
         
         await MainActor.run {
-            if databaseIntents.isEmpty {
-                debugMessage = "❌ ISSUE: No intent values found in test query!"
-            } else {
-                debugMessage = "✅ Intent values found: \(Array(databaseIntents).joined(separator: ", "))"
-            }
         }
     }
 }
