@@ -34,6 +34,9 @@ struct HomeTabView: View {
     @State private var queryResultCount = 0
     @State private var databaseIntents: Set<String> = []
 
+    // ------- NEW: ratings cache for client-side trust filtering
+    @State private var ratingCache: [String: UserRatingsSummary] = [:]
+    
     private let pageSize = 10
     private let enableDomainFilter = false  // Disabled for v1.0 release
     
@@ -79,6 +82,7 @@ struct HomeTabView: View {
                             .fontWeight(.bold)
                             .foregroundColor(.red)
                         Text("🔥 SELECTED: \(selectedFilter.rawValue) (intent: \(selectedFilter.intentFilter?.rawValue ?? "NONE"))")
+                        Text("🔥 TRUST: \(selectedTrustFilter.rawValue)")
                         Text("🔥 ENABLE_SEEK: \(AppConfig.enableSeekMode)")
                         Text("🔥 LISTINGS.COUNT: \(listings.count)")
                         Text("🔥 QUERY_RESULTS: \(queryResultCount)")
@@ -115,7 +119,8 @@ struct HomeTabView: View {
                         .padding(.horizontal)
                 }
                 contentView()
-                    .id("\(selectedFilter.rawValue)-\(listings.count)") // Force refresh when filter or count changes
+                    // Force refresh when either filter or count changes
+                    .id("\(selectedFilter.rawValue)-\(selectedTrustFilter.rawValue)-\(listings.count)")
             }
             // keep this screen interactable even if a parent mistakenly disabled it
             .disabled(false)
@@ -182,9 +187,9 @@ extension HomeTabView {
                         print("🚨 AFTER - selectedFilter: \(selectedFilter.rawValue)")
                         print("🚨 INTENT FILTER: \(filter.intentFilter?.rawValue ?? "NONE")")
                         
-                        Task { 
+                        Task {
                             debugMessage = "🚨 STARTING REFRESH FOR: \(filter.rawValue)..."
-                            await refreshListings() 
+                            await refreshListings()
                             debugMessage = "🚨 FINISHED REFRESH FOR: \(filter.rawValue)"
                             print("🚨 FINAL - listings.count: \(listings.count)")
                         }
@@ -343,94 +348,106 @@ extension HomeTabView {
     }
 }
 
-// MARK: - Data
+// MARK: - Data (Unified filters + pagination)
 
 extension HomeTabView {
+
+    // Trust filter threshold (60/80) from UI
+    private func minTrustScore() -> Int? { selectedTrustFilter.minScore }
+
+    // Client-side trust filter with caching & concurrency
+    private func applyTrustFilter(_ input: [ListingWithUser]) async -> [ListingWithUser] {
+        guard AppConfig.enableRatings, let minScore = minTrustScore() else { return input }
+        if minScore <= 0 { return input }
+
+        // We’ll treat averageRating (0–5 stars) as 0–100 by *20
+        func passes(_ summary: UserRatingsSummary) -> Bool {
+            let score = Int(summary.averageRating * 20.0)
+            return score >= minScore
+        }
+
+        var kept: [(ListingWithUser, Bool)] = []
+        kept.reserveCapacity(input.count)
+
+        await withTaskGroup(of: (ListingWithUser, Bool).self) { group in
+            for listing in input {
+                group.addTask {
+                    if let cached = ratingCache[listing.user.id] {
+                        return (listing, passes(cached))
+                    }
+                    do {
+                        let summary = try await RatingService.shared.getUserRatingsSummary(userId: listing.user.id)
+                        await MainActor.run { ratingCache[listing.user.id] = summary }
+                        return (listing, passes(summary))
+                    } catch {
+                        // On error retrieving rating, exclude (or flip to include if desired)
+                        return (listing, false)
+                    }
+                }
+            }
+            for await pair in group { kept.append(pair) }
+        }
+
+        return kept.compactMap { $0.1 ? $0.0 : nil }
+    }
+
+    // If we filter client-side for trust, fetch extra rows so we can still fill a page visually.
+    private var overscanMultiplier: Int { minTrustScore() == nil ? 1 : 3 }
+
+    private func fetchPage(page: Int, size: Int) async throws -> [ListingWithUser] {
+        let from = page * size
+        let to = from + (size * overscanMultiplier) - 1
+
+        // SIMPLE APPROACH - Build complete query based on filter
+        let response: [ListingWithUser]
+        
+        if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+            response = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: intent.rawValue)
+                .order("created_at", ascending: false)
+                .range(from: from, to: to)
+                .execute()
+                .value
+        } else {
+            response = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .order("created_at", ascending: false)
+                .range(from: from, to: to)
+                .execute()
+                .value
+        }
+
+        let filtered = await applyTrustFilter(response)
+        return Array(filtered.prefix(size))
+    }
+
     private func loadListings() async {
         await MainActor.run {
             isLoading = true
-            currentPage = 0
+            isLoadingMore = false
             hasMorePages = true
+            currentPage = 0
         }
 
         do {
-            let from = 0
-            let to = pageSize - 1
+            let first = try await fetchPage(page: 0, size: pageSize)
 
-            // SIMPLE APPROACH - Build complete query based on filter
-            let response: [ListingWithUser]
-            
-            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-                print("📋 loadListings: APPLYING INTENT FILTER: \(intent.rawValue)")
-                
-                response = try await supabase
-                    .from("listings")
-                    .select("""
-                        *,
-                        user:users(*)
-                    """)
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .eq("intent", value: intent.rawValue)
-                    .order("created_at", ascending: false)
-                    .range(from: from, to: to)
-                    .execute()
-                    .value
-            } else {
-                print("📋 loadListings: NO INTENT FILTER")
-                
-                response = try await supabase
-                    .from("listings")
-                    .select("""
-                        *,
-                        user:users(*)
-                    """)
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .order("created_at", ascending: false)
-                    .range(from: from, to: to)
-                    .execute()
-                    .value
-            }
-
-            #if DEBUG
-            print("📋 HomeTabView: loadListings() - Selected filter: \(selectedFilter.rawValue)")
-            print("📋 HomeTabView: loadListings() - Intent filter: \(selectedFilter.intentFilter?.rawValue ?? "none")")
-            print("📋 HomeTabView: loadListings() - Response count: \(response.count)")
-            for (index, listing) in response.enumerated() {
-                print("📋 HomeTabView: loadListings() - Listing \(index): \"\(listing.title)\", intent: \(listing.intent.rawValue), price: \(listing.price)")
-            }
-            #endif
-            
-            // Update debug UI
             await MainActor.run {
-                let intents = response.map { $0.intent.rawValue }
-                let uniqueIntents = Set(intents)
-                databaseIntents = uniqueIntents
-                queryResultCount = response.count
-            }
-
-            // Ensure we're on the main thread and the response is valid
-            await MainActor.run {
-                guard !response.isEmpty else {
-                    listings = []
-                    isLoading = false
-                    currentPage = 1
-                    hasMorePages = false
-                    return
-                }
-                
-                // Validate that each listing has a unique ID
-                let uniqueListings = Array(Set(response.map { $0.id })).compactMap { id in
-                    response.first { $0.id == id }
-                }
-                
-                listings = uniqueListings
+                listings = first
                 isLoading = false
                 currentPage = 1
-                hasMorePages = response.count == pageSize
+                hasMorePages = first.count == pageSize
+                queryResultCount = first.count
+                databaseIntents = Set(first.map { $0.intent.rawValue })
             }
         } catch {
             #if DEBUG
@@ -445,55 +462,14 @@ extension HomeTabView {
         await MainActor.run { isLoadingMore = true }
 
         do {
-            let from = currentPage * pageSize
-            let to = from + pageSize - 1
-
-            // SIMPLE APPROACH - Build complete query based on filter
-            let response: [ListingWithUser]
-            
-            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-                print("📋 loadMoreListings: APPLYING INTENT FILTER: \(intent.rawValue)")
-                
-                response = try await supabase
-                    .from("listings")
-                    .select("""
-                        *,
-                        user:users(*)
-                    """)
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .eq("intent", value: intent.rawValue)
-                    .order("created_at", ascending: false)
-                    .range(from: from, to: to)
-                    .execute()
-                    .value
-            } else {
-                print("📋 loadMoreListings: NO INTENT FILTER")
-                
-                response = try await supabase
-                    .from("listings")
-                    .select("""
-                        *,
-                        user:users(*)
-                    """)
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .order("created_at", ascending: false)
-                    .range(from: from, to: to)
-                    .execute()
-                    .value
-            }
+            let next = try await fetchPage(page: currentPage, size: pageSize)
 
             await MainActor.run {
-                // Ensure no duplicate listings are added
-                let existingIds = Set(listings.map { $0.id })
-                let newListings = response.filter { !existingIds.contains($0.id) }
-                
-                listings.append(contentsOf: newListings)
+                let existing = Set(listings.map { $0.id })
+                let newOnes = next.filter { !existing.contains($0.id) }
+                listings.append(contentsOf: newOnes)
                 currentPage += 1
-                hasMorePages = response.count == pageSize
+                hasMorePages = next.count == pageSize
                 isLoadingMore = false
             }
         } catch {
@@ -514,9 +490,13 @@ extension HomeTabView {
             currentPage = 0
             hasMorePages = true
             debugMessage = "🚨 STARTING refreshListings for \(selectedFilter.rawValue)"
+            isLoading = true
+            isLoadingMore = false
+            // Clear cache to avoid stale rating thresholds across trust changes
+            ratingCache.removeAll()
         }
 
-        // BASIC CONNECTION TEST FIRST
+        // BASIC CONNECTION TEST (optional)
         print("🚨 TESTING BASIC SUPABASE CONNECTION...")
         do {
             let connectionTest: [ListingWithUser] = try await supabase
@@ -533,103 +513,37 @@ extension HomeTabView {
             print("🚨 CONNECTION TEST FAILED: \(error)")
             await MainActor.run {
                 debugMessage = "❌ SUPABASE CONNECTION FAILED: \(error.localizedDescription)"
+                isLoading = false
             }
             return
         }
 
-        // TEMPORARY DEBUG: Test each filter explicitly
-        await testFilters()
-
-        print("🚨 About to execute REAL Supabase query...")
+        // REAL load
         do {
-            // SIMPLE APPROACH - Build complete query based on filter
-            let response: [ListingWithUser]
-            
-            if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-                await MainActor.run {
-                    debugMessage = "🔍 Filtering by intent: \(intent.rawValue)"
-                }
-                print("🔥 APPLYING INTENT FILTER: \(intent.rawValue)")
-                
-                response = try await supabase
-                    .from("listings")
-                    .select("""
-                        *,
-                        user:users(*)
-                    """)
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .eq("intent", value: intent.rawValue)  // THE ACTUAL FILTER
-                    .order("created_at", ascending: false)
-                    .range(from: 0, to: pageSize - 1)
-                    .execute()
-                    .value
-            } else {
-                await MainActor.run {
-                    debugMessage = "🔍 Showing all listings (no intent filter)"
-                }
-                print("🔥 NO INTENT FILTER - SHOWING ALL")
-                
-                response = try await supabase
-                    .from("listings")
-                    .select("""
-                        *,
-                        user:users(*)
-                    """)
-                    .eq("status", value: "active")
-                    .neq("archived", value: true)
-                    .eq("is_sold", value: false)
-                    .order("created_at", ascending: false)
-                    .range(from: 0, to: pageSize - 1)
-                    .execute()
-                    .value
-            }
-
-            print("🚨🚨🚨 SUPABASE QUERY COMPLETED")
-            print("🚨 Response count: \(response.count)")
-            print("🚨 Response listings:")
-            for (i, listing) in response.enumerated() {
-                print("🚨   \(i): \(listing.title) - intent: \(listing.intent.rawValue)")
-            }
-
-            // Visual debug info will be shown in UI panel above
+            let first = try await fetchPage(page: 0, size: pageSize)
 
             await MainActor.run {
-                queryResultCount = response.count
-                
-                // CRITICAL DEBUG: Log before and after updating listings
-                print("🔥 BEFORE UPDATE - Current listings count: \(listings.count)")
-                print("🔥 NEW RESPONSE - Response count: \(response.count)")
-                
-                listings = response
-                
-                print("🔥 AFTER UPDATE - Updated listings count: \(listings.count)")
-                
+                queryResultCount = first.count
+                listings = first
                 currentPage = 1
-                hasMorePages = response.count == pageSize
+                hasMorePages = first.count == pageSize
+
+                let responseIntents = first.map { $0.intent.rawValue }
+                databaseIntents = Set(responseIntents)
                 
-                // Debug: Show intent values in the actual response
-                let responseIntents = response.map { $0.intent.rawValue }
-                let uniqueResponseIntents = Set(responseIntents)
-                databaseIntents = uniqueResponseIntents
-                
-                debugMessage = "✅ Loaded \(response.count) listings for \(selectedFilter.rawValue). Intents: \(Array(uniqueResponseIntents).joined(separator: ", "))"
-                
-                // Extra debug: print first few listing titles
-                for (index, listing) in listings.prefix(3).enumerated() {
-                    print("🔥 Listing \(index): \(listing.title) - intent: \(listing.intent.rawValue)")
-                }
+                debugMessage = "✅ Loaded \(first.count) listings for \(selectedFilter.rawValue) • Trust: \(selectedTrustFilter.rawValue)"
+                isLoading = false
             }
         } catch {
             #if DEBUG
             print("Failed to refresh listings: \(error)")
             #endif
+            await MainActor.run { isLoading = false }
         }
     }
 }
 
-// MARK: - Listing Card (unchanged)
+// MARK: - Listing Card (unchanged except optional trust loading usage)
 
 struct ListingCard: View {
     let listing: ListingWithUser
@@ -780,7 +694,6 @@ extension HomeTabView {
         searchWorkItem?.cancel()
         
         // Create new search work item with debouncing
-        // SwiftUI views are structs; use value capture instead of [weak self]
         let currentQuery = query
         let workItem = DispatchWorkItem {
             Task { @MainActor in
@@ -809,7 +722,7 @@ extension HomeTabView {
         }
     }
     
-    // TEMPORARY DEBUG METHOD
+    // TEMPORARY DEBUG METHOD (kept for your troubleshooting; optional)
     private func testFilters() async {
         print("🧪 TESTING FILTERS EXPLICITLY:")
         
@@ -830,7 +743,6 @@ extension HomeTabView {
                 print("🧪   - \"\(listing.title)\": intent=\(listing.intent.rawValue), price=\(listing.price)")
             }
             
-            // Check if all listings have intent values
             let intents = allListings.map { $0.intent.rawValue }
             let uniqueIntents = Set(intents)
             await MainActor.run {
@@ -884,8 +796,6 @@ extension HomeTabView {
             print("🧪 ERROR loading offer listings: \(error)")
         }
         
-        // TEMPORARY: If DB Intents is empty, it means listings don't have intent values
-        // This helps confirm our diagnosis
         await MainActor.run {
             if databaseIntents.isEmpty {
                 debugMessage = "❌ ISSUE: No intent values found in test query!"

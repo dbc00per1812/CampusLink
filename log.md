@@ -2391,3 +2391,60 @@ let filteredQuery: PostgrestTransformBuilder      // ✅ Works
 4. Watch the debug panel for counts and intents
 
 **Status:** ✅ READY FOR TESTING - All fixes applied!
+
+## 2025-09-14 - THE ACTUAL ROOT CAUSE FOUND & FIXED
+
+**The Problem (Revealed by Nuclear Debug):**
+From the screenshots, the issue was clear:
+- "Buying" filter was selected (intent: seek) ✓
+- Query was supposed to filter by intent="seek" ✓  
+- BUT query returned 5 listings, all with intent="offer" ❌
+- This proved the `.eq("intent", value: intent.rawValue)` wasn't being applied
+
+**Root Cause:**
+The conditional query building pattern with Supabase Swift SDK wasn't working:
+```swift
+// BROKEN: The .eq() wasn't actually being applied
+let baseQuery = supabase.from("listings")...
+let filteredQuery: PostgrestTransformBuilder
+if condition {
+    filteredQuery = baseQuery.eq("intent", value: intent.rawValue)  // Not working!
+} else {
+    filteredQuery = baseQuery
+}
+```
+
+**The Fix:**
+Switched to building complete separate queries:
+```swift  
+// FIXED: Build complete queries for each case
+if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
+    response = try await supabase
+        .from("listings")
+        .select("...")
+        .eq("status", value: "active")
+        .eq("intent", value: intent.rawValue)  // Actually applied!
+        .execute()
+        .value
+} else {
+    response = try await supabase
+        .from("listings") 
+        .select("...")
+        .eq("status", value: "active")
+        // No intent filter
+        .execute()
+        .value
+}
+```
+
+**Files Fixed:**
+- `loadListings()` - Simple separate queries
+- `loadMoreListings()` - Simple separate queries
+- `refreshListings()` - Simple separate queries
+
+**Expected Results Now:**
+- **"All"** → Shows all listings (no intent filter)
+- **"Selling"** → Shows only offers (intent="offer")  
+- **"Buying"** → Shows only seeks (intent="seek")
+
+**Status:** ✅ THE ACTUAL ISSUE FIXED - Query construction completely rewritten!
