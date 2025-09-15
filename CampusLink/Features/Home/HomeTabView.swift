@@ -67,6 +67,23 @@ struct HomeTabView: View {
             VStack(spacing: 0) {
                 headerView()
                 if AppConfig.enableSeekMode {
+                    // ISOLATED TEST BUTTONS
+                    HStack {
+                        Button("TEST OFFER") {
+                            Task { await isolatedOfferTest() }
+                        }
+                        .padding()
+                        .background(Color.red)
+                        .foregroundColor(.white)
+                        
+                        Button("TEST SEEK") {
+                            Task { await isolatedSeekTest() }
+                        }
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                    }
+                    
                     filterView()
                 } else {
                     Text("❌ FILTERS HIDDEN - enableSeekMode = false")
@@ -439,6 +456,60 @@ extension HomeTabView {
             print("Failed to load more listings: \(error)")
             #endif
             await MainActor.run { isLoadingMore = false }
+        }
+    }
+
+    private func isolatedOfferTest() async {
+        print("🔴 ISOLATED OFFER TEST STARTING")
+        do {
+            let offerListings: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("intent", value: "offer")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            
+            print("🔴 OFFER RESULTS: \(offerListings.count) listings")
+            for listing in offerListings {
+                print("🔴   - \(listing.title) (intent: \(listing.intent.rawValue))")
+            }
+            
+            await MainActor.run {
+                listings = offerListings
+            }
+        } catch {
+            print("🔴 OFFER ERROR: \(error)")
+        }
+    }
+    
+    private func isolatedSeekTest() async {
+        print("🔵 ISOLATED SEEK TEST STARTING")
+        do {
+            let seekListings: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("intent", value: "seek")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            
+            print("🔵 SEEK RESULTS: \(seekListings.count) listings")
+            for listing in seekListings {
+                print("🔵   - \(listing.title) (intent: \(listing.intent.rawValue))")
+            }
+            
+            await MainActor.run {
+                listings = seekListings
+            }
+        } catch {
+            print("🔵 SEEK ERROR: \(error)")
         }
     }
 
