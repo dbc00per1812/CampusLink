@@ -176,22 +176,23 @@ extension HomeTabView {
             HStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
-                        print("🚨🚨🚨 BUTTON TAPPED: \(filter.rawValue)")
-                        print("🚨 BEFORE - selectedFilter: \(selectedFilter.rawValue)")
-                        print("🚨 BEFORE - listings.count: \(listings.count)")
+                        print("💥💥💥 BUTTON TAPPED: \(filter.rawValue)")
+                        print("💥 BEFORE - selectedFilter: \(selectedFilter.rawValue)")
+                        print("💥 FILTER OBJECT: \(filter)")
+                        print("💥 FILTER.intentFilter: \(filter.intentFilter?.rawValue ?? "NIL")")
                         
                         lastFilterTapped = filter.rawValue
-                        debugMessage = "🚨 BUTTON TAPPED: \(filter.rawValue)"
+                        debugMessage = "💥 BUTTON TAPPED: \(filter.rawValue)"
                         selectedFilter = filter
                         
-                        print("🚨 AFTER - selectedFilter: \(selectedFilter.rawValue)")
-                        print("🚨 INTENT FILTER: \(filter.intentFilter?.rawValue ?? "NONE")")
+                        print("💥 AFTER ASSIGNMENT - selectedFilter: \(selectedFilter.rawValue)")
+                        print("💥 AFTER ASSIGNMENT - selectedFilter.intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "NIL")")
+                        print("💥 AppConfig.enableSeekMode: \(AppConfig.enableSeekMode)")
                         
-                        Task {
-                            debugMessage = "🚨 STARTING REFRESH FOR: \(filter.rawValue)..."
-                            await refreshListings()
-                            debugMessage = "🚨 FINISHED REFRESH FOR: \(filter.rawValue)"
-                            print("🚨 FINAL - listings.count: \(listings.count)")
+                        Task { 
+                            debugMessage = "💥 CALLING refreshListings()..."
+                            await refreshListings() 
+                            debugMessage = "💥 FINISHED refreshListings()"
                         }
                     }) {
                         Text(filter.rawValue)
@@ -398,22 +399,16 @@ extension HomeTabView {
         let from = page * size
         let to = from + (size * overscanMultiplier) - 1
 
-        // SIMPLE APPROACH - Build complete query based on filter
+        print("⚡⚡⚡ FETCHPAGE CALLED - selectedFilter: \(selectedFilter.rawValue)")
+        print("⚡ selectedFilter.intentFilter: \(selectedFilter.intentFilter?.rawValue ?? "NIL")")
+        print("⚡ AppConfig.enableSeekMode: \(AppConfig.enableSeekMode)")
+
+        // NUCLEAR OPTION - Explicit switch statement for each filter
         let response: [ListingWithUser]
         
-        if AppConfig.enableSeekMode, let intent = selectedFilter.intentFilter {
-            response = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .eq("intent", value: intent.rawValue)
-                .order("created_at", ascending: false)
-                .range(from: from, to: to)
-                .execute()
-                .value
-        } else {
+        switch selectedFilter {
+        case .all:
+            print("⚡ CASE: ALL - No filtering")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -424,6 +419,39 @@ extension HomeTabView {
                 .range(from: from, to: to)
                 .execute()
                 .value
+                
+        case .forSale:
+            print("⚡ CASE: SELLING - Filter by offer")
+            response = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "offer")
+                .order("created_at", ascending: false)
+                .range(from: from, to: to)
+                .execute()
+                .value
+                
+        case .wanted:
+            print("⚡ CASE: BUYING - Filter by seek")
+            response = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "seek")
+                .order("created_at", ascending: false)
+                .range(from: from, to: to)
+                .execute()
+                .value
+        }
+        
+        print("⚡ QUERY RESULT: \(response.count) listings")
+        for (i, listing) in response.enumerated() {
+            print("⚡   \(i): \(listing.title) - intent: \(listing.intent.rawValue)")
         }
 
         let filtered = await applyTrustFilter(response)
