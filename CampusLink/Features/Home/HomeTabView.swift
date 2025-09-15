@@ -129,9 +129,11 @@ extension HomeTabView {
             HStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
+                        print("🔍 BUTTON TAPPED: \(filter.rawValue)")
                         selectedFilter = filter
+                        print("🔍 selectedFilter set to: \(selectedFilter.rawValue)")
                         Task { 
-                            await refreshListings() 
+                            await nuclearTest(filter: filter)
                         }
                     }) {
                         Text(filter.rawValue)
@@ -342,6 +344,7 @@ extension HomeTabView {
         
         switch selectedFilter {
         case .all:
+            print("🔍 EXECUTING: .all (no intent filter)")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -354,6 +357,7 @@ extension HomeTabView {
                 .value
                 
         case .forSale:
+            print("🔍 EXECUTING: .forSale (intent = offer)")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -367,6 +371,7 @@ extension HomeTabView {
                 .value
                 
         case .wanted:
+            print("🔍 EXECUTING: .wanted (intent = seek)")
             response = try await supabase
                 .from("listings")
                 .select("*, user:users(*)")
@@ -378,6 +383,11 @@ extension HomeTabView {
                 .range(from: from, to: to)
                 .execute()
                 .value
+        }
+
+        print("🔍 QUERY RETURNED: \(response.count) listings")
+        for (i, listing) in response.enumerated() {
+            print("🔍   \(i): \(listing.title) - intent: \(listing.intent.rawValue)")
         }
 
         let filtered = await applyTrustFilter(response)
@@ -432,7 +442,72 @@ extension HomeTabView {
         }
     }
 
+    private func nuclearTest(filter: ListingFilter) async {
+        print("🚨 NUCLEAR TEST: \(filter.rawValue)")
+        
+        do {
+            let result: [ListingWithUser]
+            
+            switch filter {
+            case .all:
+                print("🚨 TESTING: ALL")
+                result = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .order("created_at", ascending: false)
+                    .limit(10)
+                    .execute()
+                    .value
+                    
+            case .forSale:
+                print("🚨 TESTING: SELLING (offer)")
+                result = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: "offer")
+                    .order("created_at", ascending: false)
+                    .limit(10)
+                    .execute()
+                    .value
+                    
+            case .wanted:
+                print("🚨 TESTING: BUYING (seek)")
+                result = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: "seek")
+                    .order("created_at", ascending: false)
+                    .limit(10)
+                    .execute()
+                    .value
+            }
+            
+            print("🚨 RESULT: \(result.count) listings")
+            for listing in result {
+                print("🚨   - \(listing.title): \(listing.intent.rawValue)")
+            }
+            
+            await MainActor.run {
+                listings = result
+                isLoading = false
+            }
+            
+        } catch {
+            print("🚨 ERROR: \(error)")
+        }
+    }
+
     private func refreshListings() async {
+        print("🔍 refreshListings() called with selectedFilter: \(selectedFilter.rawValue)")
         await MainActor.run {
             currentPage = 0
             hasMorePages = true
@@ -442,6 +517,7 @@ extension HomeTabView {
         }
 
         do {
+            print("🔍 Calling fetchPage with selectedFilter: \(selectedFilter.rawValue)")
             let first = try await fetchPage(page: 0, size: pageSize)
 
             await MainActor.run {
