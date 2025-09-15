@@ -67,29 +67,7 @@ struct HomeTabView: View {
             VStack(spacing: 0) {
                 headerView()
                 if AppConfig.enableSeekMode {
-                    // ISOLATED TEST BUTTONS
-                    HStack {
-                        Button("TEST OFFER") {
-                            Task { await isolatedOfferTest() }
-                        }
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        
-                        Button("TEST SEEK") {
-                            Task { await isolatedSeekTest() }
-                        }
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                    }
-                    
-                    filterView()
-                } else {
-                    Text("❌ FILTERS HIDDEN - enableSeekMode = false")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .padding(.horizontal)
+                    simpleFilterView()
                 }
                 contentView()
             }
@@ -99,7 +77,7 @@ struct HomeTabView: View {
             .onAppear {
                 PaymentService.shared.paymentResult = nil
                 PaymentService.shared.paymentSheet  = nil
-                Task { await loadListings() }
+                Task { await loadAllListings() }
             }
         }
         .navigationBarHidden(true)
@@ -140,6 +118,39 @@ struct HomeTabView: View {
 // MARK: - Sections
 
 extension HomeTabView {
+    @ViewBuilder
+    private func simpleFilterView() -> some View {
+        HStack(spacing: 12) {
+            Button("All") {
+                Task { await loadAllListings() }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color("ThemeColor"))
+            .foregroundColor(.white)
+            .cornerRadius(20)
+            
+            Button("Selling") {
+                Task { await loadOfferListings() }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color("ThemeColor"))
+            .foregroundColor(.white)
+            .cornerRadius(20)
+            
+            Button("Buying") {
+                Task { await loadSeekListings() }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color("ThemeColor"))
+            .foregroundColor(.white)
+            .cornerRadius(20)
+        }
+        .padding(.horizontal)
+    }
+    
     @ViewBuilder
     private func filterView() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -456,6 +467,80 @@ extension HomeTabView {
             print("Failed to load more listings: \(error)")
             #endif
             await MainActor.run { isLoadingMore = false }
+        }
+    }
+
+    private func loadAllListings() async {
+        do {
+            let result: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .order("created_at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                listings = result
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+            }
+        }
+    }
+    
+    private func loadOfferListings() async {
+        do {
+            let result: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "offer")
+                .order("created_at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                listings = result
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+            }
+        }
+    }
+    
+    private func loadSeekListings() async {
+        do {
+            let result: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("intent", value: "seek")
+                .order("created_at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+            
+            await MainActor.run {
+                listings = result
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+            }
         }
     }
 
