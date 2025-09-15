@@ -480,10 +480,10 @@ struct ListingCard: View {
                     } else {
                         // Show price for offer posts
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text("$\(listing.price, specifier: "%.2f")")
+                            Text("$\((listing.price ?? 0), specifier: "%.2f")")
                                 .font(.title3).fontWeight(.bold)
                                 .foregroundColor(Color("ThemeColor"))
-                            Text("$\(listing.price * 1.029 + 0.30, specifier: "%.2f") total")
+                            Text("$\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") total")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
@@ -519,6 +519,14 @@ struct ListingCard: View {
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(6)
+                        } else if AppConfig.enableSeekMode && listing.intent == .offer {
+                            Text("Selling")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color("ThemeColor"))
                                 .foregroundColor(.white)
                                 .cornerRadius(6)
                         }

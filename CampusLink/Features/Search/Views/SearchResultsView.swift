@@ -179,7 +179,7 @@ struct SearchResultCard: View {
                     Spacer()
                     
                     // Price
-                    Text("$\(Int(listing.price))")
+                    Text("$\(Int(listing.price ?? 0))")
                         .font(.headline)
                         .foregroundColor(.primary)
                 }

@@ -17,7 +17,7 @@ struct PaymentMethodSheet: View {
     @State private var animationOffset: CGFloat = 50
     @State private var animationOpacity: Double = 0
     
-    private var priceCents: Int { Int(listing.price * 100) }
+    private var priceCents: Int { Int((listing.price ?? 0) * 100) }
     private var stripeFeeCents: Int { feeService.calculateStripeProcessingFee(amountCents: priceCents) }
     private var totalWithFeesCents: Int { feeService.calculateTotalWithFees(baseAmountCents: priceCents) }
     private var canUseWallet: Bool {
@@ -51,10 +51,10 @@ struct PaymentMethodSheet: View {
                                 .foregroundColor(.secondary)
                                 .accessibilityLabel("Item price")
                             Spacer()
-                            Text("$\(listing.price, specifier: "%.2f")")
+                            Text("$\((listing.price ?? 0), specifier: "%.2f")")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
-                                .accessibilityLabel("Item price \(listing.price, specifier: "%.2f") dollars")
+                                .accessibilityLabel("Item price \((listing.price ?? 0), specifier: "%.2f") dollars")
                         }
                         
                         // Stripe processing fee
@@ -138,10 +138,10 @@ struct PaymentMethodSheet: View {
                                         .foregroundColor(.orange)
                                         .font(.caption)
                                         .accessibilityHidden(true)
-                                    Text("Insufficient funds - need $\(listing.price, specifier: "%.2f")")
+                                    Text("Insufficient funds - need $\((listing.price ?? 0), specifier: "%.2f")")
                                         .font(.caption)
                                         .foregroundColor(.orange)
-                                        .accessibilityLabel("Insufficient funds, need \(listing.price, specifier: "%.2f") dollars")
+                                        .accessibilityLabel("Insufficient funds, need \((listing.price ?? 0), specifier: "%.2f") dollars")
                                     Spacer()
                                     Button("Add Funds") {
                                         showingWalletInfo = true

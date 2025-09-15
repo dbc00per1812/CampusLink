@@ -1073,12 +1073,12 @@ struct MyListingCard: View {
                             .font(.headline)
                             .lineLimit(2)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("$\(listing.price, specifier: "%.2f")")
+                            Text("$\((listing.price ?? 0), specifier: "%.2f")")
                                 .font(.title3)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color("ThemeColor"))
                             
-                            Text("$\(listing.price * 1.029 + 0.30, specifier: "%.2f") total")
+                            Text("$\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") total")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }

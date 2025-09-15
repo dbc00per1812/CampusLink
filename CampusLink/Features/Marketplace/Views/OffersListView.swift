@@ -221,11 +221,12 @@ struct OffersListView: View {
                 .value
             
             // Create OrderCreate object
+            let basePriceCents = Int((sellerListing.price ?? 0) * 100)
             let orderCreate = OrderCreate(
                 listingId: offer.offerListingId,  // Use seller's listing, not the seek
                 buyerId: UUID(uuidString: offer.seekerId) ?? UUID(),
                 sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
-                priceCents: Int(sellerListing.price * 100), // Convert to cents
+                priceCents: basePriceCents, // Convert to cents
                 paymentMethod: .card, // Default to card for now
                 timeSlotId: nil // TODO: Handle time slots if needed
             )

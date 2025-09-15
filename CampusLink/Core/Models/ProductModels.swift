@@ -73,7 +73,7 @@ struct Listing: Codable, Identifiable {
     let userId: String
     let title: String
     let description: String
-    let price: Double
+    let price: Double?
     let category: String
     let photo: String?
     let isSold: Bool
@@ -182,7 +182,7 @@ struct ListingWithUser: Codable, Identifiable {
     let id: UUID
     let title: String
     let description: String
-    let price: Double
+    let price: Double?
     let category: String
     let photo: String?
     let isSold: Bool

@@ -66,7 +66,7 @@ struct EditListingView: View {
         self.onUpdated = onUpdated
         _title = State(initialValue: listing.title)
         _description = State(initialValue: listing.description)
-        _priceText = State(initialValue: String(format: "%.2f", listing.price))
+        _priceText = State(initialValue: String(format: "%.2f", listing.price ?? 0))
         _category = State(initialValue: listing.category)
         _listingType = State(initialValue: listing.listingType)
         _serviceDuration = State(initialValue: listing.serviceDuration ?? "")

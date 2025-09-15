@@ -250,11 +250,11 @@ extension ProfileTabView {
                     } else {
                         // Show price for offer posts
                         HStack(spacing: 4) {
-                            Text(String(format: "$%.2f", listing.price))
+                            Text(String(format: "$%.2f", listing.price ?? 0))
                                 .font(.title3)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.red)
-                            Text("($\(listing.price * 1.029 + 0.30, specifier: "%.2f") w/ fee)")
+                            Text("($\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") w/ fee)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }

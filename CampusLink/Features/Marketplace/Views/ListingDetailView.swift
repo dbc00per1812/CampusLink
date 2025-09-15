@@ -131,14 +131,14 @@ struct ListingDetailView: View {
                                     .foregroundColor(.secondary)
                             } else {
                                 // Show price for offer posts
-                                Text("$\(listing.price, specifier: "%.2f")")
+                                Text("$\((listing.price ?? 0), specifier: "%.2f")")
                                     .font(.title)
                                     .fontWeight(.bold)
                                     .foregroundColor(Color("ThemeColor"))
                                 
                                 // Always show estimated processing fee
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text("Est. total $\(listing.price + (listing.price * 0.029 + 0.30), specifier: "%.2f")")
+                                    Text("Est. total $\(((listing.price ?? 0) + ((listing.price ?? 0) * 0.029 + 0.30)), specifier: "%.2f")")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -735,7 +735,7 @@ struct ListingDetailView: View {
             throw PaymentError.walletNotLoaded
         }
         
-        let priceCents = Int(listing.price * 100)
+        let priceCents = Int((listing.price ?? 0) * 100)
         guard wallet.availableCents >= priceCents else {
             throw PaymentError.insufficientFunds
         }
@@ -803,7 +803,7 @@ struct ListingDetailView: View {
                                     }
                                     
                                     // Calculate Stripe processing fees
-                                    let basePriceCents = Int(listing.price * 100)
+                                    let basePriceCents = Int((listing.price ?? 0) * 100)
                                     let processingFeeCents = paymentService.calculateProcessingFee(amountCents: basePriceCents)
                                     
                                     // Update UI with processing fee

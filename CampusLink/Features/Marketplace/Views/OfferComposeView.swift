@@ -320,7 +320,7 @@ struct ListingSelectionRow: View {
                     .font(.headline)
                     .lineLimit(1)
                 
-                Text("$\(listing.price, specifier: "%.2f")")
+                Text("$\((listing.price ?? 0), specifier: "%.2f")")
                     .font(.subheadline)
                     .foregroundColor(Color("ThemeColor"))
                     .fontWeight(.semibold)

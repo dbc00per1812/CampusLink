@@ -102,7 +102,7 @@ struct ChatView: View {
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(listing.title).font(.caption).fontWeight(.medium).lineLimit(1)
-                Text("$\(listing.price, specifier: "%.2f")").font(.caption2).foregroundColor(.secondary)
+                Text("$\((listing.price ?? 0), specifier: "%.2f")").font(.caption2).foregroundColor(.secondary)
             }
             Spacer()
         }

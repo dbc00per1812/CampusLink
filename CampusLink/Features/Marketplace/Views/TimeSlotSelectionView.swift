@@ -56,7 +56,7 @@ struct TimeSlotSelectionView: View {
                         .font(.headline)
                         .fontWeight(.semibold)
                     
-                    Text("$\(listing.price, specifier: "%.2f")")
+                    Text("$\((listing.price ?? 0), specifier: "%.2f")")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(Color("ThemeColor"))
