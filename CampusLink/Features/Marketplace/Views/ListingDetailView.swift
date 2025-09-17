@@ -672,10 +672,6 @@ struct ListingDetailView: View {
                 }
             }
             
-            // Seller rating summary (Phase 2)
-            if AppConfig.enableRatings {
-                SellerRatingSummaryView(userId: listing.user.id)
-            }
         }
     }
     
@@ -745,6 +741,11 @@ struct ListingDetailView: View {
                     Text("Member since \(formatDate(listing.createdAt))")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    
+                    // Seller ratings
+                    if AppConfig.enableRatings {
+                        SellerRatingSummaryView(userId: listing.user.id)
+                    }
                 }
                 Spacer()
             }
