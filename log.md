@@ -1,3 +1,11 @@
+## 2025-09-17
+
+- Align ratings plan with codebase and schema
+  - Confirmed models, service, and UI exist: `CampusLink/Core/Models/RatingModels.swift`, `CampusLink/Core/Services/RatingService.swift`, `CampusLink/Features/Ratings/Views/RatingsHistoryView.swift`, `CampusLink/Features/Ratings/Views/RatingComponents.swift`, plus integrations in `Features/Payments/Views/OrderDetailView.swift`, `Features/Home/HomeTabView.swift`, and `Features/Profile/ProfileTabView.swift`.
+  - Verified feature flag: `AppConfig.enableRatings = false` to prevent partial rollout.
+  - Cross-checked DB context: `public.ratings` and `users.trust_score` exist; missing RLS policies and trust-score trigger/function from plan.
+  - Updated `ratings.md` with a "Current State", deltas, and minimal next actions (add RLS, add trust score function + trigger, then flip flag).
+
 # CampusLink Development Log
 
 ## Search Result Navigation Fix

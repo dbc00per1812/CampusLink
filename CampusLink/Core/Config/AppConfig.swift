@@ -8,8 +8,8 @@ struct AppConfig {
     static let enableSeekMode = true
     
     /// Controls whether Ratings system is enabled in the app
-    /// Phase 0: Keep this false until database ratings table is created
-    static let enableRatings = false
+    /// Phase 0: Enabled after database setup is complete
+    static let enableRatings = true
     
     /// Controls whether Search functionality is enabled in the app
     /// Phase 0: Ready for testing - basic search infrastructure complete

@@ -7,6 +7,38 @@ Add a comprehensive ratings system that builds user trust, provides feedback mec
 
 ---
 
+## ✅ Current State (aligned with codebase and schema)
+
+- **Feature flag**: Ratings are currently disabled via `AppConfig.enableRatings = false`.
+- **Models**: Implemented in `CampusLink/Core/Models/RatingModels.swift` (enums, DTOs, summaries, trust levels).
+- **Service**: `CampusLink/Core/Services/RatingService.swift` supports submit, fetch user/order ratings, summary, update, report; all guarded by feature flag and using Supabase queries.
+- **UI**:
+  - `RatingsHistoryView` exists and loads/report ratings behind the flag.
+  - `RatingComponents.swift` includes `RatingSummaryView`, `SellerRatingSummaryView`, and a compose flow used by `OrderDetailView`.
+  - `OrderDetailView` checks `canSubmitRating(...)` for buyer/seller and conditionally enables rating.
+  - `ProfileTabView` links to ratings history when flag is on.
+- **Database (per context file)**: `public.ratings` table exists with expected columns; `public.users.trust_score` exists as `integer`. RLS policies and trust-score trigger functions are not present in the context file.
+
+### Delta vs Original Plan
+
+- Swift-side Phase 0/1 scaffolding is largely implemented and integrated behind a feature flag.
+- DB-side automation (RLS, trust score function/trigger) from the plan is not present in `databaseinfoforcontext/databasefileforcontext.md` and needs to be added to the real dev DB before enabling the feature.
+- Plan assumed enabling the feature post-DB migration; current state leaves the feature off pending DB verification.
+
+### Minimal Next Actions to Go Live (safe, small steps)
+
+1) Database (outside IDE; run against dev):
+- Add RLS policies for `public.ratings` (select/insert) mirroring plan intent.
+- Add `calculate_user_trust_score(uuid)` and `ratings_update_trust_score` trigger to auto-maintain `users.trust_score`.
+- Verify `orders.order_status` values include `'completed'` used by app logic.
+
+2) App config (IDE):
+- Flip `AppConfig.enableRatings` to `true` after DB changes are verified.
+
+3) UX polish (optional after enable):
+- Surface seller summary on listing cards consistently and in profile header.
+- Add empty-state messaging in `RatingsHistoryView` when no ratings.
+
 ## 📋 **Implementation Steps**
 
 ### **Phase 0 — Database Schema & Foundation**
