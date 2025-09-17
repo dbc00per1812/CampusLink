@@ -257,14 +257,16 @@ struct WalletView: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        // Status badge
-                        Text(transaction.isCompleted ? "Completed" : "Pending")
+                        // Status badge - use order status if available, otherwise fall back to payment status
+                        let statusText = getOrderStatusText(for: transaction)
+                        let statusColor = getOrderStatusColor(for: transaction)
+                        Text(statusText)
                             .font(.caption)
                             .fontWeight(.medium)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background((transaction.isCompleted ? Color.green : Color.orange).opacity(0.15))
-                            .foregroundColor(transaction.isCompleted ? .green : .orange)
+                            .background(statusColor.opacity(0.15))
+                            .foregroundColor(statusColor)
                             .cornerRadius(8)
                         
                         Text(transaction.createdAt.formatted(date: .abbreviated, time: .omitted))
@@ -279,10 +281,11 @@ struct WalletView: View {
                         badge(text: "Disputed", color: .orange)
                     }
                     if transaction.isCompleted {
-                        badge(text: "Completed", color: .green)
-                    }
-                    if transaction.status.lowercased() == "succeeded" || transaction.status.lowercased() == "completed" {
                         badge(text: "Paid", color: .green)
+                    }
+                    // Add order status badge if we have order data
+                    if let order = getOrderForTransaction(transaction) {
+                        badge(text: order.orderStatus.displayName, color: order.orderStatus.badgeColor)
                     }
                 }
 
@@ -333,6 +336,15 @@ struct WalletView: View {
     
     // MARK: - Order Loading
     private func loadOrderForTransaction(_ transaction: PaymentTransaction) async {
+        // Check viewModel cache first
+        if let cachedOrder = viewModel.orderCache[transaction.id] {
+            await MainActor.run {
+                self.selectedOrder = cachedOrder
+            }
+            return
+        }
+        
+        // If not in cache, load it (this should rarely happen with preloading)
         guard let listingId = transaction.listingId,
               let currentUserId = authManager.currentUserId else {
             return
@@ -356,11 +368,34 @@ struct WalletView: View {
             await MainActor.run {
                 if let order = orders.first {
                     self.selectedOrder = order
+                    // Update the viewModel cache
+                    self.viewModel.orderCache[transaction.id] = order
                 }
             }
         } catch {
             print("Failed to load order for transaction: \(error)")
         }
+    }
+    
+    // MARK: - Status Helper Functions
+    private func getOrderForTransaction(_ transaction: PaymentTransaction) -> Order? {
+        return viewModel.orderCache[transaction.id]
+    }
+    
+    private func getOrderStatusText(for transaction: PaymentTransaction) -> String {
+        if let order = getOrderForTransaction(transaction) {
+            return order.orderStatus.displayName
+        }
+        // Fallback to payment status
+        return transaction.isCompleted ? "Completed" : "Pending"
+    }
+    
+    private func getOrderStatusColor(for transaction: PaymentTransaction) -> Color {
+        if let order = getOrderForTransaction(transaction) {
+            return order.orderStatus.badgeColor
+        }
+        // Fallback to payment status colors
+        return transaction.isCompleted ? .green : .orange
     }
     
 

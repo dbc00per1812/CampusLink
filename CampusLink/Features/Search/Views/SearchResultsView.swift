@@ -34,13 +34,6 @@ struct SearchResultsView: View {
         .refreshable {
             await performSearch(resetResults: true)
         }
-        .alert("Search Error", isPresented: .constant(errorMessage != nil), presenting: errorMessage) { _ in
-            Button("OK") {
-                errorMessage = nil
-            }
-        } message: { error in
-            Text(error)
-        }
     }
     
     private var searchResultsList: some View {
@@ -132,7 +125,12 @@ struct SearchResultsView: View {
             }
             
         } catch {
+            // Swallow non-critical search errors in production to avoid random popups
+            #if DEBUG
             errorMessage = error.localizedDescription
+            #else
+            errorMessage = nil
+            #endif
         }
         
         isLoading = false

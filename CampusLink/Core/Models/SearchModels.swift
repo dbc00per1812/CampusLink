@@ -187,6 +187,7 @@ struct SearchListing: Codable, Identifiable {
             price: price ?? 0,
             category: category ?? "",
             photo: photo,
+            photos: images ?? [],
             isSold: false, // Default for active listings
             listingType: .product, // Default, could be enhanced later
             serviceDuration: nil,

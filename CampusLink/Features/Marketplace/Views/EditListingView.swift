@@ -8,6 +8,7 @@ private struct ListingUpdate: Codable {
     let price: Double?
     let category: String?
     let photo: String?
+    let photos: [String]?
     let listingType: ListingType?
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
@@ -17,7 +18,7 @@ private struct ListingUpdate: Codable {
     let maxBookingsPerSlot: Int?
 
     enum CodingKeys: String, CodingKey {
-        case title, description, price, category, photo
+        case title, description, price, category, photo, photos
         case listingType = "listing_type"
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
@@ -46,7 +47,9 @@ struct EditListingView: View {
     @State private var slotsAvailable: String
     @State private var maxBookingsPerSlot: String
     @State private var selectedImage: PhotosPickerItem?
+    @State private var selectedImages: [PhotosPickerItem] = []
     @State private var imageData: Data?
+    @State private var imageDatas: [Data] = []
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -81,35 +84,156 @@ struct EditListingView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    // Image picker
+                    // Multiple Images picker
                     VStack(spacing: 12) {
-                        if let photo = imageData, let ui = UIImage(data: photo) {
-                            Image(uiImage: ui)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
+                        if !imageDatas.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(Array(imageDatas.enumerated()), id: \.offset) { index, data in
+                                        if let ui = UIImage(data: data) {
+                                            ZStack(alignment: .topTrailing) {
+                                                Image(uiImage: ui)
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                                    .frame(width: 120, height: 120)
+                                                    .clipped()
+                                                    .cornerRadius(12)
+                                                
+                                                Button(action: {
+                                                    imageDatas.remove(at: index)
+                                                }) {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .foregroundColor(.red)
+                                                        .background(Color.white)
+                                                        .clipShape(Circle())
+                                                }
+                                                .offset(x: 8, y: -8)
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Add more photos button
+                                    if imageDatas.count < 10 {
+                                        PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(Color(UIColor.systemGray6))
+                                                .frame(width: 120, height: 120)
+                                                .overlay(
+                                                    VStack {
+                                                        Image(systemName: "plus")
+                                                            .font(.system(size: 30))
+                                                            .foregroundColor(.gray)
+                                                        Text("Add More")
+                                                            .font(.caption)
+                                                            .foregroundColor(.gray)
+                                                    }
+                                                )
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(Color("ThemeColor"), lineWidth: 2)
+                                                )
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        } else if !listing.photos.isEmpty {
+                            // Display existing photos from database
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
+                                        if let url = URL(string: photoURL) {
+                                            AsyncImage(url: url) { image in
+                                                image
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                            } placeholder: {
+                                                Rectangle().fill(Color(UIColor.systemGray5))
+                                            }
+                                            .frame(width: 120, height: 120)
+                                            .clipped()
+                                            .cornerRadius(12)
+                                        }
+                                    }
+                                    
+                                    // Add photos button
+                                    PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color(UIColor.systemGray6))
+                                            .frame(width: 120, height: 120)
+                                            .overlay(
+                                                VStack {
+                                                    Image(systemName: "plus")
+                                                        .font(.system(size: 30))
+                                                        .foregroundColor(.gray)
+                                                    Text("Add Photos")
+                                                        .font(.caption)
+                                                        .foregroundColor(.gray)
+                                                }
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color("ThemeColor"), lineWidth: 2)
+                                            )
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
+                            // Fallback to single photo for backward compatibility
+                            VStack(spacing: 12) {
+                                AsyncImage(url: url) { image in
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Rectangle().fill(Color(UIColor.systemGray5))
+                                }
                                 .frame(height: 200)
                                 .frame(maxWidth: .infinity)
                                 .clipped()
                                 .cornerRadius(12)
-                        } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
-                            AsyncImage(url: url) { image in
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Rectangle().fill(Color(UIColor.systemGray5))
+                                
+                                PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
+                                    Text("Add Photos")
+                                        .font(.subheadline)
+                                        .foregroundColor(Color("ThemeColor"))
+                                }
                             }
-                            .frame(height: 200)
-                            .frame(maxWidth: .infinity)
-                            .clipped()
-                            .cornerRadius(12)
+                        } else {
+                            // No photos - show add photos button
+                            PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(UIColor.systemGray6))
+                                    .frame(height: 200)
+                                    .overlay(
+                                        VStack {
+                                            Image(systemName: "photo")
+                                                .font(.system(size: 40))
+                                                .foregroundColor(.gray)
+                                            Text("Add Photos")
+                                                .font(.headline)
+                                                .foregroundColor(.gray)
+                                            Text("Tap to select multiple photos")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color("ThemeColor"), lineWidth: 2)
+                                    )
+                            }
                         }
 
                         PhotosPicker(selection: $selectedImage, matching: .images) {
-                            Text("Change Photo")
+                            Text("Change Single Photo")
                                 .font(.subheadline)
                                 .foregroundColor(Color("ThemeColor"))
                         }
                         .onChange(of: selectedImage) { _, newValue in
                             Task { await loadImage(from: newValue) }
+                        }
+                        .onChange(of: selectedImages) { _, newValue in
+                            Task { await loadImages(from: newValue) }
                         }
                     }
 
@@ -250,6 +374,19 @@ struct EditListingView: View {
         guard let item = item, let data = try? await item.loadTransferable(type: Data.self) else { return }
         await MainActor.run { imageData = data }
     }
+    
+    private func loadImages(from items: [PhotosPickerItem]) async {
+        var newImageDatas: [Data] = []
+        
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            newImageDatas.append(data)
+        }
+        
+        await MainActor.run {
+            self.imageDatas = newImageDatas
+        }
+    }
 
     private func save() {
         Task {
@@ -262,11 +399,36 @@ struct EditListingView: View {
             await MainActor.run { isSaving = true }
 
             var photoURL: String? = listing.photo
-            if let data = imageData {
+            var photoURLs: [String] = listing.photos
+            
+            // Upload multiple photos if selected
+            if !imageDatas.isEmpty {
+                for (index, data) in imageDatas.enumerated() {
+                    do {
+                        let fileName = "\(listing.id.uuidString)_\(UUID().uuidString)_\(index).jpg"
+                        try await supabase.storage.from("listings").upload(fileName, data: data)
+                        let url = try supabase.storage.from("listings").getPublicURL(path: fileName).absoluteString
+                        photoURLs.append(url)
+                        
+                        // Set the first photo as the main photo for backward compatibility
+                        if index == 0 {
+                            photoURL = url
+                        }
+                    } catch {
+                        await MainActor.run {
+                            errorMessage = "Failed to upload image \(index + 1): \(error.localizedDescription)"
+                            isSaving = false
+                        }
+                        return
+                    }
+                }
+            } else if let data = imageData {
+                // Fallback to single photo for backward compatibility
                 do {
                     let fileName = "\(listing.id.uuidString)_\(UUID().uuidString).jpg"
                     try await supabase.storage.from("listings").upload(fileName, data: data)
                     photoURL = try supabase.storage.from("listings").getPublicURL(path: fileName).absoluteString
+                    photoURLs = [photoURL!]
                 } catch {
                     await MainActor.run {
                         errorMessage = "Failed to upload image: \(error.localizedDescription)"
@@ -282,6 +444,7 @@ struct EditListingView: View {
                 price: price,
                 category: category,
                 photo: photoURL,
+                photos: photoURLs,
                 listingType: listingType,
                 serviceDuration: listingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
                 serviceLocation: listingType == .service ? serviceLocation : nil,

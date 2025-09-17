@@ -75,7 +75,8 @@ struct Listing: Codable, Identifiable {
     let description: String
     let price: Double?
     let category: String
-    let photo: String?
+    let photo: String? // Keep for backward compatibility
+    let photos: [String] // New array for multiple photos
     let isSold: Bool
     let listingType: ListingType
     let serviceDuration: String?
@@ -93,7 +94,7 @@ struct Listing: Codable, Identifiable {
     let expiresAt: Date?
     
     enum CodingKeys: String, CodingKey {
-        case id, title, description, price, category, photo
+        case id, title, description, price, category, photo, photos
         case userId = "user_id"
         case isSold = "is_sold"
         case listingType = "listing_type"
@@ -121,6 +122,7 @@ struct Listing: Codable, Identifiable {
         price: 25.00,
         category: "Electronics",
         photo: nil,
+        photos: [],
         isSold: false,
         listingType: .product,
         serviceDuration: nil,
@@ -144,7 +146,8 @@ struct ListingCreate: Codable {
     let description: String
     let price: Double? // Optional for seek posts
     let category: String
-    let photo: String?
+    let photo: String? // Keep for backward compatibility
+    let photos: [String] // New array for multiple photos
     let listingType: ListingType
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
@@ -160,7 +163,7 @@ struct ListingCreate: Codable {
     let expiresAt: Date?
     
     enum CodingKeys: String, CodingKey {
-        case title, description, price, category, photo
+        case title, description, price, category, photo, photos
         case userId = "user_id"
         case listingType = "listing_type"
         case serviceDuration = "service_duration"
@@ -184,7 +187,8 @@ struct ListingWithUser: Codable, Identifiable {
     let description: String
     let price: Double?
     let category: String
-    let photo: String?
+    let photo: String? // Keep for backward compatibility
+    let photos: [String] // New array for multiple photos
     let isSold: Bool
     let listingType: ListingType
     let serviceDuration: String?
@@ -203,7 +207,7 @@ struct ListingWithUser: Codable, Identifiable {
     let expiresAt: Date?
     
     enum CodingKeys: String, CodingKey {
-        case id, title, description, price, category, photo, user
+        case id, title, description, price, category, photo, photos, user
         case isSold = "is_sold"
         case listingType = "listing_type"
         case serviceDuration = "service_duration"
@@ -229,6 +233,7 @@ struct ListingWithUser: Codable, Identifiable {
         price: 25.00,
         category: "Electronics",
         photo: nil,
+        photos: [],
         isSold: false,
         listingType: .product,
         serviceDuration: nil,

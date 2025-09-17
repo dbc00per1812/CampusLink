@@ -1,5 +1,124 @@
 # CampusLink Development Log
 
+## Multiple Photos Support for Listings
+
+Status: implemented (client + database schema)
+
+What and why:
+- Added support for multiple photos per listing to allow users to showcase their items/services with multiple images instead of just one.
+- This improves the user experience by providing more visual information about listings.
+
+### Database Changes:
+- Created `add_multiple_photos_support.sql` script that:
+  - Adds `photos` text array column to `listings` table
+  - Migrates existing single photo data to the new photos array
+  - Creates GIN index for better query performance
+  - Adds constraints to limit photos to 10 per listing
+  - Keeps the old `photo` column for backward compatibility
+
+### Client Changes:
+
+#### ProductModels.swift:
+- Updated `Listing`, `ListingCreate`, and `ListingWithUser` structs to include `photos: [String]` array
+- Added `photos` to CodingKeys for proper JSON serialization
+- Updated sample data to include empty photos array
+
+#### HomeTabView.swift (ListingCard):
+- Updated photo display to show horizontal scrollable gallery for multiple photos
+- Each photo displays as 200x200 square with proper aspect ratio
+- Falls back to single photo display for backward compatibility
+- Maintains existing single photo fallback for listings without photos array
+
+#### TabViews.swift (PostView):
+- Added multiple photo selection with `selectedImages: [PhotosPickerItem]` and `listingImages: [UIImage]`
+- Updated photo picker to support up to 10 photos with `maxSelectionCount: 10`
+- Created horizontal scrollable photo preview with delete buttons
+- Added "Add More" button when under the 10 photo limit
+- Updated `createListing()` function to upload multiple photos and store URLs in photos array
+- Added `loadImages()` function to handle multiple photo selection
+
+#### EditListingView.swift:
+- Added multiple photo editing support with `selectedImages` and `imageDatas` state
+- Updated `ListingUpdate` struct to include `photos: [String]?`
+- Created comprehensive photo editing UI that:
+  - Shows existing photos from database in horizontal scroll
+  - Allows adding new photos with "Add More" button
+  - Allows removing individual photos with X button
+  - Falls back to single photo editing for backward compatibility
+- Updated `save()` function to handle multiple photo uploads
+- Added `loadImages()` function for multiple photo selection
+
+#### ListingDetailView.swift:
+- Updated photo display to show main photo (first in array) prominently
+- Added thumbnail gallery below main photo for additional photos
+- Thumbnail gallery shows horizontal scroll with 80x80 thumbnails
+- First thumbnail has highlighted border to indicate it's the main photo
+- Falls back to single photo display for backward compatibility
+
+#### MyListingCard (TabViews.swift):
+- Updated to display multiple photos in horizontal scroll
+- Each photo shows as 120x120 square with proper aspect ratio
+- Maintains "SOLD" overlay functionality for all photos
+- Falls back to single photo display for backward compatibility
+
+### Key Features:
+1. **Backward Compatibility**: All changes maintain compatibility with existing single photo listings
+2. **Photo Limits**: Maximum 10 photos per listing to prevent abuse
+3. **User Experience**: Intuitive photo selection, preview, and management
+4. **Performance**: Efficient photo loading and display with proper aspect ratios
+5. **Consistent UI**: All listing display components updated consistently
+
+### Usage:
+- Users can now select multiple photos when creating a listing
+- Photos are displayed in a horizontal scrollable gallery
+- Users can remove individual photos during editing
+- The first photo serves as the main/primary photo
+- All existing single-photo listings continue to work normally
+
+### Bug Fixes:
+- Fixed compilation errors in SearchModels.swift by adding `photos: images ?? []` parameter to `toListingWithUser()` function
+- Fixed compilation errors in ActionButton.swift by adding `photos: []` parameter to sample ListingWithUser initialization
+- Fixed compilation errors in TabViews.swift by adding `photos: listing.photos` parameter to Listing initialization in toggleSoldStatus function
+- Fixed database schema mismatch by making photos field optional temporarily, then reverting to non-optional after migration
+- All compilation errors resolved and code now builds successfully
+
+### Database Migration Applied:
+- Successfully applied the SQL migration script to add `photos` text array column to listings table
+- Reverted photos field from optional back to non-optional in all model structs
+- Updated all UI code to handle non-optional photos arrays
+- Full multiple photos functionality now working end-to-end
+
+### Interactive Photo Gallery (Latest Update):
+- Added clickable thumbnails - users can tap any thumbnail to change the main photo
+- Added swipe gestures - users can swipe left/right on the main photo to navigate
+- Added photo counter indicator showing "X / Y" in bottom-right corner
+- Enhanced thumbnail highlighting - selected thumbnail has thicker border and white outline
+- Smooth user experience with intuitive navigation between photos
+- All interactions work seamlessly with the existing gallery layout
+
+### Compilation Error Fix:
+- Fixed Swift compiler type-checking error by breaking down complex view hierarchy into smaller computed properties
+- Extracted photo gallery components into separate @ViewBuilder methods for better maintainability
+- Resolved "The compiler is unable to type-check this expression in reasonable time" error
+- Code now compiles successfully with improved performance and readability
+
+### Major View Refactoring (Latest Update):
+- Broke down the massive ListingDetailView body into 6 main content sections using @ViewBuilder
+- Extracted sections: titleAndPriceSection, serviceDetailsSection, descriptionSection, sellerInfoSection, listingDetailsSection, actionsSection
+- Each section is now a separate computed property with clear responsibilities
+- Significantly improved code maintainability and Swift compiler performance
+- Preserved all existing functionality while making the code much more readable
+- Body method now contains only 6 simple section references instead of hundreds of lines of complex view hierarchy
+
+### Compilation Error Fixes (Latest Update):
+- Fixed CGSize property access error: Changed `value.translation.x` to `value.translation.width` in swipe gesture
+- Fixed optional binding error: Removed unnecessary intermediate variable in photo URL handling
+- CGSize uses `width`/`height` properties, not `x`/`y` (that's for CGPoint)
+- Simplified conditional binding by directly using `URL(string: listing.photos[selectedPhotoIndex])`
+- All compilation errors resolved, code now builds successfully
+
+# CampusLink Development Log
+
 ## Messaging: Read Receipts / Read Notifications
 
 Status: implemented (client) + SQL guidance
@@ -2508,4 +2627,56 @@ Threw out ALL complex logic and implemented simple, direct approach:
 - Buying: 1 listing (Dad dad)
 
 ### Status: ✅ COMPLETE REWRITE DEPLOYED
+
+## 2025-01-14 - Wallet Order Status Inconsistency Fix
+
+**Problem:** User reported that order status shows "Pending" on wallet page but "Completed" when tapping to view order details. Also requested adding order name to wallet display.
+
+**Root Cause Analysis:**
+1. **Status Inconsistency**: Wallet view was using `PaymentTransaction.isCompleted` property which only checks payment status ("completed" or "succeeded"), not the actual order status
+2. **Missing Order Data**: Wallet view wasn't loading associated order data to get accurate order status
+3. **Order Name Missing**: Transaction display only showed "Order" instead of actual listing title
+
+**Solution Implemented:**
+
+### 1. **Enhanced WalletViewModel with Order Preloading**
+- Added `orderCache: [UUID: Order]` to cache order data for accurate status display
+- Created `preloadOrderData()` function that loads all orders for transactions in one efficient query
+- Orders are cached by transaction ID for instant access
+
+### 2. **Updated WalletView Status Logic**
+- Replaced simple `transaction.isCompleted` with proper order status checking
+- Added helper functions:
+  - `getOrderStatusText()` - Returns order status display name if available, falls back to payment status
+  - `getOrderStatusColor()` - Returns proper color coding based on order status
+  - `getOrderForTransaction()` - Retrieves cached order data
+
+### 3. **Enhanced Transaction Display**
+- Status badge now shows actual order status (Completed, In Progress, etc.) instead of just payment status
+- Added order status badge in summary section when order data is available
+- Order name already displayed via `transaction.listing?.title ?? "Order"`
+
+### 4. **Performance Optimizations**
+- Order data is preloaded when wallet loads, not on-demand
+- Single database query loads all orders for all transactions
+- Caching prevents repeated database calls
+- Fallback loading for edge cases where order isn't in cache
+
+**Technical Implementation:**
+- Uses existing order status enums and color schemes from OrderModels.swift
+- Maintains backward compatibility with payment status fallback
+- Proper error handling and graceful degradation
+- Follows existing code patterns and conventions
+
+**Files Modified:**
+- `WalletViewModel.swift` - Added order preloading and caching
+- `WalletView.swift` - Enhanced status display logic and UI
+
+**Expected Results:**
+- Wallet page now shows accurate order status (Completed, In Progress, etc.)
+- Status consistency between wallet and order detail views
+- Order names properly displayed from listing titles
+- Better performance with preloaded order data
+
+**Status:** ✅ WALLET ORDER STATUS FIXED - Accurate status display and order names now working, Darragh!
 

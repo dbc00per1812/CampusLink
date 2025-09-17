@@ -245,6 +245,7 @@ struct ActionButton_Previews: PreviewProvider {
                     price: 99.99,
                     category: "Electronics",
                     photo: nil,
+                    photos: [],
                     isSold: false,
                     listingType: .product,
                     serviceDuration: nil,

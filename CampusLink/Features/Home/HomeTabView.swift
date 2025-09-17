@@ -364,11 +364,14 @@ extension HomeTabView {
                 .execute()
                 .value
             
+            print("🔍 Loaded \(result.count) listings")
+            
             await MainActor.run {
                 listings = result
                 isLoading = false
             }
         } catch {
+            print("❌ Error loading listings: \(error)")
             await MainActor.run {
                 isLoading = false
             }
@@ -441,7 +444,31 @@ struct ListingCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let photoURL = listing.photo, let url = URL(string: photoURL) {
+            // Multiple photos display
+            if !listing.photos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
+                            if let url = URL(string: photoURL) {
+                                AsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Rectangle()
+                                        .fill(Color(UIColor.systemGray5))
+                                        .overlay(ProgressView())
+                                }
+                                .frame(width: 200, height: 200)
+                                .clipped()
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
+                // Fallback to single photo for backward compatibility
                 AsyncImage(url: url) { image in
                     image
                         .resizable()

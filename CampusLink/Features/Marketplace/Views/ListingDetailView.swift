@@ -27,6 +27,7 @@ struct ListingDetailView: View {
     @State private var timeSlots: [TimeSlot] = []
     @State private var selectedTimeSlot: TimeSlot?
     @State private var isLoadingTimeSlots = false
+    @State private var selectedPhotoIndex = 0
 
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { 
@@ -50,284 +51,15 @@ struct ListingDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Large Photo Section
-                if let photoURL = listing.photo, let url = URL(string: photoURL) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Rectangle()
-                            .fill(Color(UIColor.systemGray5))
-                            .overlay(ProgressView())
-                    }
-                    .frame(height: 300)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .cornerRadius(16)
-                } else {
-                    Rectangle()
-                        .fill(Color(UIColor.systemGray6))
-                        .frame(height: 300)
-                        .overlay(
-                            VStack {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 60))
-                                    .foregroundColor(.gray)
-                                Text("No Photo")
-                                    .font(.headline)
-                                    .foregroundColor(.gray)
-                            }
-                        )
-                        .cornerRadius(16)
-                }
+                photoGallerySection
+                titleAndPriceSection
+                serviceDetailsSection
 
-                // Title and Price
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(listing.title)
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .lineLimit(3)
+                descriptionSection
+                sellerInfoSection
+                listingDetailsSection
 
-                            HStack {
-                                Text(listing.category)
-                                    .font(.subheadline)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color("ThemeColor").opacity(0.2))
-                                    .foregroundColor(Color("ThemeColor"))
-                                    .cornerRadius(8)
-
-                                Text(listing.listingType.displayName)
-                                    .font(.subheadline)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(listing.listingType == .product ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
-                                    .foregroundColor(listing.listingType == .product ? .blue : .green)
-                                    .cornerRadius(8)
-                            }
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing) {
-                            if AppConfig.enableSeekMode && listing.intent == .seek {
-                                // Show budget for seek posts
-                                if let min = listing.budgetMin, let max = listing.budgetMax {
-                                    Text("$\(min, specifier: "%.0f") - $\(max, specifier: "%.0f")")
-                                        .font(.title)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Color("ThemeColor"))
-                                } else if let max = listing.budgetMax {
-                                    Text("Up to $\(max, specifier: "%.0f")")
-                                        .font(.title)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Color("ThemeColor"))
-                                }
-                                Text("Budget")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                // Show price for offer posts
-                                Text("$\((listing.price ?? 0), specifier: "%.2f")")
-                                    .font(.title)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Color("ThemeColor"))
-                                
-                                // Always show estimated processing fee
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text("Est. total $\(((listing.price ?? 0) + ((listing.price ?? 0) * 0.029 + 0.30)), specifier: "%.2f")")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Seller rating summary (Phase 2)
-                    if AppConfig.enableRatings {
-                        SellerRatingSummaryView(userId: listing.user.id)
-                    }
-                }
-
-                // Service-Specific
-                if listing.listingType == .service {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Service Details")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-
-                        VStack(spacing: 8) {
-                            if let duration = listing.serviceDuration, !duration.isEmpty {
-                                ServiceDetailRow(title: "Duration", value: duration, icon: "clock")
-                            }
-                            if let location = listing.serviceLocation {
-                                ServiceDetailRow(title: "Location", value: location.displayName, icon: "location")
-                            }
-                            if let availability = listing.serviceAvailability, !availability.isEmpty {
-                                ServiceDetailRow(title: "Availability", value: availability, icon: "calendar")
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(12)
-                }
-
-                // Description
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Description")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    Text(listing.description)
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .lineSpacing(4)
-                }
-
-                // Seller Info
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Seller Information")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    HStack(spacing: 12) {
-                        Circle()
-                            .fill(Color("ThemeColor").opacity(0.2))
-                            .frame(width: 50, height: 50)
-                            .overlay(
-                                Text((listing.user.name?.first?.uppercased()) ?? "?")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Color("ThemeColor"))
-                            )
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(listing.user.name ?? "Unknown Seller")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            Text("Member since \(formatDate(listing.createdAt))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(12)
-                }
-
-                // Listing Details
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Listing Details")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    HStack {
-                        Text("Posted:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(formatDate(listing.createdAt))
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                    }
-                }
-                .padding()
-                .background(Color(UIColor.systemGray6))
-                .cornerRadius(12)
-
-                // Actions
-                if AppConfig.enableSeekMode && listing.intent == .seek && !isOwnListing {
-                    // Seek post actions for non-owners
-                    VStack(spacing: 12) {
-                        Button(action: handleOfferMyItem) {
-                            HStack {
-                                Image(systemName: "tag.fill")
-                                Text("Offer My Item")
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color("ThemeColor"))
-                            .cornerRadius(12)
-                        }
-                        
-                        Button(action: handleContactSeller) {
-                            HStack {
-                                Image(systemName: "message.fill")
-                                Text("Contact Seeker")
-                            }
-                            .font(.headline)
-                            .foregroundColor(Color("ThemeColor"))
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color("ThemeColor"), lineWidth: 2)
-                            )
-                        }
-                    }
-                } else if AppConfig.enableSeekMode && listing.intent == .seek && isOwnListing {
-                    // Seek post actions for owner
-                    VStack(spacing: 12) {
-                        Button(action: handleViewOffers) {
-                            HStack {
-                                Image(systemName: "envelope.badge")
-                                Text("View Offers")
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color("ThemeColor"))
-                            .cornerRadius(12)
-                        }
-                        
-                        HStack(spacing: 12) {
-                            Button(action: handleEditListing) {
-                                Text("Edit")
-                                    .font(.headline)
-                                    .foregroundColor(Color("ThemeColor"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color("ThemeColor"), lineWidth: 2)
-                                    )
-                            }
-                            
-                            Button(action: handleDeleteListing) {
-                                Text("Delete")
-                                    .font(.headline)
-                                    .foregroundColor(.red)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.red, lineWidth: 2)
-                                    )
-                            }
-                        }
-                    }
-                } else {
-                    // Regular offer post actions
-                    ActionButtonRow(
-                        listing: listing,
-                        isOwnListing: isOwnListing,
-                        isContactingLoading: isContactingSeller,
-                        isPrimaryActionLoading: isPrimaryActionLoading,
-                        onContactSeller: { handleContactSeller() },
-                        onPrimaryAction: { handlePrimaryAction() },
-                        onEditListing: isOwnListing ? { handleEditListing() } : nil,
-                        onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
-                    )
-                }
+                actionsSection
 
                 Spacer(minLength: 100)
             }
@@ -869,6 +601,424 @@ struct ListingDetailView: View {
                         showErrorAlert = true
                     }
                 }
+            }
+        }
+    }
+    
+    // MARK: - Main Content Sections
+    
+    @ViewBuilder
+    private var titleAndPriceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(listing.title)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .lineLimit(3)
+
+                    HStack {
+                        Text(listing.category)
+                            .font(.subheadline)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color("ThemeColor").opacity(0.2))
+                            .foregroundColor(Color("ThemeColor"))
+                            .cornerRadius(8)
+
+                        Text(listing.listingType.displayName)
+                            .font(.subheadline)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(listing.listingType == .product ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
+                            .foregroundColor(listing.listingType == .product ? .blue : .green)
+                            .cornerRadius(8)
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing) {
+                    if AppConfig.enableSeekMode && listing.intent == .seek {
+                        // Show budget for seek posts
+                        if let min = listing.budgetMin, let max = listing.budgetMax {
+                            Text("$\(min, specifier: "%.0f") - $\(max, specifier: "%.0f")")
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color("ThemeColor"))
+                        } else if let max = listing.budgetMax {
+                            Text("Up to $\(max, specifier: "%.0f")")
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color("ThemeColor"))
+                        }
+                        Text("Budget")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        // Show price for offer posts
+                        Text("$\((listing.price ?? 0), specifier: "%.2f")")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                        
+                        // Always show estimated processing fee
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Est. total $\(((listing.price ?? 0) + ((listing.price ?? 0) * 0.029 + 0.30)), specifier: "%.2f")")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            // Seller rating summary (Phase 2)
+            if AppConfig.enableRatings {
+                SellerRatingSummaryView(userId: listing.user.id)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var serviceDetailsSection: some View {
+        if listing.listingType == .service {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Service Details")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+
+                VStack(spacing: 8) {
+                    if let duration = listing.serviceDuration, !duration.isEmpty {
+                        ServiceDetailRow(title: "Duration", value: duration, icon: "clock")
+                    }
+                    if let location = listing.serviceLocation {
+                        ServiceDetailRow(title: "Location", value: location.displayName, icon: "location")
+                    }
+                    if let availability = listing.serviceAvailability, !availability.isEmpty {
+                        ServiceDetailRow(title: "Availability", value: availability, icon: "calendar")
+                    }
+                }
+            }
+            .padding()
+            .background(Color(UIColor.systemGray6))
+            .cornerRadius(12)
+        }
+    }
+    
+    @ViewBuilder
+    private var descriptionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Description")
+                .font(.headline)
+                .foregroundColor(.primary)
+
+            Text(listing.description)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .lineSpacing(4)
+        }
+    }
+    
+    @ViewBuilder
+    private var sellerInfoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Seller Information")
+                .font(.headline)
+                .foregroundColor(.primary)
+
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color("ThemeColor").opacity(0.2))
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Text((listing.user.name?.first?.uppercased()) ?? "?")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(listing.user.name ?? "Unknown Seller")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Text("Member since \(formatDate(listing.createdAt))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding()
+            .background(Color(UIColor.systemGray6))
+            .cornerRadius(12)
+        }
+    }
+    
+    @ViewBuilder
+    private var listingDetailsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Listing Details")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            HStack {
+                Text("Posted:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(formatDate(listing.createdAt))
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+        }
+        .padding()
+        .background(Color(UIColor.systemGray6))
+        .cornerRadius(12)
+    }
+    
+    @ViewBuilder
+    private var actionsSection: some View {
+        if AppConfig.enableSeekMode && listing.intent == .seek && !isOwnListing {
+            // Seek post actions for non-owners
+            VStack(spacing: 12) {
+                Button(action: handleOfferMyItem) {
+                    HStack {
+                        Image(systemName: "tag.fill")
+                        Text("Offer My Item")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color("ThemeColor"))
+                    .cornerRadius(12)
+                }
+                
+                Button(action: handleContactSeller) {
+                    HStack {
+                        Image(systemName: "message.fill")
+                        Text("Contact Seeker")
+                    }
+                    .font(.headline)
+                    .foregroundColor(Color("ThemeColor"))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color("ThemeColor"), lineWidth: 2)
+                    )
+                }
+            }
+        } else if AppConfig.enableSeekMode && listing.intent == .seek && isOwnListing {
+            // Seek post actions for owner
+            VStack(spacing: 12) {
+                Button(action: handleViewOffers) {
+                    HStack {
+                        Image(systemName: "envelope.badge")
+                        Text("View Offers")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color("ThemeColor"))
+                    .cornerRadius(12)
+                }
+                
+                HStack(spacing: 12) {
+                    Button(action: handleEditListing) {
+                        Text("Edit")
+                            .font(.headline)
+                            .foregroundColor(Color("ThemeColor"))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color("ThemeColor"), lineWidth: 2)
+                            )
+                    }
+                    
+                    Button(action: handleDeleteListing) {
+                        Text("Delete")
+                            .font(.headline)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.red, lineWidth: 2)
+                            )
+                    }
+                }
+            }
+        } else {
+            // Regular offer post actions
+            ActionButtonRow(
+                listing: listing,
+                isOwnListing: isOwnListing,
+                isContactingLoading: isContactingSeller,
+                isPrimaryActionLoading: isPrimaryActionLoading,
+                onContactSeller: { handleContactSeller() },
+                onPrimaryAction: { handlePrimaryAction() },
+                onEditListing: isOwnListing ? { handleEditListing() } : nil,
+                onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
+            )
+        }
+    }
+
+    // MARK: - Photo Gallery Components
+    
+    @ViewBuilder
+    private var photoGallerySection: some View {
+        if !listing.photos.isEmpty {
+            multiplePhotosGallery
+        } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
+            singlePhotoView(url: url)
+        } else {
+            noPhotoView
+        }
+    }
+    
+    @ViewBuilder
+    private var multiplePhotosGallery: some View {
+        VStack(spacing: 12) {
+            mainPhotoView
+            if listing.photos.count > 1 {
+                thumbnailGallery
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var mainPhotoView: some View {
+        if selectedPhotoIndex < listing.photos.count,
+           let url = URL(string: listing.photos[selectedPhotoIndex]) {
+            AsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Rectangle()
+                    .fill(Color(UIColor.systemGray5))
+                    .overlay(ProgressView())
+            }
+            .frame(height: 300)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .cornerRadius(16)
+            .gesture(swipeGesture)
+            .overlay(photoCounterOverlay)
+        }
+    }
+    
+    @ViewBuilder
+    private var thumbnailGallery: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
+                    thumbnailButton(for: photoURL, at: index)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    @ViewBuilder
+    private func thumbnailButton(for photoURL: String, at index: Int) -> some View {
+        if let url = URL(string: photoURL) {
+            Button(action: {
+                selectedPhotoIndex = index
+            }) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Rectangle()
+                        .fill(Color(UIColor.systemGray5))
+                        .overlay(ProgressView().scaleEffect(0.5))
+                }
+                .frame(width: 80, height: 80)
+                .clipped()
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color("ThemeColor"), lineWidth: index == selectedPhotoIndex ? 3 : 1)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white, lineWidth: index == selectedPhotoIndex ? 1 : 0)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+    
+    @ViewBuilder
+    private func singlePhotoView(url: URL) -> some View {
+        AsyncImage(url: url) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: {
+            Rectangle().fill(Color(UIColor.systemGray5))
+        }
+        .frame(height: 300)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .cornerRadius(16)
+    }
+    
+    @ViewBuilder
+    private var noPhotoView: some View {
+        Rectangle()
+            .fill(Color(UIColor.systemGray6))
+            .frame(height: 300)
+            .overlay(
+                VStack {
+                    Image(systemName: "photo")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                    Text("No Photo")
+                        .font(.headline)
+                        .foregroundColor(.gray)
+                }
+            )
+            .cornerRadius(16)
+    }
+    
+    private var swipeGesture: some Gesture {
+        DragGesture()
+            .onEnded { value in
+                let threshold: CGFloat = 50
+                if value.translation.width > threshold {
+                    // Swipe right - previous photo
+                    if selectedPhotoIndex > 0 {
+                        selectedPhotoIndex -= 1
+                    }
+                } else if value.translation.width < -threshold {
+                    // Swipe left - next photo
+                    if selectedPhotoIndex < listing.photos.count - 1 {
+                        selectedPhotoIndex += 1
+                    }
+                }
+            }
+    }
+    
+    @ViewBuilder
+    private var photoCounterOverlay: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Text("\(selectedPhotoIndex + 1) / \(listing.photos.count)")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(12)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
             }
         }
     }

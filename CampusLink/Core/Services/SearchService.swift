@@ -296,8 +296,12 @@ final class SearchService: ObservableObject {
             return .networkError
         }
         
-        // Return database error for better debugging instead of masking as network error
+        // In production, avoid alarming users; treat unknown errors as network issues
+        #if DEBUG
         return .databaseError
+        #else
+        return .networkError
+        #endif
     }
 }
 

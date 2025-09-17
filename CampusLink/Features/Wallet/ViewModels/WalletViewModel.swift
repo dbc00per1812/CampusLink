@@ -16,6 +16,9 @@ class WalletViewModel: ObservableObject {
     struct OnboardingLink: Identifiable { let url: URL; var id: String { url.absoluteString } }
     @Published var onboardingLink: OnboardingLink?
     
+    // Cache for order data to ensure accurate status display
+    @Published var orderCache: [UUID: Order] = [:]
+    
     private let walletService = WalletService.shared
     
     func loadWalletData() async {
@@ -28,6 +31,9 @@ class WalletViewModel: ObservableObject {
         do {
             wallet = try await walletService.fetchBalance()
             transactions = try await walletService.getTransactionHistory(limit: 50)
+            
+            // Preload order data for accurate status display
+            await preloadOrderData()
         } catch {
             print("❌ WalletViewModel: Failed to load wallet/transactions: \(error)")
             // Handle specific error types for better user experience
@@ -141,6 +147,54 @@ class WalletViewModel: ObservableObject {
         
         print("🔵 Stripe Connect Status: onboarding_complete=\(res.onboarding_complete ?? false), hasStripeConnectAccount=\(hasStripeConnectAccount)")
         print("🔵 Stripe Connect Status: account_id=\(res.account_id ?? "nil"), onboarding_url=\(res.onboarding_url != nil ? "present" : "nil")")
+    }
+    
+    // MARK: - Order Data Preloading
+    private func preloadOrderData() async {
+        guard !transactions.isEmpty else { return }
+        
+        print("🔵 WalletViewModel: Preloading order data for \(transactions.count) transactions")
+        
+        // Get current user ID
+        guard let currentUserId = try? await supabase.auth.session.user.id else {
+            print("❌ WalletViewModel: No current user ID for preloading orders")
+            return
+        }
+        
+        // Collect all listing IDs from transactions
+        let listingIds = transactions.compactMap { $0.listingId }
+        guard !listingIds.isEmpty else { return }
+        
+        do {
+            // Load all orders for these transactions in one query
+            let orders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .in("listing_id", values: listingIds.map { $0.uuidString })
+                .or("buyer_id.eq.\(currentUserId.uuidString),seller_id.eq.\(currentUserId.uuidString)")
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+            
+            // Cache orders by transaction ID (using listing ID as the key)
+            var newOrderCache: [UUID: Order] = [:]
+            for order in orders {
+                let listingId = order.listingId
+                // Find the transaction that matches this order
+                if let transaction = transactions.first(where: { $0.listingId == listingId }) {
+                    newOrderCache[transaction.id] = order
+                }
+            }
+            
+            orderCache = newOrderCache
+            print("✅ WalletViewModel: Cached \(orderCache.count) orders for status display")
+            
+        } catch {
+            print("❌ WalletViewModel: Failed to preload order data: \(error)")
+        }
     }
 }
 
