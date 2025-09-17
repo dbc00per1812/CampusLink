@@ -13,6 +13,13 @@
   - Verified all integration points work: rating submission in orders, history in profile, seller ratings on listing cards across home/search/detail views.
   - Committed changes: ratings now properly visible throughout the app with consistent UI patterns.
 
+- Simplify ratings to profile-only visibility (per user feedback)
+  - Removed trust score filtering from search filters UI (no more 60+/80+ buttons).
+  - Removed rating displays from listing cards in home tab and search results.
+  - Removed trust filter buttons and related caching/loading from home feed.
+  - Keep ratings private and focused: only visible in user profiles, order completion flow, and listing detail seller summary.
+  - Ratings are now purely for post-transaction feedback, not browsing/filtering criteria.
+
 # CampusLink Development Log
 
 ## Search Result Navigation Fix

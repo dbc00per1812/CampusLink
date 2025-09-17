@@ -454,6 +454,8 @@ struct SellerRatingSummaryView: View {
             let s = try await RatingService.shared.getUserRatingsSummary(userId: userId)
             await MainActor.run { self.summary = s; self.isLoading = false }
         } catch {
+            // Debug: Print error to see what's failing
+            print("SellerRatingSummaryView load error for user \(userId): \(error)")
             // Swallow errors (e.g., unauthenticated viewer + RLS) and show fallback
             await MainActor.run { self.isLoading = false }
         }

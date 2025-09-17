@@ -116,8 +116,12 @@ final class RatingService: ObservableObject {
                 .execute()
                 .value
             
+            print("RatingService: Got user trust score: \(user.trustScore ?? 0) for user \(userId)")
+            
             // Get all approved ratings for the user
             let ratings: [Rating] = try await getUserRatings(userId: userId, limit: 1000)
+            
+            print("RatingService: Got \(ratings.count) ratings for user \(userId)")
             
             // Calculate summary
             let totalRatings = ratings.count
@@ -133,6 +137,8 @@ final class RatingService: ObservableObject {
             // Get recent ratings (last 5)
             let recentRatings = Array(ratings.prefix(5))
             
+            print("RatingService: Summary - avg: \(averageRating), total: \(totalRatings), trust: \(trustScore)")
+            
             return UserRatingsSummary(
                 userId: userId,
                 averageRating: averageRating,
@@ -143,6 +149,7 @@ final class RatingService: ObservableObject {
             )
             
         } catch {
+            print("RatingService: Error getting summary for user \(userId): \(error)")
             throw handleError(error)
         }
     }
