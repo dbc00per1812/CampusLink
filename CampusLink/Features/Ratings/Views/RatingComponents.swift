@@ -434,6 +434,15 @@ struct SellerRatingSummaryView: View {
                 TrustBadgeView(trustLevel: summary.trustLevel, showText: false)
             } else if isLoading {
                 ProgressView().scaleEffect(0.7)
+            } else {
+                // Fallback when ratings are unavailable (e.g., RLS blocks or no data yet)
+                HStack(spacing: 6) {
+                    StarRatingView(rating: 0, size: 14)
+                    Text("New")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
             }
         }
         .task { await load() }
@@ -445,6 +454,7 @@ struct SellerRatingSummaryView: View {
             let s = try await RatingService.shared.getUserRatingsSummary(userId: userId)
             await MainActor.run { self.summary = s; self.isLoading = false }
         } catch {
+            // Swallow errors (e.g., unauthenticated viewer + RLS) and show fallback
             await MainActor.run { self.isLoading = false }
         }
     }
