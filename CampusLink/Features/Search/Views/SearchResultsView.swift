@@ -150,8 +150,6 @@ struct SearchResultsView: View {
 struct SearchResultCard: View {
     let listing: ListingWithUser
     let searchRank: Float
-    @State private var ratingSummary: UserRatingsSummary?
-    @State private var isLoadingRating = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -213,27 +211,6 @@ struct SearchResultCard: View {
                             .foregroundColor(.secondary)
                     }
                     
-                    // Ratings row (using same pattern as HomeTabView)
-                    if AppConfig.enableRatings {
-                        if let summary = ratingSummary {
-                            HStack(spacing: 4) {
-                                StarRatingView(rating: summary.averageRating, size: 10)
-                                Text(summary.displayRating)
-                                    .font(.caption2)
-                                TrustBadgeView(trustLevel: summary.trustLevel, showText: false)
-                            }
-                        } else if isLoadingRating {
-                            ProgressView().scaleEffect(0.5)
-                        }
-                    } else if let trustScore = listing.user.trustScore {
-                        HStack(spacing: 2) {
-                            Image(systemName: "shield.checkered")
-                                .font(.caption2)
-                            Text("\(trustScore)")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.green)
-                    }
                 }
             }
         }
@@ -241,21 +218,6 @@ struct SearchResultCard: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-        .onAppear {
-            if AppConfig.enableRatings {
-                Task { await loadRating() }
-            }
-        }
-    }
-    
-    private func loadRating() async {
-        await MainActor.run { isLoadingRating = true }
-        do {
-            let summary = try await RatingService.shared.getUserRatingsSummary(userId: listing.user.id)
-            await MainActor.run { self.ratingSummary = summary; self.isLoadingRating = false }
-        } catch {
-            await MainActor.run { self.isLoadingRating = false }
-        }
     }
 }
 

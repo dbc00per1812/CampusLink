@@ -13,7 +13,6 @@ struct SearchFiltersSheet: View {
     @State private var selectedIntent: ListingIntent? = nil
     @State private var selectedLocation: ServiceLocation? = nil
     @State private var selectedListingType: ListingType? = nil
-    @State private var trustScore: Int = 0
     
     // Available categories (combined from both product and service)
     private let allCategories = [
@@ -63,12 +62,6 @@ struct SearchFiltersSheet: View {
                     }
                 }
 
-                Section(header: Text("Minimum Trust Score")) {
-                    Slider(value: Binding(get: { Double(trustScore) }, set: { trustScore = Int($0) }), in: 0...100, step: 5)
-                    Text("\(trustScore)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
             }
             .navigationTitle("Filters")
             .toolbar {
@@ -92,7 +85,6 @@ struct SearchFiltersSheet: View {
         selectedIntent = filters.intent
         selectedLocation = filters.location
         selectedListingType = filters.listingType
-        trustScore = filters.minTrustScore ?? 0
     }
 
     private func applyToBinding() {
@@ -107,7 +99,6 @@ struct SearchFiltersSheet: View {
         filters.intent = selectedIntent
         filters.location = selectedLocation
         filters.listingType = selectedListingType
-        filters.minTrustScore = trustScore > 0 ? trustScore : nil
     }
 
     private func clearAll() {
@@ -117,7 +108,6 @@ struct SearchFiltersSheet: View {
         selectedIntent = nil
         selectedLocation = nil
         selectedListingType = nil
-        trustScore = 0
         filters = SearchFilters()
     }
 }

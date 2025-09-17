@@ -6,6 +6,13 @@
   - Cross-checked DB context: `public.ratings` and `users.trust_score` exist; missing RLS policies and trust-score trigger/function from plan.
   - Updated `ratings.md` with a "Current State", deltas, and minimal next actions (add RLS, add trust score function + trigger, then flip flag).
 
+- Enable ratings system across app
+  - Flipped `AppConfig.enableRatings = true` after DB setup was completed.
+  - Enhanced `SearchResultCard` to show proper ratings using `StarRatingView` and `TrustBadgeView` components (same pattern as `HomeTabView`).
+  - Added rating loading functionality to search results with proper async rating summary fetching.
+  - Verified all integration points work: rating submission in orders, history in profile, seller ratings on listing cards across home/search/detail views.
+  - Committed changes: ratings now properly visible throughout the app with consistent UI patterns.
+
 # CampusLink Development Log
 
 ## Search Result Navigation Fix

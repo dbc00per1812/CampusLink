@@ -16,7 +16,6 @@ struct HomeTabView: View {
     // Seek mode filter (Phase 2)
     @State private var selectedFilter: ListingFilter = .all
     // Ratings trust filter (Phase 3)
-    @State private var selectedTrustFilter: TrustFilter = .all
     
     // Search functionality (Phase 1)
     @State private var searchQuery = SearchQuery()
@@ -26,7 +25,6 @@ struct HomeTabView: View {
     
     
     // Debug states for visual debugging
-    @State private var ratingCache: [String: UserRatingsSummary] = [:]
     
     private let pageSize = 10
     private let enableDomainFilter = false  // Disabled for v1.0 release
@@ -45,19 +43,6 @@ struct HomeTabView: View {
         }
     }
 
-    enum TrustFilter: String, CaseIterable {
-        case all = "All Trust"
-        case reliable = "60+"
-        case trusted = "80+"
-        
-        var minScore: Int? {
-            switch self {
-            case .all: return nil
-            case .reliable: return 60
-            case .trusted: return 80
-            }
-        }
-    }
 
     var body: some View {
         NavigationView {
@@ -131,26 +116,6 @@ extension HomeTabView {
                     }
                 }
                 
-                if AppConfig.enableRatings {
-                    Divider().frame(height: 24)
-                    ForEach(TrustFilter.allCases, id: \.self) { filter in
-                        Button(action: {
-                            selectedTrustFilter = filter
-                            Task { await refreshListings() }
-                        }) {
-                            Text(filter.rawValue)
-                                .font(.caption)
-                                .fontWeight(selectedTrustFilter == filter ? .semibold : .regular)
-                                .foregroundColor(selectedTrustFilter == filter ? .white : Color("ThemeColor"))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .fill(selectedTrustFilter == filter ? Color("ThemeColor") : Color("ThemeColor").opacity(0.1))
-                                )
-                        }
-                    }
-                }
             }
             .padding(.horizontal)
         }
@@ -277,46 +242,15 @@ extension HomeTabView {
 extension HomeTabView {
 
     // Trust filter threshold (60/80) from UI
-    private func minTrustScore() -> Int? { selectedTrustFilter.minScore }
 
     // Client-side trust filter with caching & concurrency
     private func applyTrustFilter(_ input: [ListingWithUser]) async -> [ListingWithUser] {
-        guard AppConfig.enableRatings, let minScore = minTrustScore() else { return input }
-        if minScore <= 0 { return input }
-
-        // We’ll treat averageRating (0–5 stars) as 0–100 by *20
-        func passes(_ summary: UserRatingsSummary) -> Bool {
-            let score = Int(summary.averageRating * 20.0)
-            return score >= minScore
-        }
-
-        var kept: [(ListingWithUser, Bool)] = []
-        kept.reserveCapacity(input.count)
-
-        await withTaskGroup(of: (ListingWithUser, Bool).self) { group in
-            for listing in input {
-                group.addTask {
-                    if let cached = ratingCache[listing.user.id] {
-                        return (listing, passes(cached))
-                    }
-                    do {
-                        let summary = try await RatingService.shared.getUserRatingsSummary(userId: listing.user.id)
-                        await MainActor.run { ratingCache[listing.user.id] = summary }
-                        return (listing, passes(summary))
-                    } catch {
-                        // On error retrieving rating, exclude (or flip to include if desired)
-                        return (listing, false)
-                    }
-                }
-            }
-            for await pair in group { kept.append(pair) }
-        }
-
-        return kept.compactMap { $0.1 ? $0.0 : nil }
+        // Trust filtering removed - ratings kept private to profiles
+        return input
     }
 
     // If we filter client-side for trust, fetch extra rows so we can still fill a page visually.
-    private var overscanMultiplier: Int { minTrustScore() == nil ? 1 : 3 }
+    private var overscanMultiplier: Int { 1 }
 
 
     private func loadListings() async {
@@ -421,8 +355,6 @@ extension HomeTabView {
 
 struct ListingCard: View {
     let listing: ListingWithUser
-    @State private var ratingSummary: UserRatingsSummary?
-    @State private var isLoadingRating = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -499,23 +431,6 @@ struct ListingCard: View {
                     }
                 }
 
-                // Ratings row (Phase 2)
-                if AppConfig.enableRatings {
-                    HStack(spacing: 8) {
-                        if let summary = ratingSummary {
-                            StarRatingView(rating: summary.averageRating, size: 12)
-                            Text(summary.displayRating)
-                                .font(.caption)
-                            Text("(\(summary.totalRatings))")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            TrustBadgeView(trustLevel: summary.trustLevel, showText: false)
-                        } else if isLoadingRating {
-                            ProgressView().scaleEffect(0.6)
-                        }
-                    }
-                }
 
                 Text(listing.description)
                     .font(.body).foregroundColor(.secondary).lineLimit(3)
@@ -569,23 +484,8 @@ struct ListingCard: View {
         .background(Color(UIColor.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-        .task {
-            if AppConfig.enableRatings {
-                await loadRatingSummary()
-            }
-        }
     }
 
-    private func loadRatingSummary() async {
-        guard AppConfig.enableRatings else { return }
-        await MainActor.run { isLoadingRating = true }
-        do {
-            let summary = try await RatingService.shared.getUserRatingsSummary(userId: listing.user.id)
-            await MainActor.run { self.ratingSummary = summary; self.isLoadingRating = false }
-        } catch {
-            await MainActor.run { self.isLoadingRating = false }
-        }
-    }
 }
 
 // MARK: - Search Methods Extension
