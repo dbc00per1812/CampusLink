@@ -10,7 +10,6 @@ struct SearchResultsView: View {
     @State private var currentPage = 0
     
     let searchQuery: SearchQuery
-    let onListingTapped: (ListingWithUser) -> Void
     
     private let itemsPerPage = 20
     
@@ -44,11 +43,13 @@ struct SearchResultsView: View {
                 
                 // Results grid
                 ForEach(searchResults.listings, id: \.id) { listing in
-                    SearchResultCard(
-                        listing: listing.toListingWithUser(),
-                        searchRank: searchResults.searchRank[listing.id] ?? 0,
-                        onTapped: { onListingTapped(listing.toListingWithUser()) }
-                    )
+                    NavigationLink(destination: ListingDetailView(listing: listing.toListingWithUser())) {
+                        SearchResultCard(
+                            listing: listing.toListingWithUser(),
+                            searchRank: searchResults.searchRank[listing.id] ?? 0
+                        )
+                    }
+                    .buttonStyle(.plain)
                     .onAppear {
                         // Load more when near the end
                         if listing.id == searchResults.listings.last?.id && searchResults.hasMore {
@@ -149,87 +150,83 @@ struct SearchResultsView: View {
 struct SearchResultCard: View {
     let listing: ListingWithUser
     let searchRank: Float
-    let onTapped: () -> Void
     
     var body: some View {
-        Button(action: onTapped) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    // Listing title with relevance indicator
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(listing.title)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                            .multilineTextAlignment(.leading)
-                        
-                        if searchRank > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "star.fill")
-                                    .font(.caption2)
-                                    .foregroundColor(.yellow)
-                                Text(String(format: "%.1f", searchRank))
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    // Price
-                    Text("$\(Int(listing.price ?? 0))")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                // Listing title with relevance indicator
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(listing.title)
                         .font(.headline)
                         .foregroundColor(.primary)
-                }
-                
-                // Description
-                if !listing.description.isEmpty {
-                    Text(listing.description)
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                }
-                
-                // Category and user info
-                HStack {
-                    if !listing.category.isEmpty {
-                        Text(listing.category)
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundColor(.blue)
-                            .cornerRadius(4)
-                    }
                     
-                    Spacer()
-                    
-                    HStack(spacing: 4) {
-                        if let userName = listing.user.name {
-                            Text(userName)
-                                .font(.caption)
+                    if searchRank > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.caption2)
+                                .foregroundColor(.yellow)
+                            Text(String(format: "%.1f", searchRank))
+                                .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
-                        
-                        if let trustScore = listing.user.trustScore {
-                            HStack(spacing: 2) {
-                                Image(systemName: "shield.checkered")
-                                    .font(.caption2)
-                                Text("\(trustScore)")
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.green)
+                    }
+                }
+                
+                Spacer()
+                
+                // Price
+                Text("$\(Int(listing.price ?? 0))")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            }
+            
+            // Description
+            if !listing.description.isEmpty {
+                Text(listing.description)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            
+            // Category and user info
+            HStack {
+                if !listing.category.isEmpty {
+                    Text(listing.category)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(4)
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 4) {
+                    if let userName = listing.user.name {
+                        Text(userName)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if let trustScore = listing.user.trustScore {
+                        HStack(spacing: 2) {
+                            Image(systemName: "shield.checkered")
+                                .font(.caption2)
+                            Text("\(trustScore)")
+                                .font(.caption)
                         }
+                        .foregroundColor(.green)
                     }
                 }
             }
-            .padding()
-            .background(Color(.systemBackground))
-            .cornerRadius(12)
-            .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -319,9 +316,6 @@ struct SearchEmptyStateView: View {
 
 #Preview {
     NavigationView {
-        SearchResultsView(
-            searchQuery: SearchQuery(text: "laptop"),
-            onListingTapped: { _ in }
-        )
+        SearchResultsView(searchQuery: SearchQuery(text: "laptop"))
     }
 }

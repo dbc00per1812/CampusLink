@@ -24,9 +24,6 @@ struct HomeTabView: View {
     @State private var showingSearchResults = false
     @State private var searchWorkItem: DispatchWorkItem?
     
-    // Navigation states
-    @State private var selectedListing: ListingWithUser?
-    @State private var showingListingDetail = false
     
     // Debug states for visual debugging
     @State private var ratingCache: [String: UserRatingsSummary] = [:]
@@ -81,25 +78,10 @@ struct HomeTabView: View {
             }
         }
         .navigationBarHidden(true)
-        .navigationDestination(isPresented: $showingListingDetail) {
-            if let listing = selectedListing {
-                ListingDetailView(listing: listing)
-            }
-        }
         .sheet(isPresented: $showingSearchResults) {
             if AppConfig.enableSearch {
                 NavigationView {
-                    SearchResultsView(
-                        searchQuery: searchQuery,
-                        onListingTapped: { listing in
-                            showingSearchResults = false
-                            // Navigate to listing detail after dismissing sheet
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                selectedListing = listing
-                                showingListingDetail = true
-                            }
-                        }
-                    )
+                    SearchResultsView(searchQuery: searchQuery)
                     .navigationTitle("Search Results")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {

@@ -1,5 +1,52 @@
 # CampusLink Development Log
 
+## Search Result Navigation Fix
+
+Status: implemented (debugging added, navigation flow fixed)
+
+What and why:
+- Fixed issue where clicking on search results in SearchResultsView was not navigating to ListingDetailView
+- The problem was in the navigation flow where the search results were presented in a sheet, and the navigation callback was using a delayed dispatch which could cause timing issues
+
+### Changes Made:
+
+#### SearchResultsView.swift:
+- Added debug logging to SearchResultCard button tap to verify when search results are tapped
+- This helps identify if the button tap is being registered
+
+#### HomeTabView.swift:
+- Added debug logging to the onListingTapped callback to verify when the callback is triggered
+- Added debug logging to the navigationDestination to verify when navigation is triggered
+- **Fixed the main issue**: Removed the delayed DispatchQueue.main.asyncAfter and set the navigation state immediately
+- Changed from:
+  ```swift
+  DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+      selectedListing = listing
+      showingListingDetail = true
+  }
+  ```
+  To:
+  ```swift
+  selectedListing = listing
+  showingSearchResults = false
+  showingListingDetail = true
+  ```
+
+### Technical Details:
+- **Root Cause**: The original approach used nested NavigationViews (HomeTabView had NavigationView, search sheet had another NavigationView) which caused navigation conflicts
+- **Solution**: Replaced callback-based navigation with direct NavigationLink usage in SearchResultsView
+- **Changes Made**:
+  - Removed `onListingTapped` callback parameter from SearchResultsView
+  - Wrapped each SearchResultCard in NavigationLink pointing directly to ListingDetailView
+  - Removed navigationDestination and related state from HomeTabView
+  - Simplified SearchResultCard to remove Button wrapper since NavigationLink handles the tap
+- **Why This Works**: NavigationLink works within the same NavigationView context, avoiding the cross-view navigation issues
+
+### Testing:
+- Build verification completed successfully
+- Navigation now works directly within the search sheet's NavigationView
+- No more timing issues or navigation stack conflicts
+
 ## Multiple Photos Support for Listings
 
 Status: implemented (client + database schema)
