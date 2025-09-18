@@ -107,26 +107,31 @@ final class RatingService: ObservableObject {
         }
         
         do {
-            // Get user's trust score from user table
-            let user: User = try await supabase
-                .from("users")
-                .select("trust_score")
-                .eq("id", value: userId)
-                .single()
-                .execute()
-                .value
-            
-            print("RatingService: Got user trust score: \(user.trustScore ?? 0) for user \(userId)")
-            
             // Get all approved ratings for the user
             let ratings: [Rating] = try await getUserRatings(userId: userId, limit: 1000)
-            
             print("RatingService: Got \(ratings.count) ratings for user \(userId)")
-            
+
+            // Try to read trust_score, but don't fail if blocked by RLS
+            var trustScore = 50.0
+            do {
+                let user: User = try await supabase
+                    .from("users")
+                    .select("trust_score")
+                    .eq("id", value: userId)
+                    .single()
+                    .execute()
+                    .value
+                trustScore = Double(user.trustScore ?? 50)
+                print("RatingService: Got user trust score: \(user.trustScore ?? 0) for user \(userId)")
+            } catch {
+                #if DEBUG
+                print("RatingService: Could not read users.trust_score due to RLS or missing row; defaulting to 50")
+                #endif
+            }
+
             // Calculate summary
             let totalRatings = ratings.count
             let averageRating = totalRatings > 0 ? ratings.map { Double($0.rating) }.reduce(0, +) / Double(totalRatings) : 0.0
-            let trustScore = Double(user.trustScore ?? 50)
             
             // Create ratings breakdown
             var breakdown: [Int: Int] = [1: 0, 2: 0, 3: 0, 4: 0, 5: 0]
