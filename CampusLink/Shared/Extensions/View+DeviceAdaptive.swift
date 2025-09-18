@@ -88,7 +88,7 @@ extension View {
     ) -> some View {
         let adaptiveColumns = Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
         
-        LazyVGrid(columns: adaptiveColumns, spacing: spacing) {
+        return LazyVGrid(columns: adaptiveColumns, spacing: spacing) {
             content()
         }
     }
@@ -105,7 +105,7 @@ extension View {
         let columns = width < 400 ? compactColumns : width < 600 ? regularColumns : largeColumns
         let adaptiveColumns = Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
         
-        LazyVGrid(columns: adaptiveColumns, spacing: spacing) {
+        return LazyVGrid(columns: adaptiveColumns, spacing: spacing) {
             content()
         }
     }

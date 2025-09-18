@@ -82,7 +82,7 @@ extension View {
     func responsiveImageGallery<Content: View>(
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        return ScrollView(.horizontal, showsIndicators: false) {
             ResponsiveHStack(spacing: 8) {
                 content()
             }
@@ -98,7 +98,7 @@ extension View {
     ) -> some View {
         let adaptiveColumns = Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns)
         
-        LazyVGrid(columns: adaptiveColumns, spacing: spacing) {
+        return LazyVGrid(columns: adaptiveColumns, spacing: spacing) {
             content()
         }
     }
