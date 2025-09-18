@@ -139,14 +139,16 @@ extension View {
         isPresented: Binding<Bool>,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            return self.sheet(isPresented: isPresented) {
-                NavigationView {
-                    content()
+        Group {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                self.sheet(isPresented: isPresented) {
+                    NavigationView {
+                        content()
+                    }
                 }
+            } else {
+                self.sheet(isPresented: isPresented, content: content)
             }
-        } else {
-            return self.sheet(isPresented: isPresented, content: content)
         }
     }
     

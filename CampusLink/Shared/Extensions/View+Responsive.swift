@@ -82,19 +82,7 @@ extension View {
     }
     
     // MARK: - Orientation Handling
-    /// Adapts layout based on device orientation
-    func orientationAdaptive<Content: View>(
-        @ViewBuilder portrait: () -> Content,
-        @ViewBuilder landscape: () -> Content
-    ) -> some View {
-        Group {
-            if UIDevice.current.orientation.isLandscape {
-                landscape()
-            } else {
-                portrait()
-            }
-        }
-    }
+    // Note: orientationAdaptive is defined in View+DeviceAdaptive.swift
     
     // MARK: - Accessibility Support
     /// Ensures content is accessible with dynamic type
