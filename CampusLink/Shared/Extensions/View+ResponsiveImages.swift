@@ -30,7 +30,7 @@ extension View {
     
     /// Creates a responsive square image
     func responsiveSquareImage(size: CGFloat) -> some View {
-        responsiveImage(width: size, height: size, aspectRatio: 1, contentMode: .fill)
+        return responsiveImage(width: size, height: size, aspectRatio: 1, contentMode: .fill)
     }
     
     /// Creates a responsive rectangular image with aspect ratio
@@ -39,7 +39,7 @@ extension View {
         height: CGFloat,
         contentMode: ContentMode = .fill
     ) -> some View {
-        responsiveImage(width: width, height: height, aspectRatio: width/height, contentMode: contentMode)
+        return responsiveImage(width: width, height: height, aspectRatio: width/height, contentMode: contentMode)
     }
     
     // MARK: - Device-Specific Image Sizing

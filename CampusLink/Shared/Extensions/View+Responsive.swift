@@ -147,7 +147,7 @@ struct ResponsiveHStack<Content: View>: View {
     }
     
     var body: some View {
-        HStack(spacing: spacing * UIScreen.main.scale, alignment: alignment) {
+        HStack(alignment: alignment, spacing: spacing * UIScreen.main.scale) {
             content()
         }
     }
@@ -165,7 +165,7 @@ struct ResponsiveVStack<Content: View>: View {
     }
     
     var body: some View {
-        VStack(spacing: spacing * UIScreen.main.scale, alignment: alignment) {
+        VStack(alignment: alignment, spacing: spacing * UIScreen.main.scale) {
             content()
         }
     }
