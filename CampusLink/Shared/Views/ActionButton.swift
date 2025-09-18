@@ -72,23 +72,22 @@ struct ActionButton: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            ResponsiveHStack(spacing: 8) {
                 if isLoading {
                     ProgressView()
                         .scaleEffect(0.9)
                         .progressViewStyle(CircularProgressViewStyle(tint: type.foregroundColor))
                 } else {
                     Image(systemName: type.icon)
-                        .font(.headline)
+                        .responsiveFont(.headline)
                 }
                 
                 Text(isLoading ? "Loading..." : type.title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .responsiveFont(.headline, weight: .semibold)
             }
             .foregroundColor(isEnabled ? type.foregroundColor : Color.gray)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .responsiveSpacing(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isEnabled ? type.backgroundColor : Color(UIColor.systemGray4))
@@ -96,6 +95,7 @@ struct ActionButton: View {
         }
         .disabled(!isEnabled || isLoading)
         .opacity(isEnabled ? 1.0 : 0.7)
+        .accessibleButton(type.title)
     }
 }
 
@@ -134,8 +134,8 @@ struct ActionButtonRow: View {
     
     var body: some View {
         if shouldShowButtons {
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
+            ResponsiveVStack(spacing: 12) {
+                ResponsiveHStack(spacing: 12) {
                     ActionButton(
                         type: .contactSeller,
                         isLoading: isContactingLoading,
@@ -155,23 +155,23 @@ struct ActionButtonRow: View {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
                         Text("This item has been sold")
-                            .font(.subheadline)
+                            .responsiveFont(.subheadline)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.top, 8)
+                    .responsiveSpacing(8)
                 }
             }
         } else if isOwnListing {
-            VStack(spacing: 12) {
+            ResponsiveVStack(spacing: 12) {
                 HStack {
                     Image(systemName: "person.circle.fill")
                         .foregroundColor(Color("ThemeColor"))
                     Text("This is your listing")
-                        .font(.subheadline)
+                        .responsiveFont(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 
-                HStack(spacing: 12) {
+                ResponsiveHStack(spacing: 12) {
                     if let onEditListing = onEditListing {
                         ActionButton(
                             type: .editListing,
@@ -187,22 +187,22 @@ struct ActionButtonRow: View {
                     }
                 }
             }
-            .padding()
+            .responsivePadding(16)
             .background(Color(UIColor.systemGray6))
-            .cornerRadius(12)
+            .responsiveCornerRadius(12)
         } else if listing.isSold {
-            VStack(spacing: 8) {
+            ResponsiveVStack(spacing: 8) {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.red)
                     Text("This listing is no longer available")
-                        .font(.subheadline)
+                        .responsiveFont(.subheadline)
                         .foregroundColor(.secondary)
                 }
             }
-            .padding()
+            .responsivePadding(16)
             .background(Color(UIColor.systemGray6))
-            .cornerRadius(12)
+            .responsiveCornerRadius(12)
         }
     }
 }

@@ -4,45 +4,48 @@ struct MainTabView: View {
     @State private var walletBadge: String?
     
     var body: some View {
-        TabView {
-            // Home Tab
-            HomeTabView()
-                .tabItem {
-                    Image(systemName: "house.fill")
-                        .font(.system(size: 40))
-                }
-            
-            // Messages Tab
-            ConversationListView()
-                .tabItem {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 40))
-                }
-            
-            // Post Tab
-            PostView()
-                .tabItem {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 40))
-                }
-            
-            // Wallet Tab
-            WalletView()
-                .tabItem {
-                    Image(systemName: "creditcard.fill")
-                        .font(.system(size: 40))
-                }
-                .badge(walletBadge)
-                .task { await loadWalletBadge() }
-            
-            // Profile Tab
-            ProfileTabView()
-                .tabItem {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 40))
-                }
+        ResponsiveContainer {
+            TabView {
+                // Home Tab
+                HomeTabView()
+                    .tabItem {
+                        Image(systemName: "house.fill")
+                            .responsiveFontSize(24)
+                    }
+                
+                // Messages Tab
+                ConversationListView()
+                    .tabItem {
+                        Image(systemName: "message.fill")
+                            .responsiveFontSize(24)
+                    }
+                
+                // Post Tab
+                PostView()
+                    .tabItem {
+                        Image(systemName: "plus.circle.fill")
+                            .responsiveFontSize(24)
+                    }
+                
+                // Wallet Tab
+                WalletView()
+                    .tabItem {
+                        Image(systemName: "creditcard.fill")
+                            .responsiveFontSize(24)
+                    }
+                    .badge(walletBadge)
+                    .task { await loadWalletBadge() }
+                
+                // Profile Tab
+                ProfileTabView()
+                    .tabItem {
+                        Image(systemName: "person.circle.fill")
+                            .responsiveFontSize(24)
+                    }
+            }
+            .accentColor(Color("ThemeColor"))
+            .adaptiveBottomPadding()
         }
-        .accentColor(Color("ThemeColor"))
     }
     
     private func loadWalletBadge() async {

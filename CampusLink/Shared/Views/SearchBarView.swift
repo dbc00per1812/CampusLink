@@ -15,7 +15,7 @@ struct SearchBarView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
-                    .font(.system(size: 16))
+                    .responsiveFontSize(16)
                 
                 TextField(placeholder, text: $searchText, onEditingChanged: { isEditing in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -23,6 +23,7 @@ struct SearchBarView: View {
                     }
                 })
                 .textFieldStyle(PlainTextFieldStyle())
+                .responsiveFont(.body)
                 .onChange(of: searchText) { newValue in
                     onSearchChanged?(newValue)
                 }
@@ -37,14 +38,15 @@ struct SearchBarView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.gray)
-                            .font(.system(size: 16))
+                            .responsiveFontSize(16)
                     }
+                    .accessibleButton("Clear search")
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .responsiveHorizontalSpacing(12)
+            .responsiveSpacing(8)
             .background(Color(.systemGray6))
-            .cornerRadius(10)
+            .responsiveCornerRadius(10)
             
             if isSearching {
                 Button("Cancel") {
@@ -55,8 +57,10 @@ struct SearchBarView: View {
                         onSearchChanged?("")
                     }
                 }
+                .responsiveFont(.body)
                 .foregroundColor(.blue)
                 .transition(.move(edge: .trailing))
+                .accessibleButton("Cancel search")
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isSearching)
@@ -73,7 +77,7 @@ struct SearchBarWithFiltersView: View {
     var onSearchSubmitted: ((SearchQuery) -> Void)?
     
     var body: some View {
-        VStack(spacing: 8) {
+        ResponsiveVStack(spacing: 8) {
             HStack {
                 SearchBarView(
                     searchText: $searchQuery.text,
@@ -89,24 +93,25 @@ struct SearchBarWithFiltersView: View {
                 Button(action: {
                     showingFilters = true
                 }) {
-                    HStack(spacing: 4) {
+                    ResponsiveHStack(spacing: 4) {
                         Image(systemName: "slider.horizontal.3")
                         if searchQuery.filters.hasActiveFilters {
                             Text("\(searchQuery.filters.activeFilterCount)")
-                                .font(.caption)
+                                .responsiveFont(.caption)
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .responsiveHorizontalSpacing(6)
+                                .responsiveSpacing(2)
                                 .background(Color.red)
                                 .clipShape(Capsule())
                         }
                     }
                 }
                 .foregroundColor(.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .responsiveHorizontalSpacing(12)
+                .responsiveSpacing(8)
                 .background(Color(.systemGray6))
-                .cornerRadius(10)
+                .responsiveCornerRadius(10)
+                .accessibleButton("Open filters")
             }
             
             if searchQuery.filters.hasActiveFilters {

@@ -10,7 +10,7 @@ struct WalletView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 24) {
+                ResponsiveVStack(spacing: 24) {
                     // Balance Card
                     balanceCard
                     
@@ -20,7 +20,7 @@ struct WalletView: View {
                     // Transaction History
                     transactionHistory
                 }
-                .padding()
+                .responsivePadding(16)
             }
             .navigationTitle("Wallet")
             .navigationBarTitleDisplayMode(.large)
@@ -72,60 +72,60 @@ struct WalletView: View {
     
     // MARK: - Balance Card
     private var balanceCard: some View {
-        VStack(spacing: 0) {
+        ResponsiveVStack(spacing: 0) {
             // Available Balance
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                ResponsiveVStack(spacing: 4, alignment: .leading) {
                     Text("Available Balance")
-                        .font(.subheadline)
+                        .responsiveFont(.subheadline)
                         .foregroundColor(.secondary)
                     Text(viewModel.wallet?.formattedAvailableBalance ?? "$0.00")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .responsiveFontSize(36, weight: .bold)
                         .foregroundColor(Color("ThemeColor"))
                 }
                 Spacer()
                 Image(systemName: "creditcard.fill")
-                    .font(.system(size: 28))
+                    .responsiveFontSize(28)
                     .foregroundColor(Color("ThemeColor").opacity(0.7))
             }
-            .padding()
+            .responsivePadding(16)
             
             Divider()
             
             // Escrow Balance
             if let wallet = viewModel.wallet, wallet.hasEscrowBalance {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    ResponsiveVStack(spacing: 4, alignment: .leading) {
                         Text("In Escrow")
-                            .font(.caption)
+                            .responsiveFont(.caption)
                             .foregroundColor(.secondary)
                         Text(wallet.formattedEscrowBalance)
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                            .responsiveFontSize(20, weight: .semibold)
                             .foregroundColor(.orange)
                     }
                     Spacer()
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 16))
+                        .responsiveFontSize(16)
                         .foregroundColor(.orange.opacity(0.7))
                 }
-                .padding()
+                .responsivePadding(16)
                 .background(Color.orange.opacity(0.1))
             }
             
             // Total Balance Footer
             HStack {
                 Text("Total Balance")
-                    .font(.caption)
+                    .responsiveFont(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 Text(viewModel.wallet?.formattedTotalBalance ?? "$0.00")
-                    .font(.system(size: 18, weight: .semibold))
+                    .responsiveFontSize(18, weight: .semibold)
             }
-            .padding()
+            .responsivePadding(16)
             .background(Color(UIColor.secondarySystemBackground))
         }
         .background(Color(UIColor.systemBackground))
-        .cornerRadius(16)
+        .responsiveCornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 2)
     }
     

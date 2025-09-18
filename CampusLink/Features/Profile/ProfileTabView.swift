@@ -63,8 +63,7 @@ extension ProfileTabView {
     private var headerView: some View {
                 HStack {
                     Text("Profile")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                        .responsiveFont(.largeTitle, weight: .bold)
             
                     Spacer()
             
@@ -72,28 +71,28 @@ extension ProfileTabView {
                         showSettings = true
                     }) {
                         Image(systemName: "gearshape.fill")
-                            .font(.title2)
+                            .responsiveFont(.title2)
                             .foregroundColor(Color("ThemeColor"))
                     }
+                    .accessibleButton("Open settings")
                 }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
+        .responsiveHorizontalSpacing(16)
+        .responsiveSpacing(10)
     }
     
     private var profileInfoSection: some View {
-        VStack(spacing: 20) {
+        ResponsiveVStack(spacing: 20) {
             // Profile Picture
             profilePictureView
             
             // Name and Bio
-            VStack(spacing: 8) {
+            ResponsiveVStack(spacing: 8) {
                 Text(userProfile?.name ?? "User Name")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .responsiveFont(.title2, weight: .semibold)
                 
                 if let bio = userProfile?.bio, !bio.isEmpty {
                     Text(bio)
-                        .font(.subheadline)
+                        .responsiveFont(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -102,9 +101,9 @@ extension ProfileTabView {
                 HStack {
                     Image(systemName: "graduationcap")
                         .foregroundColor(.secondary)
-                        .font(.caption)
+                        .responsiveFont(.caption)
                     Text("Campus Marketplace")
-                        .font(.subheadline)
+                        .responsiveFont(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 
@@ -113,7 +112,7 @@ extension ProfileTabView {
                     if let summary = ratingsSummary {
                         RatingSummaryView(summary: summary)
                     } else if isLoadingRatings {
-                        ProgressView().padding(.top, 4)
+                        ProgressView().responsiveSpacing(4)
                     }
                 }
             }
@@ -123,15 +122,15 @@ extension ProfileTabView {
                 showEditProfile = true
             }) {
                 Text("Edit Profile")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .responsiveFont(.subheadline, weight: .medium)
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .responsiveSpacing(8)
                     .background(Color(UIColor.systemGray6))
-                    .cornerRadius(8)
+                    .responsiveCornerRadius(8)
             }
-            .padding(.horizontal, 40)
+            .responsiveHorizontalSpacing(40)
+            .accessibleButton("Edit profile")
             
             if AppConfig.enableRatings {
                 NavigationLink(destination: RatingsHistoryView(userId: authManager.currentUserId ?? "")) {
@@ -139,34 +138,21 @@ extension ProfileTabView {
                         Image(systemName: "list.bullet.rectangle")
                         Text("View Ratings History")
                     }
-                    .font(.subheadline)
+                    .responsiveFont(.subheadline)
                     .foregroundColor(Color("ThemeColor"))
                 }
+                .accessibleButton("View ratings history")
             }
         }
-        .padding(.vertical, 20)
-        .padding(.horizontal, 16)
+        .responsiveSpacing(20)
+        .responsiveHorizontalSpacing(16)
     }
     
     private var profilePictureView: some View {
-        Group {
-            if let profileImage = profileImage {
-                Image(uiImage: profileImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 80, height: 80)
-                    .clipShape(Circle())
-            } else {
-                Circle()
-                    .fill(Color(UIColor.systemGray5))
-                    .frame(width: 80, height: 80)
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 35))
-                            .foregroundColor(.gray)
-                    )
-            }
-        }
+        ResponsiveProfileImage(
+            image: profileImage,
+            size: ResponsiveImageConstants.mediumImageSize
+        )
         .overlay(
             Circle()
                 .stroke(Color.gray.opacity(0.3), lineWidth: 1)
@@ -176,44 +162,43 @@ extension ProfileTabView {
 
     
     private var postsGridSection: some View {
-        VStack(spacing: 0) {
+        ResponsiveVStack(spacing: 0) {
             // Section Header
             HStack {
                 Text("My Listings")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                    .responsiveFont(.headline, weight: .semibold)
                 Spacer()
                 Text("\(postsCount) posts")
-                    .font(.subheadline)
+                    .responsiveFont(.subheadline)
                     .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .responsiveHorizontalSpacing(16)
+            .responsiveSpacing(12)
             
             Divider()
             
             // List content
-            LazyVStack(spacing: 8) {
+            ResponsiveVStack(spacing: 8) {
                 ForEach(userListings, id: \.id) { listing in
                     listingRowItem(listing)
                 }
                 
                 if userListings.isEmpty {
-                    VStack(spacing: 16) {
+                    ResponsiveVStack(spacing: 16) {
                         Image(systemName: "square.stack.3d.up")
-                            .font(.system(size: 48))
+                            .responsiveFontSize(48)
                             .foregroundColor(.gray)
                         
                         Text("No listings yet")
-                            .font(.headline)
+                            .responsiveFont(.headline)
                             .foregroundColor(.secondary)
                         
                         Text("Start selling by creating your first listing")
-                            .font(.subheadline)
+                            .responsiveFont(.subheadline)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                     }
-                    .padding(.vertical, 40)
+                    .responsiveSpacing(40)
                     .frame(maxWidth: .infinity)
                 }
             }

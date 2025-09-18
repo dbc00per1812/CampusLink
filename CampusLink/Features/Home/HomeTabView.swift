@@ -88,7 +88,7 @@ extension HomeTabView {
     @ViewBuilder
     private func filterView() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            ResponsiveHStack(spacing: 12) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
                         selectedFilter = filter
@@ -104,30 +104,31 @@ extension HomeTabView {
                         }
                     }) {
                         Text(filter.rawValue)
-                            .font(.subheadline)
+                            .responsiveFont(.subheadline)
                             .fontWeight(selectedFilter == filter ? .semibold : .regular)
                             .foregroundColor(selectedFilter == filter ? .white : Color("ThemeColor"))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .responsiveHorizontalSpacing(16)
+                            .responsiveSpacing(8)
                             .background(
                                 RoundedRectangle(cornerRadius: 20)
                                     .fill(selectedFilter == filter ? Color("ThemeColor") : Color("ThemeColor").opacity(0.1))
                             )
                     }
+                    .accessibleButton("Filter by \(filter.rawValue)")
                 }
                 
             }
-            .padding(.horizontal)
+            .responsiveHorizontalSpacing(16)
         }
-        .padding(.vertical, 8)
+        .responsiveSpacing(8)
     }
     
     @ViewBuilder
     private func headerView() -> some View {
-        VStack(spacing: 12) {
+        ResponsiveVStack(spacing: 12) {
             HStack {
                 Image(systemName: "graduationcap.circle.fill")
-                    .font(.system(size: 40))
+                    .responsiveFontSize(40)
                     .foregroundColor(Color("ThemeColor"))
                 Spacer()
             }
@@ -145,11 +146,11 @@ extension HomeTabView {
                 )
             }
         }
-        .padding()
+        .responsivePadding(16)
         .background(Color(UIColor.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
-        .padding(.top, 4)
+        .responsiveCornerRadius(12)
+        .responsiveHorizontalSpacing(16)
+        .responsiveSpacing(4)
     }
 
     @ViewBuilder
@@ -198,7 +199,7 @@ extension HomeTabView {
     @ViewBuilder
     private func listView() -> some View {
         ScrollView {
-            LazyVStack(spacing: 16) {
+            ResponsiveVStack(spacing: 16) {
                 ForEach(listings) { listing in
                     NavigationLink(destination: ListingDetailView(listing: listing)) {
                         ListingCard(listing: listing)
@@ -217,21 +218,21 @@ extension HomeTabView {
                 }
 
                 if isLoadingMore {
-                    HStack { Spacer(); ProgressView().padding(); Spacer() }
+                    HStack { Spacer(); ProgressView().responsivePadding(16); Spacer() }
                 }
 
                 if !hasMorePages && !listings.isEmpty {
                     HStack {
                         Spacer()
                         Text("You've reached the end")
-                            .font(.caption)
+                            .responsiveFont(.caption)
                             .foregroundColor(.secondary)
-                            .padding()
+                            .responsivePadding(16)
                         Spacer()
                     }
                 }
             }
-            .padding()
+            .responsivePadding(16)
         }
         .refreshable { await refreshListings() }
     }
@@ -357,11 +358,11 @@ struct ListingCard: View {
     let listing: ListingWithUser
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        ResponsiveVStack(spacing: 12, alignment: .leading) {
             // Multiple photos display
             if !listing.photos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    ResponsiveHStack(spacing: 8) {
                         ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
                             if let url = URL(string: photoURL) {
                                 AsyncImage(url: url) { image in
@@ -373,13 +374,13 @@ struct ListingCard: View {
                                         .fill(Color(UIColor.systemGray5))
                                         .overlay(ProgressView())
                                 }
-                                .frame(width: 200, height: 200)
+                                .responsiveFrame(width: 200, height: 200)
                                 .clipped()
-                                .cornerRadius(12)
+                                .responsiveCornerRadius(12)
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .responsiveHorizontalSpacing(16)
                 }
             } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
                 // Fallback to single photo for backward compatibility
@@ -392,40 +393,42 @@ struct ListingCard: View {
                         .fill(Color(UIColor.systemGray5))
                         .overlay(ProgressView())
                 }
-                .frame(height: 200)
+                .responsiveFrame(height: 200)
                 .frame(maxWidth: .infinity)
                 .clipped()
-                .cornerRadius(12)
+                .responsiveCornerRadius(12)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            ResponsiveVStack(spacing: 8, alignment: .leading) {
                 HStack {
-                    Text(listing.title).font(.headline).lineLimit(2)
+                    Text(listing.title)
+                        .responsiveFont(.headline)
+                        .lineLimit(2)
                     Spacer()
                     if AppConfig.enableSeekMode && listing.intent == .seek {
                         // Show budget for seek posts
                         VStack(alignment: .trailing, spacing: 2) {
                             if let min = listing.budgetMin, let max = listing.budgetMax {
                                 Text("$\(min, specifier: "%.0f")-$\(max, specifier: "%.0f")")
-                                    .font(.title3).fontWeight(.bold)
+                                    .responsiveFont(.title3, weight: .bold)
                                     .foregroundColor(Color("ThemeColor"))
                             } else if let max = listing.budgetMax {
                                 Text("Up to $\(max, specifier: "%.0f")")
-                                    .font(.title3).fontWeight(.bold)
+                                    .responsiveFont(.title3, weight: .bold)
                                     .foregroundColor(Color("ThemeColor"))
                             }
                             Text("Budget")
-                                .font(.caption2)
+                                .responsiveFont(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     } else {
                         // Show price for offer posts
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("$\((listing.price ?? 0), specifier: "%.2f")")
-                                .font(.title3).fontWeight(.bold)
+                                .responsiveFont(.title3, weight: .bold)
                                 .foregroundColor(Color("ThemeColor"))
                             Text("$\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") total")
-                                .font(.caption2)
+                                .responsiveFont(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -433,56 +436,60 @@ struct ListingCard: View {
 
 
                 Text(listing.description)
-                    .font(.body).foregroundColor(.secondary).lineLimit(3)
+                    .responsiveFont(.body)
+                    .foregroundColor(.secondary)
+                    .lineLimit(3)
 
                 HStack {
-                    HStack(spacing: 6) {
+                    ResponsiveHStack(spacing: 6) {
                         if AppConfig.enableSeekMode && listing.intent == .seek {
                             Text("Buying")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .responsiveFont(.caption, weight: .medium)
+                                .responsiveHorizontalSpacing(8)
+                                .responsiveSpacing(4)
                                 .background(Color.orange)
                                 .foregroundColor(.white)
-                                .cornerRadius(6)
+                                .responsiveCornerRadius(6)
                         } else if AppConfig.enableSeekMode && listing.intent == .offer {
                             Text("Selling")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .responsiveFont(.caption, weight: .medium)
+                                .responsiveHorizontalSpacing(8)
+                                .responsiveSpacing(4)
                                 .background(Color("ThemeColor"))
                                 .foregroundColor(.white)
-                                .cornerRadius(6)
+                                .responsiveCornerRadius(6)
                         }
                         
                         Text(listing.category)
-                            .font(.caption)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .responsiveFont(.caption)
+                            .responsiveHorizontalSpacing(8)
+                            .responsiveSpacing(4)
                             .background(Color("ThemeColor").opacity(0.2))
                             .foregroundColor(Color("ThemeColor"))
-                            .cornerRadius(6)
+                            .responsiveCornerRadius(6)
                     }
                     
                     Spacer()
                     
-                    HStack(spacing: 4) {
+                    ResponsiveHStack(spacing: 4) {
                         Text("by \(listing.user.name ?? "Unknown")")
-                            .font(.caption).foregroundColor(.secondary)
+                            .responsiveFont(.caption)
+                            .foregroundColor(.secondary)
                         
                         if AppConfig.enableSeekMode && listing.intent == .seek,
                            let expiresAt = listing.expiresAt {
                             Text("• Expires \(expiresAt, style: .relative)")
-                                .font(.caption)
+                                .responsiveFont(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            .responsiveHorizontalSpacing(12)
+            .responsiveSpacing(12)
         }
         .background(Color(UIColor.systemBackground))
-        .cornerRadius(16)
+        .responsiveCornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
     }
 
