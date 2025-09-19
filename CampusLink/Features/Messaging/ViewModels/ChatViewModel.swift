@@ -21,16 +21,30 @@ class ChatViewModel: ObservableObject {
     /// Initialize with user ID and load data
     @MainActor
     func initialize(userId: String) async {
+        #if DEBUG
+        print("🔧 ChatViewModel.initialize() called with userId: \(userId)")
+        #endif
+        
         self.currentUserId = userId
+        
         // Ensure the current user's profile exists to satisfy FK on messages.sender_id
         do {
+            #if DEBUG
+            print("🔧 Calling ensure_current_user_profile RPC...")
+            #endif
+            
             struct EmptyParams: Encodable {}
-            _ = try await supabase
+            let result = try await supabase
                 .rpc("ensure_current_user_profile", params: EmptyParams())
                 .execute()
+                
+            #if DEBUG
+            print("✅ ensure_current_user_profile succeeded")
+            #endif
         } catch {
             #if DEBUG
-            print("Warning: ensure_current_user_profile failed: \(error)")
+            print("❌ ensure_current_user_profile failed: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
             #endif
         }
         await loadMessages()
@@ -81,20 +95,54 @@ class ChatViewModel: ObservableObject {
     /// Send a new message
     @MainActor
     func sendMessage() async {
-        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        #if DEBUG
+        print("🚀 sendMessage() called")
+        print("Message text: '\(messageText)'")
+        #endif
+        
+        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { 
+            #if DEBUG
+            print("❌ Empty message text, aborting")
+            #endif
+            return 
+        }
+        
         guard let userId = currentUserId else {
+            #if DEBUG
+            print("❌ No currentUserId - not authenticated")
+            #endif
             errorMessage = "Not authenticated"
             return
         }
         
+        #if DEBUG
+        print("✅ User ID: \(userId)")
+        print("✅ Conversation ID: \(conversation.id.uuidString)")
+        print("✅ Conversation buyer_id: \(conversation.buyerId)")
+        print("✅ Conversation seller_id: \(conversation.sellerId)")
+        #endif
+        
         // Check if user is participant
-        guard conversation.isParticipant(userId: userId) else {
+        let isParticipant = conversation.isParticipant(userId: userId)
+        #if DEBUG
+        print("✅ Is participant check: \(isParticipant)")
+        #endif
+        
+        guard isParticipant else {
+            #if DEBUG
+            print("❌ User is not a participant in this conversation")
+            #endif
             errorMessage = "You are not a participant in this conversation"
             return
         }
         
         let content = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         messageText = "" // Clear immediately for better UX
+        
+        #if DEBUG
+        print("🔄 Starting message send process...")
+        print("Content: '\(content)'")
+        #endif
         
         isSending = true
         errorMessage = nil
@@ -107,6 +155,10 @@ class ChatViewModel: ObservableObject {
                 "message_type": "text"
             ]
 
+            #if DEBUG
+            print("📝 Attempting direct INSERT with data: \(newMessage)")
+            #endif
+
             // First, try direct insert (fast path when RLS is configured)
             let createdDirect: Message = try await supabase
                 .from("messages")
@@ -118,6 +170,10 @@ class ChatViewModel: ObservableObject {
                 .single()
                 .execute()
                 .value
+
+            #if DEBUG
+            print("✅ Direct INSERT succeeded! Message ID: \(createdDirect.id)")
+            #endif
 
             if !messages.contains(where: { $0.id == createdDirect.id }) {
                 messages.append(createdDirect)
@@ -140,10 +196,47 @@ class ChatViewModel: ObservableObject {
                     "_content": content,
                     "_message_type": "text"
                 ]
-                let createdRpc: Message = try await supabase
-                    .rpc("send_message", params: params)
-                    .execute()
-                    .value
+                
+                #if DEBUG
+                print("📞 Attempting RPC send_message with params: \(params)")
+                #endif
+                
+                // Try original send_message first, then bypass function
+                let createdRpc: Message
+                do {
+                    createdRpc = try await supabase
+                        .rpc("send_message", params: params)
+                        .execute()
+                        .value
+                    
+                    #if DEBUG
+                    print("✅ RPC send_message succeeded! Message ID: \(createdRpc.id)")
+                    #endif
+                } catch {
+                    #if DEBUG
+                    print("❌ send_message RPC failed: \(error)")
+                    print("❌ Error details: \(error.localizedDescription)")
+                    #endif
+                    // Fallback to bypass function with different param names
+                    let bypassParams = [
+                        "conversation_id_param": conversation.id.uuidString,
+                        "content_param": content,
+                        "message_type_param": "text"
+                    ]
+                    
+                    #if DEBUG
+                    print("📞 Trying bypass RPC with params: \(bypassParams)")
+                    #endif
+                    
+                    createdRpc = try await supabase
+                        .rpc("send_message_bypass", params: bypassParams)
+                        .execute()
+                        .value
+                        
+                    #if DEBUG
+                    print("✅ Bypass RPC succeeded! Message ID: \(createdRpc.id)")
+                    #endif
+                }
 
                 if !messages.contains(where: { $0.id == createdRpc.id }) {
                     messages.append(createdRpc)
