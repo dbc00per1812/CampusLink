@@ -8,17 +8,17 @@ extension View {
     // MARK: - Dynamic Spacing
     /// Provides responsive spacing that scales with device size and accessibility settings
     func responsiveSpacing(_ base: CGFloat) -> some View {
-        self.padding(.vertical, base * UIScreen.main.scale)
+        self.padding(.vertical, base)
     }
     
     /// Horizontal responsive spacing
     func responsiveHorizontalSpacing(_ base: CGFloat) -> some View {
-        self.padding(.horizontal, base * UIScreen.main.scale)
+        self.padding(.horizontal, base)
     }
     
     /// All-around responsive spacing
     func responsivePadding(_ base: CGFloat) -> some View {
-        self.padding(base * UIScreen.main.scale)
+        self.padding(base)
     }
     
     // MARK: - Dynamic Font Sizes
@@ -29,7 +29,7 @@ extension View {
     
     /// Custom responsive font size
     func responsiveFontSize(_ base: CGFloat, weight: Font.Weight = .regular) -> some View {
-        let scaledSize = base * UIScreen.main.scale * UIScreen.main.bounds.width / 375 // iPhone 12 base width
+        let scaledSize = base * UIScreen.main.bounds.width / 375 // iPhone 12 base width
         return self.font(.system(size: scaledSize, weight: weight))
     }
     
@@ -147,7 +147,7 @@ struct ResponsiveHStack<Content: View>: View {
     }
     
     var body: some View {
-        HStack(alignment: alignment, spacing: spacing * UIScreen.main.scale) {
+        HStack(alignment: alignment, spacing: spacing) {
             content()
         }
     }
@@ -165,7 +165,7 @@ struct ResponsiveVStack<Content: View>: View {
     }
     
     var body: some View {
-        VStack(alignment: alignment, spacing: spacing * UIScreen.main.scale) {
+        VStack(alignment: alignment, spacing: spacing) {
             content()
         }
     }
