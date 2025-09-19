@@ -37,8 +37,10 @@ struct ConversationListView: View {
             }
         }
         .sheet(item: $selectedConversation) { conversation in
-            print("SHEET PRESENTING CHATVIEW")
             ChatView(conversation: conversation)
+                .onAppear {
+                    print("SHEET PRESENTING CHATVIEW")
+                }
         }
         .alert(
             "Error",
