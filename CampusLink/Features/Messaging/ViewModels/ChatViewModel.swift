@@ -105,13 +105,15 @@ class ChatViewModel: ObservableObject {
             return 
         }
         
+        print("CURRENT USER ID CHECK: \(String(describing: currentUserId))")
+        
         guard let userId = currentUserId else {
-            #if DEBUG
-            print("❌ No currentUserId - not authenticated")
-            #endif
+            print("ERROR: NO CURRENT USER ID - NOT AUTHENTICATED")
             errorMessage = "Not authenticated"
             return
         }
+        
+        print("SUCCESS: USER ID FOUND: \(userId)")
         
         #if DEBUG
         print("✅ User ID: \(userId)")
