@@ -102,7 +102,9 @@ extension View {
     // MARK: - Safe Area Handling
     /// Responsive safe area padding
     func responsiveSafeAreaPadding(_ edges: Edge.Set = .all) -> some View {
-        self.padding(edges, 16 * UIScreen.main.scale)
+        // Scale padding by device width rather than pixel scale
+        let scale = UIScreen.main.bounds.width / 375 // iPhone 12 base width
+        return self.padding(edges, 16 * scale)
     }
     
     // MARK: - Corner Radius Scaling
@@ -210,5 +212,4 @@ struct ResponsiveConstants {
     static let cardPadding: CGFloat = 16
     static let sectionSpacing: CGFloat = 20
 }
-
 

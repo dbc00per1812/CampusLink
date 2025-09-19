@@ -15,19 +15,14 @@ struct AppConfig {
     /// Phase 0: Ready for testing - basic search infrastructure complete
     static let enableSearch = true
     
+    /// Controls whether Notifications system is enabled in the app
+    /// Phase 0: Enabled after database setup is complete
+    static let enableNotifications = true
+    
     // MARK: - Campus Domain Filter
     
     /// Controls whether listings are filtered by campus domain
     static let enableDomainFilter = false
-    
-    // MARK: - API Configuration
-    
-    static let supabaseURL = "https://your-project.supabase.co"
-    static let supabaseAnonKey = "your-anon-key"
-    
-    // MARK: - Stripe Configuration
-    
-    static let stripePublishableKey = "pk_test_..."
     
     // MARK: - Other Settings
     

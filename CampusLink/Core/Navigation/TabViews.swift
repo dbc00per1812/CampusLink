@@ -185,6 +185,9 @@ struct PostView: View {
             }
             .foregroundColor(Color("ThemeColor"))
             .padding(.top, 8)
+            
+            // Stripe Payment Processing Note
+            stripeNote
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -977,6 +980,30 @@ struct PostView: View {
         budgetMax = ""
         expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60)
     }
+    
+    // MARK: - Stripe Note
+    private var stripeNote: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: "shield.checkered")
+                    .foregroundColor(Color("ThemeColor"))
+                    .font(.caption)
+                
+                Text("We use Stripe for payment processing")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+            }
+            
+            Text("The #1 payment processor for mobile apps")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 16)
+    }
 }
 
 struct PostView_Previews: PreviewProvider {
@@ -1142,65 +1169,45 @@ struct MyListingCard: View {
     let listing: Listing
     let onDelete: () -> Void
     let onToggleSold: () -> Void
+    @State private var currentImageIndex: Int = 0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Multiple Photos
-            if !listing.photos.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
+            // Single centered square with paging between photos
+            let urls: [String] = !listing.photos.isEmpty ? listing.photos : (listing.photo != nil ? [listing.photo!] : [])
+            ZStack {
+                if urls.isEmpty {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(UIColor.systemGray6))
+                        .aspectRatio(1, contentMode: .fit)
+                } else {
+                    TabView(selection: $currentImageIndex) {
+                        ForEach(Array(urls.enumerated()), id: \.offset) { index, photoURL in
                             if let url = URL(string: photoURL) {
                                 AsyncImage(url: url) { image in
                                     image
                                         .resizable()
-                                        .aspectRatio(contentMode: .fill)
+                                        .scaledToFill()
                                 } placeholder: {
                                     Rectangle()
                                         .fill(Color(UIColor.systemGray5))
-                                        .overlay(ProgressView().scaleEffect(0.5))
+                                        .overlay(ProgressView())
                                 }
-                                .frame(width: 120, height: 120)
+                                .frame(maxWidth: .infinity)
+                                .aspectRatio(1, contentMode: .fit)
                                 .clipped()
-                                .cornerRadius(12)
-                                .overlay(
-                                    // Sold overlay
-                                    listing.isSold ? 
-                                    Rectangle()
-                                        .fill(Color.black.opacity(0.6))
-                                        .cornerRadius(12)
-                                        .overlay(
-                                            Text("SOLD")
-                                                .font(.caption)
-                                                .fontWeight(.bold)
-                                                .foregroundColor(.white)
-                                        ) : nil
-                                )
+                                .tag(index)
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: urls.count > 1 ? .automatic : .never))
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .cornerRadius(12)
                 }
-            } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
-                // Fallback to single photo for backward compatibility
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Rectangle()
-                        .fill(Color(UIColor.systemGray5))
-                        .overlay(
-                            ProgressView()
-                        )
-                }
-                .frame(height: 150)
-                .frame(maxWidth: .infinity)
-                .clipped()
-                .cornerRadius(12)
-                .overlay(
-                    // Sold overlay
-                    listing.isSold ? 
+
+                // Sold overlay
+                if listing.isSold {
                     Rectangle()
                         .fill(Color.black.opacity(0.6))
                         .cornerRadius(12)
@@ -1209,8 +1216,10 @@ struct MyListingCard: View {
                                 .font(.title)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
-                        ) : nil
-                )
+                        )
+                        .allowsHitTesting(false)
+                        .aspectRatio(1, contentMode: .fit)
+                }
             }
             
             VStack(alignment: .leading, spacing: 8) {

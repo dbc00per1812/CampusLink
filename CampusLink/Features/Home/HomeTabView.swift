@@ -356,48 +356,12 @@ extension HomeTabView {
 
 struct ListingCard: View {
     let listing: ListingWithUser
+    @State private var currentImageIndex: Int = 0
 
     var body: some View {
         ResponsiveVStack(spacing: 12, alignment: .leading) {
-            // Multiple photos display
-            if !listing.photos.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    ResponsiveHStack(spacing: 8) {
-                        ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
-                            if let url = URL(string: photoURL) {
-                                AsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                } placeholder: {
-                                    Rectangle()
-                                        .fill(Color(UIColor.systemGray5))
-                                        .overlay(ProgressView())
-                                }
-                                .responsiveFrame(width: 200, height: 200)
-                                .clipped()
-                                .responsiveCornerRadius(12)
-                            }
-                        }
-                    }
-                    .responsiveHorizontalSpacing(16)
-                }
-            } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
-                // Fallback to single photo for backward compatibility
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } placeholder: {
-                    Rectangle()
-                        .fill(Color(UIColor.systemGray5))
-                        .overlay(ProgressView())
-                }
-                .responsiveFrame(height: 200)
-                .frame(maxWidth: .infinity)
-                .clipped()
-                .responsiveCornerRadius(12)
-            }
+            // Single centered square with paging between photos
+            listingImagesCarousel()
 
             ResponsiveVStack(spacing: 8, alignment: .leading) {
                 HStack {
@@ -491,6 +455,42 @@ struct ListingCard: View {
         .background(Color(UIColor.systemBackground))
         .responsiveCornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+    
+    @ViewBuilder
+    private func listingImagesCarousel() -> some View {
+        let urls: [String] = !listing.photos.isEmpty ? listing.photos : (listing.photo != nil ? [listing.photo!] : [])
+        if urls.isEmpty {
+            Rectangle()
+                .fill(Color(UIColor.systemGray6))
+                .overlay(ProgressView())
+                .aspectRatio(1, contentMode: .fit)
+                .responsiveCornerRadius(12)
+        } else {
+            TabView(selection: $currentImageIndex) {
+                ForEach(Array(urls.enumerated()), id: \.offset) { index, photoURL in
+                    if let url = URL(string: photoURL) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray5))
+                                .overlay(ProgressView())
+                        }
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                        .clipped()
+                        .tag(index)
+                    }
+                }
+            }
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: urls.count > 1 ? .automatic : .never))
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .responsiveCornerRadius(12)
+        }
     }
 
 }

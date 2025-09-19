@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Supabase
+import UserNotifications
 
 let supabase = SupabaseClient(  
   supabaseURL: Secrets.supabaseURL,
@@ -16,11 +17,33 @@ let supabase = SupabaseClient(
 @main
 struct CampusLinkTestApp: App {
     @StateObject private var authManager = AuthManager()
+    @StateObject private var notificationManager = NotificationManager.shared
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(authManager)
+                .environmentObject(notificationManager)
+                .task {
+                    // Initialize notification manager when app launches
+                    await notificationManager.initialize()
+                    notificationManager.setupNotificationCategories()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didFinishLaunchingNotification)) { _ in
+                    // Handle app launch from notification
+                    Task {
+                        await notificationManager.getCurrentAuthorizationStatus()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    // Update badge and check for new notifications when app becomes active
+                    Task {
+                        if AppConfig.enableNotifications {
+                            await NotificationService.shared.fetchUnreadCount()
+                            notificationManager.updateBadgeCount(NotificationService.shared.unreadCount)
+                        }
+                    }
+                }
                 .onOpenURL { url in
                     Task {
                         do {

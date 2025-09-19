@@ -34,6 +34,7 @@ struct ReportDisputeView: View {
                     if !selectedImages.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
+                                Spacer(minLength: 0)
                                 ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
                                     Image(uiImage: image)
                                         .resizable()
@@ -42,7 +43,9 @@ struct ReportDisputeView: View {
                                         .clipped()
                                         .cornerRadius(8)
                                 }
+                                Spacer(minLength: 0)
                             }
+                            .frame(maxWidth: .infinity)
                         }
                     }
 
@@ -157,5 +160,3 @@ enum DisputeReason: String, CaseIterable {
         }
     }
 }
-
-

@@ -64,35 +64,36 @@ struct SearchResultsView: View {
                 if isLoading && !searchResults.listings.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .responsiveSpacing(16)
                 }
                 
                 // End of results message
                 if !searchResults.hasMore && !searchResults.listings.isEmpty {
                     Text("No more results")
+                        .responsiveFont(.body)
                         .foregroundColor(.secondary)
-                        .padding()
+                        .responsiveSpacing(16)
                 }
             }
-            .padding(.horizontal)
+            .responsiveHorizontalSpacing(16)
         }
     }
     
     private var searchSummaryView: some View {
         HStack {
             Text("\(searchResults.totalCount) results")
-                .font(.headline)
+                .responsiveFont(.headline)
                 .foregroundColor(.primary)
             
             if !searchQuery.text.isEmpty {
                 Text("for \"\(searchQuery.text)\"")
-                    .font(.headline)
+                    .responsiveFont(.headline)
                     .foregroundColor(.secondary)
             }
             
             Spacer()
         }
-        .padding(.vertical, 8)
+        .responsiveSpacing(8)
     }
     
     private func performSearch(resetResults: Bool) async {
@@ -157,17 +158,17 @@ struct SearchResultCard: View {
                 // Listing title with relevance indicator
                 VStack(alignment: .leading, spacing: 4) {
                     Text(listing.title)
-                        .font(.headline)
+                        .responsiveFont(.headline)
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.leading)
                     
                     if searchRank > 0 {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
-                                .font(.caption2)
+                                .responsiveFont(.caption2)
                                 .foregroundColor(.yellow)
                             Text(String(format: "%.1f", searchRank))
-                                .font(.caption2)
+                                .responsiveFont(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -177,14 +178,14 @@ struct SearchResultCard: View {
                 
                 // Price
                 Text("$\(Int(listing.price ?? 0))")
-                    .font(.headline)
+                    .responsiveFont(.headline, weight: .semibold)
                     .foregroundColor(.primary)
             }
             
             // Description
             if !listing.description.isEmpty {
                 Text(listing.description)
-                    .font(.body)
+                    .responsiveFont(.body)
                     .foregroundColor(.secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -194,12 +195,12 @@ struct SearchResultCard: View {
             HStack {
                 if !listing.category.isEmpty {
                     Text(listing.category)
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .responsiveFont(.caption)
+                        .responsiveHorizontalSpacing(8)
+                        .responsiveSpacing(4)
                         .background(Color.blue.opacity(0.1))
                         .foregroundColor(.blue)
-                        .cornerRadius(4)
+                        .responsiveCornerRadius(6)
                 }
                 
                 Spacer()
@@ -207,16 +208,17 @@ struct SearchResultCard: View {
                 HStack(spacing: 4) {
                     if let userName = listing.user.name {
                         Text(userName)
-                            .font(.caption)
+                            .responsiveFont(.caption)
                             .foregroundColor(.secondary)
                     }
                     
                 }
             }
         }
-        .padding()
+        .responsiveSpacing(12)
+        .responsiveHorizontalSpacing(12)
         .background(Color(.systemBackground))
-        .cornerRadius(12)
+        .responsiveCornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
     }
 }
@@ -230,7 +232,7 @@ struct SearchLoadingView: View {
                 .scaleEffect(1.2)
             
             Text("Searching...")
-                .font(.headline)
+                .responsiveFont(.headline)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -247,22 +249,22 @@ struct SearchEmptyStateView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 48))
+                .responsiveFontSize(48)
                 .foregroundColor(.secondary)
             
             VStack(spacing: 8) {
                 Text("No results found")
-                    .font(.title2)
+                    .responsiveFont(.title2, weight: .semibold)
                     .fontWeight(.semibold)
                 
                 if !searchQuery.text.isEmpty {
                     Text("Try a different search term or adjust your filters")
-                        .font(.body)
+                        .responsiveFont(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 } else {
                     Text("Enter a search term to find listings")
-                        .font(.body)
+                        .responsiveFont(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -279,7 +281,7 @@ struct SearchEmptyStateView: View {
             if !searchQuery.text.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Try searching for:")
-                        .font(.headline)
+                        .responsiveFont(.headline)
                         .foregroundColor(.primary)
                     
                     VStack(alignment: .leading, spacing: 4) {
@@ -288,16 +290,18 @@ struct SearchEmptyStateView: View {
                         Text("• Tutoring")
                         Text("• Furniture")
                     }
-                    .font(.body)
+                    .responsiveFont(.body)
                     .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+                .responsiveSpacing(12)
+                .responsiveHorizontalSpacing(12)
                 .background(Color(.systemGray6))
-                .cornerRadius(8)
+                .responsiveCornerRadius(10)
             }
         }
-        .padding()
+        .responsiveSpacing(16)
+        .responsiveHorizontalSpacing(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
     }

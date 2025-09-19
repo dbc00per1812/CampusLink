@@ -188,15 +188,15 @@ struct ActiveFiltersView: View {
                         filters = SearchFilters()
                         onFiltersChanged?()
                     }
-                    .font(.caption)
+                    .responsiveFont(.caption)
                     .foregroundColor(.red)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .responsiveHorizontalSpacing(8)
+                    .responsiveSpacing(4)
                     .background(Color.red.opacity(0.1))
-                    .cornerRadius(6)
+                    .responsiveCornerRadius(6)
                 }
             }
-            .padding(.horizontal)
+            .responsiveHorizontalSpacing(16)
         }
     }
     
@@ -223,18 +223,18 @@ struct FilterChip: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(title)
-                .font(.caption)
+                .responsiveFont(.caption)
             
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.caption)
+                    .responsiveFont(.caption)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .responsiveHorizontalSpacing(8)
+        .responsiveSpacing(4)
         .background(Color.blue.opacity(0.1))
         .foregroundColor(.blue)
-        .cornerRadius(6)
+        .responsiveCornerRadius(6)
     }
 }
 

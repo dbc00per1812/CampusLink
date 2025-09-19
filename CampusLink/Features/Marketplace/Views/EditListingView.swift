@@ -89,6 +89,7 @@ struct EditListingView: View {
                         if !imageDatas.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
+                                    Spacer(minLength: 0)
                                     ForEach(Array(imageDatas.enumerated()), id: \.offset) { index, data in
                                         if let ui = UIImage(data: data) {
                                             ZStack(alignment: .topTrailing) {
@@ -134,13 +135,16 @@ struct EditListingView: View {
                                                 )
                                         }
                                     }
+                                    Spacer(minLength: 0)
                                 }
+                                .frame(maxWidth: .infinity)
                                 .padding(.horizontal, 16)
                             }
                         } else if !listing.photos.isEmpty {
                             // Display existing photos from database
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
+                                    Spacer(minLength: 0)
                                     ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
                                         if let url = URL(string: photoURL) {
                                             AsyncImage(url: url) { image in
@@ -176,19 +180,23 @@ struct EditListingView: View {
                                                     .stroke(Color("ThemeColor"), lineWidth: 2)
                                             )
                                     }
+                                    Spacer(minLength: 0)
                                 }
+                                .frame(maxWidth: .infinity)
                                 .padding(.horizontal, 16)
                             }
                         } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
                             // Fallback to single photo for backward compatibility
                             VStack(spacing: 12) {
                                 AsyncImage(url: url) { image in
-                                    image.resizable().aspectRatio(contentMode: .fill)
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
                                 } placeholder: {
                                     Rectangle().fill(Color(UIColor.systemGray5))
                                 }
                                 .frame(height: 200)
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, alignment: .center)
                                 .clipped()
                                 .cornerRadius(12)
                                 
@@ -492,5 +500,3 @@ private struct LabeledField<Content: View>: View {
         }
     }
 }
-
-

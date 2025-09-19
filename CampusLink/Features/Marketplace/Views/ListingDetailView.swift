@@ -28,6 +28,7 @@ struct ListingDetailView: View {
     @State private var selectedTimeSlot: TimeSlot?
     @State private var isLoadingTimeSlots = false
     @State private var selectedPhotoIndex = 0
+    @State private var isImageViewerPresented = false
 
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { 
@@ -63,7 +64,8 @@ struct ListingDetailView: View {
 
                 Spacer(minLength: 100)
             }
-            .padding()
+            .responsiveSpacing(16)
+            .responsiveHorizontalSpacing(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -186,6 +188,15 @@ struct ListingDetailView: View {
             }
         } message: {
             Text("Are you sure you want to delete this listing? This action cannot be undone.")
+        }
+
+        // Full-screen image viewer
+        .fullScreenCover(isPresented: $isImageViewerPresented) {
+            ImageViewer(
+                urls: allImageURLs(),
+                selectedIndex: $selectedPhotoIndex,
+                onClose: { isImageViewerPresented = false }
+            )
         }
 
         .onAppear {
@@ -613,26 +624,25 @@ struct ListingDetailView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(listing.title)
-                        .font(.title)
-                        .fontWeight(.bold)
+                        .responsiveFont(.title, weight: .bold)
                         .lineLimit(3)
 
                     HStack {
                         Text(listing.category)
-                            .font(.subheadline)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .responsiveFont(.subheadline)
+                            .responsiveHorizontalSpacing(12)
+                            .responsiveSpacing(6)
                             .background(Color("ThemeColor").opacity(0.2))
                             .foregroundColor(Color("ThemeColor"))
-                            .cornerRadius(8)
+                            .responsiveCornerRadius(8)
 
                         Text(listing.listingType.displayName)
-                            .font(.subheadline)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .responsiveFont(.subheadline)
+                            .responsiveHorizontalSpacing(12)
+                            .responsiveSpacing(6)
                             .background(listing.listingType == .product ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
                             .foregroundColor(listing.listingType == .product ? .blue : .green)
-                            .cornerRadius(8)
+                            .responsiveCornerRadius(8)
                     }
                 }
 
@@ -643,29 +653,26 @@ struct ListingDetailView: View {
                         // Show budget for seek posts
                         if let min = listing.budgetMin, let max = listing.budgetMax {
                             Text("$\(min, specifier: "%.0f") - $\(max, specifier: "%.0f")")
-                                .font(.title)
-                                .fontWeight(.bold)
+                                .responsiveFont(.title, weight: .bold)
                                 .foregroundColor(Color("ThemeColor"))
                         } else if let max = listing.budgetMax {
                             Text("Up to $\(max, specifier: "%.0f")")
-                                .font(.title)
-                                .fontWeight(.bold)
+                                .responsiveFont(.title, weight: .bold)
                                 .foregroundColor(Color("ThemeColor"))
                         }
                         Text("Budget")
-                            .font(.subheadline)
+                            .responsiveFont(.subheadline)
                             .foregroundColor(.secondary)
                     } else {
                         // Show price for offer posts
                         Text("$\((listing.price ?? 0), specifier: "%.2f")")
-                            .font(.title)
-                            .fontWeight(.bold)
+                            .responsiveFont(.title, weight: .bold)
                             .foregroundColor(Color("ThemeColor"))
                         
                         // Always show estimated processing fee
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("Est. total $\(((listing.price ?? 0) + ((listing.price ?? 0) * 0.029 + 0.30)), specifier: "%.2f")")
-                                .font(.caption)
+                                .responsiveFont(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -680,7 +687,7 @@ struct ListingDetailView: View {
         if listing.listingType == .service {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Service Details")
-                    .font(.headline)
+                    .responsiveFont(.headline)
                     .foregroundColor(.primary)
 
                 VStack(spacing: 8) {
@@ -695,9 +702,10 @@ struct ListingDetailView: View {
                     }
                 }
             }
-            .padding()
+            .responsiveSpacing(12)
+            .responsiveHorizontalSpacing(12)
             .background(Color(UIColor.systemGray6))
-            .cornerRadius(12)
+            .responsiveCornerRadius(12)
         }
     }
     
@@ -705,11 +713,11 @@ struct ListingDetailView: View {
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Description")
-                .font(.headline)
+                .responsiveFont(.headline)
                 .foregroundColor(.primary)
 
             Text(listing.description)
-                .font(.body)
+                .responsiveFont(.body)
                 .foregroundColor(.secondary)
                 .lineSpacing(4)
         }
@@ -719,27 +727,27 @@ struct ListingDetailView: View {
     private var sellerInfoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Seller Information")
-                .font(.headline)
+                .responsiveFont(.headline)
                 .foregroundColor(.primary)
 
             HStack(spacing: 12) {
                 Circle()
                     .fill(Color("ThemeColor").opacity(0.2))
-                    .frame(width: 50, height: 50)
+                    .responsiveFrame(width: 50, height: 50)
                     .overlay(
                         Text((listing.user.name?.first?.uppercased()) ?? "?")
-                            .font(.title2)
+                            .responsiveFont(.title2, weight: .bold)
                             .fontWeight(.bold)
                             .foregroundColor(Color("ThemeColor"))
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(listing.user.name ?? "Unknown Seller")
-                        .font(.headline)
+                        .responsiveFont(.headline)
                         .foregroundColor(.primary)
 
                     Text("Member since \(formatDate(listing.createdAt))")
-                        .font(.caption)
+                        .responsiveFont(.caption)
                         .foregroundColor(.secondary)
                     
                     // Seller ratings
@@ -749,9 +757,10 @@ struct ListingDetailView: View {
                 }
                 Spacer()
             }
-            .padding()
+            .responsiveSpacing(12)
+            .responsiveHorizontalSpacing(12)
             .background(Color(UIColor.systemGray6))
-            .cornerRadius(12)
+            .responsiveCornerRadius(12)
         }
     }
     
@@ -759,22 +768,23 @@ struct ListingDetailView: View {
     private var listingDetailsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Listing Details")
-                .font(.headline)
+                .responsiveFont(.headline)
                 .foregroundColor(.primary)
             
             HStack {
                 Text("Posted:")
-                    .font(.subheadline)
+                    .responsiveFont(.subheadline)
                     .foregroundColor(.secondary)
                 Spacer()
                 Text(formatDate(listing.createdAt))
-                    .font(.subheadline)
+                    .responsiveFont(.subheadline)
                     .foregroundColor(.primary)
             }
         }
-        .padding()
+        .responsiveSpacing(12)
+        .responsiveHorizontalSpacing(12)
         .background(Color(UIColor.systemGray6))
-        .cornerRadius(12)
+        .responsiveCornerRadius(12)
     }
     
     @ViewBuilder
@@ -787,12 +797,13 @@ struct ListingDetailView: View {
                         Image(systemName: "tag.fill")
                         Text("Offer My Item")
                     }
-                    .font(.headline)
+                    .responsiveFont(.headline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .responsiveSpacing(12)
+                    .responsiveHorizontalSpacing(12)
                     .background(Color("ThemeColor"))
-                    .cornerRadius(12)
+                    .responsiveCornerRadius(12)
                 }
                 
                 Button(action: handleContactSeller) {
@@ -800,10 +811,11 @@ struct ListingDetailView: View {
                         Image(systemName: "message.fill")
                         Text("Contact Seeker")
                     }
-                    .font(.headline)
+                    .responsiveFont(.headline)
                     .foregroundColor(Color("ThemeColor"))
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .responsiveSpacing(12)
+                    .responsiveHorizontalSpacing(12)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(Color("ThemeColor"), lineWidth: 2)
@@ -818,21 +830,23 @@ struct ListingDetailView: View {
                         Image(systemName: "envelope.badge")
                         Text("View Offers")
                     }
-                    .font(.headline)
+                    .responsiveFont(.headline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .responsiveSpacing(12)
+                    .responsiveHorizontalSpacing(12)
                     .background(Color("ThemeColor"))
-                    .cornerRadius(12)
+                    .responsiveCornerRadius(12)
                 }
                 
                 HStack(spacing: 12) {
                     Button(action: handleEditListing) {
                         Text("Edit")
-                            .font(.headline)
+                            .responsiveFont(.headline)
                             .foregroundColor(Color("ThemeColor"))
                             .frame(maxWidth: .infinity)
-                            .padding()
+                            .responsiveSpacing(12)
+                            .responsiveHorizontalSpacing(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color("ThemeColor"), lineWidth: 2)
@@ -841,10 +855,11 @@ struct ListingDetailView: View {
                     
                     Button(action: handleDeleteListing) {
                         Text("Delete")
-                            .font(.headline)
+                            .responsiveFont(.headline)
                             .foregroundColor(.red)
                             .frame(maxWidth: .infinity)
-                            .padding()
+                            .responsiveSpacing(12)
+                            .responsiveHorizontalSpacing(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color.red, lineWidth: 2)
@@ -897,18 +912,21 @@ struct ListingDetailView: View {
             AsyncImage(url: url) { image in
                 image
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: .fit)
             } placeholder: {
                 Rectangle()
                     .fill(Color(UIColor.systemGray5))
                     .overlay(ProgressView())
+                    .responsiveFrame(height: 220)
             }
-            .frame(height: 300)
             .frame(maxWidth: .infinity)
-            .clipped()
-            .cornerRadius(16)
+            .background(Color(UIColor.systemBackground))
+            .responsiveCornerRadius(16)
             .gesture(swipeGesture)
             .overlay(photoCounterOverlay)
+            .onTapGesture {
+                isImageViewerPresented = true
+            }
         }
     }
     
@@ -920,7 +938,7 @@ struct ListingDetailView: View {
                     thumbnailButton(for: photoURL, at: index)
                 }
             }
-            .padding(.horizontal, 16)
+            .responsiveHorizontalSpacing(16)
         }
     }
     
@@ -929,6 +947,7 @@ struct ListingDetailView: View {
         if let url = URL(string: photoURL) {
             Button(action: {
                 selectedPhotoIndex = index
+                isImageViewerPresented = true
             }) {
                 AsyncImage(url: url) { image in
                     image
@@ -939,9 +958,9 @@ struct ListingDetailView: View {
                         .fill(Color(UIColor.systemGray5))
                         .overlay(ProgressView().scaleEffect(0.5))
                 }
-                .frame(width: 80, height: 80)
+                .responsiveFrame(width: 80, height: 80)
                 .clipped()
-                .cornerRadius(8)
+                .responsiveCornerRadius(8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color("ThemeColor"), lineWidth: index == selectedPhotoIndex ? 3 : 1)
@@ -958,32 +977,37 @@ struct ListingDetailView: View {
     @ViewBuilder
     private func singlePhotoView(url: URL) -> some View {
         AsyncImage(url: url) { image in
-            image.resizable().aspectRatio(contentMode: .fill)
+            image
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         } placeholder: {
-            Rectangle().fill(Color(UIColor.systemGray5))
+            Rectangle()
+                .fill(Color(UIColor.systemGray5))
+                .overlay(ProgressView())
+                .responsiveFrame(height: 220)
         }
-        .frame(height: 300)
         .frame(maxWidth: .infinity)
-        .clipped()
-        .cornerRadius(16)
+        .background(Color(UIColor.systemBackground))
+        .responsiveCornerRadius(16)
+        .onTapGesture { isImageViewerPresented = true }
     }
     
     @ViewBuilder
     private var noPhotoView: some View {
         Rectangle()
             .fill(Color(UIColor.systemGray6))
-            .frame(height: 300)
+            .responsiveFrame(height: 220)
             .overlay(
                 VStack {
                     Image(systemName: "photo")
-                        .font(.system(size: 60))
+                        .responsiveFontSize(60)
                         .foregroundColor(.gray)
                     Text("No Photo")
-                        .font(.headline)
+                        .responsiveFont(.headline)
                         .foregroundColor(.gray)
                 }
             )
-            .cornerRadius(16)
+            .responsiveCornerRadius(16)
     }
     
     private var swipeGesture: some Gesture {
@@ -1025,6 +1049,164 @@ struct ListingDetailView: View {
     }
 
 
+}
+
+// MARK: - Full-Screen Image Viewer
+
+private extension ListingDetailView {
+    func allImageURLs() -> [URL] {
+        if !listing.photos.isEmpty {
+            return listing.photos.compactMap { URL(string: $0) }
+        } else if let photo = listing.photo, let url = URL(string: photo) {
+            return [url]
+        }
+        return []
+    }
+}
+
+struct ImageViewer: View {
+    let urls: [URL]
+    @Binding var selectedIndex: Int
+    let onClose: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            if urls.isEmpty {
+                ProgressView()
+                    .tint(.white)
+            } else {
+                TabView(selection: $selectedIndex) {
+                    ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
+                        ZoomableAsyncImage(url: url)
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
+                .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
+            }
+            
+            // Close button
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.white)
+                            .responsiveFontSize(28)
+                    }
+                }
+                .padding()
+                Spacer()
+            }
+            
+            // Counter bottom-right
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Text("\(selectedIndex + 1) / \(max(urls.count, 1))")
+                        .responsiveFont(.caption)
+                        .foregroundColor(.white)
+                        .responsiveHorizontalSpacing(8)
+                        .responsiveSpacing(4)
+                        .background(Color.black.opacity(0.5))
+                        .responsiveCornerRadius(10)
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 20)
+                }
+            }
+        }
+    }
+}
+
+struct ZoomableAsyncImage: View {
+    let url: URL
+    
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    
+    private let minScale: CGFloat = 1.0
+    private let maxScale: CGFloat = 4.0
+    
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            AsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size.width, height: size.height)
+            } placeholder: {
+                ProgressView()
+                    .tint(.white)
+                    .frame(width: size.width, height: size.height)
+            }
+            .scaleEffect(scale)
+            .offset(offset)
+            .gesture(magnificationGesture())
+            .simultaneousGesture(dragGesture())
+            .highPriorityGesture(doubleTapGesture())
+            .animation(.easeInOut(duration: 0.2), value: scale)
+            .animation(.easeInOut(duration: 0.2), value: offset)
+            .background(Color.black)
+        }
+        .ignoresSafeArea()
+    }
+    
+    private func magnificationGesture() -> some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let newScale = (lastScale * value).clamped(to: minScale...maxScale)
+                scale = newScale
+            }
+            .onEnded { value in
+                lastScale = (lastScale * value).clamped(to: minScale...maxScale)
+                // If we snap back to 1, reset offset too
+                if lastScale <= minScale + 0.01 { resetPosition() }
+            }
+    }
+    
+    private func dragGesture() -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard scale > 1.01 else { return }
+                offset = CGSize(width: lastOffset.width + value.translation.width,
+                                height: lastOffset.height + value.translation.height)
+            }
+            .onEnded { _ in
+                guard scale > 1.01 else { return }
+                lastOffset = offset
+            }
+    }
+    
+    private func doubleTapGesture() -> some Gesture {
+        TapGesture(count: 2)
+            .onEnded {
+                if scale > 1.01 {
+                    scale = 1.0
+                    lastScale = 1.0
+                    resetPosition()
+                } else {
+                    scale = 2.0
+                    lastScale = 2.0
+                }
+            }
+    }
+    
+    private func resetPosition() {
+        offset = .zero
+        lastOffset = .zero
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
 }
 
 // MARK: - Payment Errors

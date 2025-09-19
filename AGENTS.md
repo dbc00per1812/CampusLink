@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+#GOAL RIGHT NOW: MAKE USER INTERFACE PERFECTLY DYNAMIC ACROSS ALL IOS PHONES SO THAT IT DYNAMICALLY ADJUSTS AND THERE IS NEVER ANY BULLSHIT
+
 ## Project Structure & Module Organization
 - `CampusLink/` — iOS app source (Views/ViewControllers, ViewModels, Services, Resources).
 - `CampusLink.xcodeproj/` — Xcode project; open to build and run.
@@ -36,4 +38,3 @@
 - Run SQL scripts only against a local/dev database; keep DDL idempotent when feasible.
 
 
-@codex instruction: look at the codebase and fix the search feature really think about this shit ill be surprissed if you can fix it.
