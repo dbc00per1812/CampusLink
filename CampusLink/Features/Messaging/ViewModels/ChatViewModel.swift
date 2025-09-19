@@ -22,6 +22,17 @@ class ChatViewModel: ObservableObject {
     @MainActor
     func initialize(userId: String) async {
         self.currentUserId = userId
+        // Ensure the current user's profile exists to satisfy FK on messages.sender_id
+        do {
+            struct EmptyParams: Encodable {}
+            _ = try await supabase
+                .rpc("ensure_current_user_profile", params: EmptyParams())
+                .execute()
+        } catch {
+            #if DEBUG
+            print("Warning: ensure_current_user_profile failed: \(error)")
+            #endif
+        }
         await loadMessages()
         // After loading, try to mark any unread incoming messages as read
         await markMessagesAsRead()
@@ -95,8 +106,9 @@ class ChatViewModel: ObservableObject {
                 "content": content,
                 "message_type": "text"
             ]
-            
-            let created: Message = try await supabase
+
+            // First, try direct insert (fast path when RLS is configured)
+            let createdDirect: Message = try await supabase
                 .from("messages")
                 .insert(newMessage)
                 .select("""
@@ -106,21 +118,58 @@ class ChatViewModel: ObservableObject {
                 .single()
                 .execute()
                 .value
-            
-            // Add to local messages (realtime will also add it, but this is faster)
-            if !messages.contains(where: { $0.id == created.id }) {
-                messages.append(created)
+
+            if !messages.contains(where: { $0.id == createdDirect.id }) {
+                messages.append(createdDirect)
             }
-            
+
             isSending = false
-            
+
         } catch {
+            // If direct insert is blocked (likely RLS), fallback to RPC
             #if DEBUG
-            print("Failed to send message: \(error)")
+            print("Direct insert failed, attempting RPC send_message: \(error)")
+            print("Error details: \(error.localizedDescription)")
+            if let supabaseError = error as? PostgRESTError {
+                print("PostgREST Error: \(supabaseError)")
+            }
             #endif
-            errorMessage = "Failed to send message"
-            messageText = content // Restore text so user can retry
-            isSending = false
+            do {
+                let params = [
+                    "_conversation_id": conversation.id.uuidString,
+                    "_content": content,
+                    "_message_type": "text"
+                ]
+                let createdRpc: Message = try await supabase
+                    .rpc("send_message", params: params)
+                    .execute()
+                    .value
+
+                if !messages.contains(where: { $0.id == createdRpc.id }) {
+                    messages.append(createdRpc)
+                }
+
+                isSending = false
+            } catch {
+                #if DEBUG
+                print("Failed to send message via RPC: \(error)")
+                print("RPC Error details: \(error.localizedDescription)")
+                if let supabaseError = error as? PostgRESTError {
+                    print("PostgREST RPC Error: \(supabaseError)")
+                }
+                print("Params sent: \(params)")
+                print("User ID: \(userId)")
+                print("Conversation ID: \(conversation.id.uuidString)")
+                print("Is participant: \(conversation.isParticipant(userId: userId))")
+                #endif
+                var message = Self.mapSendError(error)
+                #if DEBUG
+                message += "\nDetails: \(error.localizedDescription)"
+                #endif
+                errorMessage = message
+                messageText = content // Restore text so user can retry
+                isSending = false
+            }
         }
     }
     
@@ -253,5 +302,28 @@ class ChatViewModel: ObservableObject {
             print("Failed to mark messages as read: \(error)")
             #endif
         }
+    }
+
+    // MARK: - Error Mapping
+    private static func mapSendError(_ error: Error) -> String {
+        let raw = error.localizedDescription.lowercased()
+        // PostgREST RLS
+        if raw.contains("row-level security") || raw.contains("rls") {
+            return "You don't have permission to send messages in this conversation."
+        }
+        // Permission denied / not participant
+        if raw.contains("permission") || raw.contains("denied") {
+            return "Permission denied to send messages."
+        }
+        // Foreign key issues (conversation or user missing)
+        if raw.contains("foreign key") || raw.contains("violates foreign key") {
+            return "Conversation no longer exists or is invalid."
+        }
+        // Network issues
+        if raw.contains("network") || raw.contains("connection") || raw.contains("timeout") {
+            return "Network error. Check your connection and try again."
+        }
+        // Default fallback
+        return "Failed to send message"
     }
 }
