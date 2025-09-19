@@ -82,6 +82,13 @@ struct ChatView: View {
         }
         .hideKeyboardOnTap()
         .onAppear {
+            #if DEBUG
+            print("🟡 ChatView onAppear")
+            print("🟡 Auth session exists: \(authManager.session != nil)")
+            if let userId = authManager.session?.user.id.uuidString {
+                print("🟡 User ID: \(userId)")
+            }
+            #endif
             if let userId = authManager.session?.user.id.uuidString { Task { await viewModel.initialize(userId: userId) } }
             // Best-effort mark as read when view appears
             Task { await viewModel.markMessagesAsRead() }
@@ -154,12 +161,22 @@ struct ChatView: View {
                 .focused($isTextFieldFocused)
                 .disabled(viewModel.isSending)
                 .onSubmit {
+                    #if DEBUG
+                    print("🟢 TextField onSubmit triggered!")
+                    print("🟢 Message text: '\(viewModel.messageText)'")
+                    #endif
                     Task {
                         await viewModel.sendMessage()
                     }
                 }
             
             Button(action: {
+                #if DEBUG
+                print("🔵 Send button tapped!")
+                print("🔵 Message text: '\(viewModel.messageText)'")
+                print("🔵 Is empty: \(viewModel.messageText.isEmpty)")
+                print("🔵 Is sending: \(viewModel.isSending)")
+                #endif
                 Task {
                     await viewModel.sendMessage()
                 }
@@ -174,6 +191,13 @@ struct ChatView: View {
                 }
             }
             .disabled(viewModel.messageText.isEmpty || viewModel.isSending)
+            .onTapGesture {
+                #if DEBUG
+                print("🔴 Button tap detected (even if disabled)")
+                print("🔴 Message text: '\(viewModel.messageText)'")
+                print("🔴 Is disabled: \(viewModel.messageText.isEmpty || viewModel.isSending)")
+                #endif
+            }
         }
         .padding()
         .background(Color(UIColor.systemBackground))
