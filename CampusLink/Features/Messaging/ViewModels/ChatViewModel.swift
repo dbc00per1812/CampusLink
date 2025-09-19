@@ -133,13 +133,12 @@ class ChatViewModel: ObservableObject {
         let content = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         messageText = "" // Clear immediately for better UX
         
-        #if DEBUG
-        print("🔄 Starting message send process...")
-        print("Content: '\(content)'")
-        #endif
+        print("STARTING MESSAGE SEND PROCESS...")
+        print("CONTENT TO SEND: '\(content)'")
         
         isSending = true
         errorMessage = nil
+        print("IS SENDING SET TO TRUE")
         
         do {
             let newMessage = [
@@ -149,9 +148,8 @@ class ChatViewModel: ObservableObject {
                 "message_type": "text"
             ]
 
-            #if DEBUG
-            print("📝 Attempting direct INSERT with data: \(newMessage)")
-            #endif
+            print("ATTEMPTING DIRECT INSERT...")
+            print("INSERT DATA: \(newMessage)")
 
             // First, try direct insert (fast path when RLS is configured)
             let createdDirect: Message = try await supabase
@@ -165,9 +163,7 @@ class ChatViewModel: ObservableObject {
                 .execute()
                 .value
 
-            #if DEBUG
-            print("✅ Direct INSERT succeeded! Message ID: \(createdDirect.id)")
-            #endif
+            print("SUCCESS: DIRECT INSERT SUCCEEDED! Message ID: \(createdDirect.id)")
 
             if !messages.contains(where: { $0.id == createdDirect.id }) {
                 messages.append(createdDirect)
@@ -177,13 +173,10 @@ class ChatViewModel: ObservableObject {
 
         } catch {
             // If direct insert is blocked (likely RLS), fallback to RPC
-            #if DEBUG
-            print("Direct insert failed, attempting RPC send_message: \(error)")
-            print("Error details: \(error.localizedDescription)")
-            if let supabaseError = error as? PostgRESTError {
-                print("PostgREST Error: \(supabaseError)")
-            }
-            #endif
+            print("ERROR: DIRECT INSERT FAILED")
+            print("ERROR TYPE: \(type(of: error))")
+            print("ERROR DESCRIPTION: \(error)")
+            print("ERROR LOCALIZED: \(error.localizedDescription)")
             do {
                 let params = [
                     "_conversation_id": conversation.id.uuidString,
@@ -191,9 +184,8 @@ class ChatViewModel: ObservableObject {
                     "_message_type": "text"
                 ]
                 
-                #if DEBUG
-                print("📞 Attempting RPC send_message with params: \(params)")
-                #endif
+                print("ATTEMPTING RPC SEND_MESSAGE...")
+                print("RPC PARAMS: \(params)")
                 
                 // Try original send_message first, then bypass function
                 let createdRpc: Message
