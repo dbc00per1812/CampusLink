@@ -114,27 +114,21 @@ class ChatViewModel: ObservableObject {
         }
         
         print("SUCCESS: USER ID FOUND: \(userId)")
-        
-        #if DEBUG
-        print("✅ User ID: \(userId)")
-        print("✅ Conversation ID: \(conversation.id.uuidString)")
-        print("✅ Conversation buyer_id: \(conversation.buyerId)")
-        print("✅ Conversation seller_id: \(conversation.sellerId)")
-        #endif
+        print("CONVERSATION ID: \(conversation.id.uuidString)")
+        print("CONVERSATION BUYER ID: \(conversation.buyerId)")
+        print("CONVERSATION SELLER ID: \(conversation.sellerId)")
         
         // Check if user is participant
         let isParticipant = conversation.isParticipant(userId: userId)
-        #if DEBUG
-        print("✅ Is participant check: \(isParticipant)")
-        #endif
+        print("IS PARTICIPANT CHECK: \(isParticipant)")
         
         guard isParticipant else {
-            #if DEBUG
-            print("❌ User is not a participant in this conversation")
-            #endif
+            print("ERROR: USER IS NOT A PARTICIPANT IN THIS CONVERSATION")
             errorMessage = "You are not a participant in this conversation"
             return
         }
+        
+        print("SUCCESS: USER IS A PARTICIPANT")
         
         let content = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         messageText = "" // Clear immediately for better UX
