@@ -2876,3 +2876,40 @@ Threw out ALL complex logic and implemented simple, direct approach:
 
 **Status:** ✅ WALLET ORDER STATUS FIXED - Accurate status display and order names now working, Darragh!
 
+---
+
+## 2025-09-19: Fixing Messaging "Failed to send message" Error
+
+### Problem
+Messages are failing to send with "Failed to send message" error in the chat interface. The ChatViewModel tries two approaches:
+1. Direct INSERT to messages table (fails due to missing RLS policies)  
+2. Fallback RPC call to `send_message` function (function doesn't exist in database)
+
+### Root Cause
+The messaging RLS (Row Level Security) policies and helper functions haven't been applied to the Supabase database yet. The `enable_messaging_rls.sql` file exists but needs to be executed against the hosted database.
+
+### Database Setup Required
+The `enable_messaging_rls.sql` file contains:
+- RLS policies for messages table to allow participants to send/read messages
+- `send_message()` RPC function for secure message insertion
+- `is_conversation_participant()` helper function
+- `ensure_current_user_profile()` function for user profile creation
+- Policies for conversations table access
+
+### Solution Steps
+1. **Apply RLS SQL via Supabase Dashboard**: Go to Project → SQL Editor in Supabase Dashboard
+2. **Execute enable_messaging_rls.sql**: Copy contents and run against database
+3. **Test messaging functionality**: Verify messages can be sent and received
+
+### Technical Details
+- Supabase Instance: `https://vnmzijluyctlufnzxast.supabase.co`
+- Database has conversations and messages tables but missing RLS policies
+- ChatViewModel implements proper fallback logic (direct INSERT → RPC call)
+- Need to add `read_at` column for message read receipts
+
+### Issue Encountered & Fixed
+**Problem**: SQL execution failed with "function public.send_message(uuid, text, text) does not exist"
+**Root Cause**: GRANT statement was executing before the function was created
+**Fix**: Moved GRANT statement to execute after function creation (line 136)
+**Status**: SQL file corrected and ready for re-execution ✅
+

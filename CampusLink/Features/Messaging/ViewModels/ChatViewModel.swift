@@ -95,10 +95,8 @@ class ChatViewModel: ObservableObject {
     /// Send a new message
     @MainActor
     func sendMessage() async {
-        #if DEBUG
-        print("🚀 sendMessage() called")
-        print("Message text: '\(messageText)'")
-        #endif
+        print("SENDMESSAGE FUNCTION CALLED")
+        print("MESSAGE TEXT: '\(messageText)'")
         
         guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { 
             #if DEBUG

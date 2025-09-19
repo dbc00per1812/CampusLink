@@ -9,8 +9,10 @@ struct ChatView: View {
     @State private var showingReportSheet = false
     
     init(conversation: Conversation) {
+        print("CHATVIEW INIT CALLED") // Simple print
         self.conversation = conversation
         self._viewModel = StateObject(wrappedValue: ChatViewModel(conversation: conversation))
+        print("CHATVIEW INIT COMPLETE") // Simple print
     }
     
     private var currentUserId: String {
@@ -82,14 +84,14 @@ struct ChatView: View {
         }
         .hideKeyboardOnTap()
         .onAppear {
-            #if DEBUG
-            print("🟡 ChatView onAppear")
-            print("🟡 Auth session exists: \(authManager.session != nil)")
+            print("CHATVIEW ONAPPEAR CALLED") // Simple print
+            print("AUTH SESSION EXISTS: \(authManager.session != nil)")
             if let userId = authManager.session?.user.id.uuidString {
-                print("🟡 User ID: \(userId)")
+                print("USER ID: \(userId)")
+                Task { await viewModel.initialize(userId: userId) }
+            } else {
+                print("NO USER ID FOUND")
             }
-            #endif
-            if let userId = authManager.session?.user.id.uuidString { Task { await viewModel.initialize(userId: userId) } }
             // Best-effort mark as read when view appears
             Task { await viewModel.markMessagesAsRead() }
         }
@@ -171,12 +173,10 @@ struct ChatView: View {
                 }
             
             Button(action: {
-                #if DEBUG
-                print("🔵 Send button tapped!")
-                print("🔵 Message text: '\(viewModel.messageText)'")
-                print("🔵 Is empty: \(viewModel.messageText.isEmpty)")
-                print("🔵 Is sending: \(viewModel.isSending)")
-                #endif
+                print("SEND BUTTON TAPPED")
+                print("MESSAGE TEXT: '\(viewModel.messageText)'")
+                print("IS EMPTY: \(viewModel.messageText.isEmpty)")
+                print("IS SENDING: \(viewModel.isSending)")
                 Task {
                     await viewModel.sendMessage()
                 }

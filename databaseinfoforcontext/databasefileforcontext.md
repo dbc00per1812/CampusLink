@@ -67,6 +67,30 @@ CREATE TABLE public.messages (
   CONSTRAINT messages_sender_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id),
   CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  type text NOT NULL CHECK (type = ANY (ARRAY['order_placed'::text, 'order_confirmed'::text, 'order_in_progress'::text, 'order_completed'::text, 'order_cancelled'::text, 'payment_succeeded'::text, 'payment_failed'::text, 'new_message'::text, 'rating_received'::text, 'rating_reminder'::text, 'payout_completed'::text, 'listing_interest'::text, 'marketplace_activity'::text])),
+  title text NOT NULL,
+  body text NOT NULL,
+  data jsonb DEFAULT '{}'::jsonb,
+  is_read boolean DEFAULT false,
+  is_delivered boolean DEFAULT false,
+  scheduled_for timestamp with time zone,
+  delivered_at timestamp with time zone,
+  read_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  order_id uuid,
+  message_id uuid,
+  listing_id uuid,
+  related_user_id uuid,
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
+  CONSTRAINT notifications_related_user_id_fkey FOREIGN KEY (related_user_id) REFERENCES public.users(id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT notifications_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT notifications_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.messages(id)
+);
 CREATE TABLE public.offers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   seek_listing_id uuid NOT NULL,
@@ -235,6 +259,27 @@ CREATE TABLE public.time_slots (
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT time_slots_pkey PRIMARY KEY (id),
   CONSTRAINT time_slots_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id)
+);
+CREATE TABLE public.user_notification_preferences (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  push_enabled boolean DEFAULT true,
+  push_token text,
+  push_platform text CHECK (push_platform = ANY (ARRAY['ios'::text, 'android'::text])),
+  order_notifications boolean DEFAULT true,
+  message_notifications boolean DEFAULT true,
+  payment_notifications boolean DEFAULT true,
+  rating_notifications boolean DEFAULT true,
+  marketplace_notifications boolean DEFAULT false,
+  quiet_hours_start time without time zone DEFAULT '22:00:00'::time without time zone,
+  quiet_hours_end time without time zone DEFAULT '08:00:00'::time without time zone,
+  timezone text DEFAULT 'UTC'::text,
+  max_daily_notifications integer DEFAULT 10,
+  group_similar_notifications boolean DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_notification_preferences_pkey PRIMARY KEY (id),
+  CONSTRAINT user_notification_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL,

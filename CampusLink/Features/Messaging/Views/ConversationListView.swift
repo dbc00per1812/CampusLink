@@ -37,6 +37,7 @@ struct ConversationListView: View {
             }
         }
         .sheet(item: $selectedConversation) { conversation in
+            print("SHEET PRESENTING CHATVIEW")
             ChatView(conversation: conversation)
         }
         .alert(
@@ -90,7 +91,9 @@ struct ConversationListView: View {
                         currentUserId: authManager.session?.user.id.uuidString ?? ""
                     )
                     .onTapGesture {
+                        print("CONVERSATION TAPPED")
                         selectedConversation = conversation
+                        print("SELECTED CONVERSATION SET TO: \(conversation.id)")
                     }
                     
                     Divider()
