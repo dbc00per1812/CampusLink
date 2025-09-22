@@ -57,8 +57,15 @@ struct ChatView: View {
                 Button("Close") { dismiss() }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: { showingReportSheet = true }) {
-                    Image(systemName: "flag").foregroundColor(.red)
+                HStack {
+                    if AppConfig.enableNotifications {
+                        Button(action: { testNotification() }) {
+                            Image(systemName: "bell.badge").foregroundColor(.blue)
+                        }
+                    }
+                    Button(action: { showingReportSheet = true }) {
+                        Image(systemName: "flag").foregroundColor(.red)
+                    }
                 }
             }
         }
@@ -207,6 +214,20 @@ struct ChatView: View {
     private func scrollToBottom(proxy: ScrollViewProxy) {
         if let lastMessage = viewModel.messages.last {
             proxy.scrollTo(lastMessage.id, anchor: .bottom)
+        }
+    }
+    
+    private func testNotification() {
+        // Test local notification
+        let request = LocalNotificationRequest(
+            title: "Test Notification",
+            body: "This is a test notification from CampusLink",
+            scheduledDate: Date().addingTimeInterval(2)
+        )
+        
+        Task {
+            let success = await NotificationManager.shared.scheduleLocalNotification(request)
+            print("🔔 Test notification scheduled: \(success)")
         }
     }
 }

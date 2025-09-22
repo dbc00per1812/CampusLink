@@ -19,6 +19,7 @@ struct SearchView: View {
     }
 }
 
+
 struct PostView: View {
     @EnvironmentObject private var authManager: AuthManager
     

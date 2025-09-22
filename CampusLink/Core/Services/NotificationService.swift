@@ -203,31 +203,31 @@ class NotificationService: ObservableObject {
     /// Create default notification preferences for user
     private func createDefaultPreferences() async {
         guard isEnabled else { return }
-        
         do {
+            let session = try await supabase.auth.session
+            let userId = session.user.id.uuidString
             let defaultPrefs = UserNotificationPreferences.defaultPreferences
-            
+
             try await supabase
                 .from("user_notification_preferences")
                 .insert([
-                    "push_enabled": "\(defaultPrefs.pushEnabled)",  // Convert to string
+                    "user_id": userId,
+                    "push_enabled": "\(defaultPrefs.pushEnabled)",
                     "push_platform": defaultPrefs.pushPlatform ?? "ios",
-                    "order_notifications": "\(defaultPrefs.orderNotifications)",  // Convert to string
-                    "message_notifications": "\(defaultPrefs.messageNotifications)",  // Convert to string
-                    "payment_notifications": "\(defaultPrefs.paymentNotifications)",  // Convert to string
-                    "rating_notifications": "\(defaultPrefs.ratingNotifications)",  // Convert to string
-                    "marketplace_notifications": "\(defaultPrefs.marketplaceNotifications)",  // Convert to string
+                    "order_notifications": "\(defaultPrefs.orderNotifications)",
+                    "message_notifications": "\(defaultPrefs.messageNotifications)",
+                    "payment_notifications": "\(defaultPrefs.paymentNotifications)",
+                    "rating_notifications": "\(defaultPrefs.ratingNotifications)",
+                    "marketplace_notifications": "\(defaultPrefs.marketplaceNotifications)",
                     "quiet_hours_start": defaultPrefs.quietHoursStart,
                     "quiet_hours_end": defaultPrefs.quietHoursEnd,
                     "timezone": defaultPrefs.timezone,
-                    "max_daily_notifications": "\(defaultPrefs.maxDailyNotifications)",  // Convert to string
-                    "group_similar_notifications": "\(defaultPrefs.groupSimilarNotifications)"  // Convert to string
+                    "max_daily_notifications": "\(defaultPrefs.maxDailyNotifications)",
+                    "group_similar_notifications": "\(defaultPrefs.groupSimilarNotifications)"
                 ])
                 .execute()
-            
-            // Fetch the created preferences
+
             await fetchUserPreferences()
-            
         } catch {
             #if DEBUG
             print("Failed to create default preferences: \(error)")
@@ -240,8 +240,10 @@ class NotificationService: ObservableObject {
         guard isEnabled else { return false }
         
         do {
-            var updateData: [String: String] = [:]  // Changed to [String: String]
-            
+            let session = try await supabase.auth.session
+            let userId = session.user.id.uuidString
+
+            var updateData: [String: String] = [:]
             if let pushEnabled = update.pushEnabled { updateData["push_enabled"] = "\(pushEnabled)" }
             if let pushToken = update.pushToken { updateData["push_token"] = pushToken }
             if let orderNotifications = update.orderNotifications { updateData["order_notifications"] = "\(orderNotifications)" }
@@ -254,16 +256,15 @@ class NotificationService: ObservableObject {
             if let timezone = update.timezone { updateData["timezone"] = timezone }
             if let maxDaily = update.maxDailyNotifications { updateData["max_daily_notifications"] = "\(maxDaily)" }
             if let groupSimilar = update.groupSimilarNotifications { updateData["group_similar_notifications"] = "\(groupSimilar)" }
-            
+
             try await supabase
                 .from("user_notification_preferences")
                 .update(updateData)
+                .eq("user_id", value: userId)
                 .execute()
-            
-            // Refresh preferences
+
             await fetchUserPreferences()
             return true
-            
         } catch {
             #if DEBUG
             print("Failed to update preferences: \(error)")
@@ -276,8 +277,13 @@ class NotificationService: ObservableObject {
     func updatePushToken(_ token: String) async {
         guard isEnabled else { return }
         
+        // First ensure user preferences exist
+        if userPreferences == nil {
+            await fetchUserPreferences()
+        }
+        
         let update = NotificationPreferencesUpdate(
-            pushEnabled: nil,
+            pushEnabled: true,  // Enable push when token is provided
             pushToken: token,
             orderNotifications: nil,
             messageNotifications: nil,
@@ -291,7 +297,12 @@ class NotificationService: ObservableObject {
             groupSimilarNotifications: nil
         )
         
-        await updatePreferences(update)
+        let success = await updatePreferences(update)
+        
+        #if DEBUG
+        print("📱 Push token update: \(success ? "✅ Success" : "❌ Failed")")
+        print("📱 Token: \(token.prefix(10))...")
+        #endif
     }
     
     // MARK: - Notification Filtering

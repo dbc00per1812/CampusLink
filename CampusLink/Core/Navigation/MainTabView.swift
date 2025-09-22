@@ -36,6 +36,7 @@ struct MainTabView: View {
                     .badge(walletBadge)
                     .task { await loadWalletBadge() }
                 
+                
                 // Profile Tab
                 ProfileTabView()
                     .tabItem {

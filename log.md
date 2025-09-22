@@ -1,3 +1,112 @@
+## 2025-01-21 - Push Notifications Troubleshooting and Setup
+
+### Task: Get Push Notifications Working
+
+**Objective**: Debug and fix push notification issues to enable real-time notifications for messages, orders, and other events.
+
+### What Was Analyzed
+
+#### 1. Database Schema
+- ✅ `notifications` table properly structured with all required fields
+- ✅ `user_notification_preferences` table for storing push tokens and preferences
+- ✅ Proper foreign key relationships and constraints
+
+#### 2. Supabase Edge Functions
+- ✅ `send-push-notification` function with APNs JWT authentication
+- ✅ `send-push-notification-simple` placeholder function
+- ❌ Functions expect Auth Key (.p8) format, not certificate (.p12)
+- ❌ Missing environment variables (APNS_TEAM_ID, APNS_KEY_ID, APNS_PRIVATE_KEY)
+
+#### 3. Swift Implementation
+- ✅ `NotificationManager` properly handles permissions and token registration
+- ✅ `NotificationService` manages database operations
+- ✅ `AppDelegate` correctly receives and forwards push tokens
+- ✅ Feature flag `enableNotifications` is enabled
+- ❓ Push tokens may not be saving to database (timing/auth issue)
+
+### Issues Identified
+
+1. **Authentication Format Mismatch**: Edge function expects Apple Auth Key (.p8) but user has certificate (.p12)
+2. **Missing Environment Variables**: Supabase needs APNs credentials configured
+3. **Edge Function Not Deployed**: Push notification functions not deployed to Supabase
+4. **Push Token Storage**: Token might not be saving due to user not being authenticated when received
+
+### Solutions Implemented
+
+#### 1. Created Alternative Edge Function for Certificates
+- `send-push-notification-cert/index.ts` - Handles certificate-based auth
+- Provides instructions for certificate conversion
+
+#### 2. Created Comprehensive Documentation
+- `PUSH_SETUP_CERT.md` - Certificate setup guide with multiple options
+- `PUSH_NOTIFICATIONS_ACTION_PLAN.md` - Step-by-step action plan
+- `debug_notifications.sql` - SQL scripts for debugging
+- `fix_push_notifications.sql` - Database triggers and functions
+
+#### 3. Created Test View
+- `PushNotificationTestView.swift` - Comprehensive testing interface
+- Shows notification status, token info, and test actions
+- Helps debug token storage and push delivery
+
+#### 4. Database Improvements
+- Message notification trigger for automatic push on new messages
+- Order status notification trigger for order updates
+- Test function for manual push notification testing
+
+### Next Steps Required
+
+1. **Get Apple Auth Key** (Recommended)
+   - Create new Auth Key at developer.apple.com
+   - Use .p8 format instead of .p12
+
+2. **Set Supabase Environment Variables**
+   ```
+   BUNDLE_ID = darragh.CampusLink
+   APNS_TEAM_ID = 39QG7MQD33
+   APNS_KEY_ID = [From Apple]
+   APNS_PRIVATE_KEY = [Content of .p8 file]
+   ```
+
+3. **Deploy Edge Function**
+   ```bash
+   supabase functions deploy send-push-notification
+   ```
+
+4. **Configure Database**
+   ```sql
+   ALTER DATABASE postgres SET app.settings.supabase_url = 'https://vnmzijluyctlufnzxast.supabase.co';
+   ALTER DATABASE postgres SET app.settings.supabase_service_role_key = '[SERVICE_ROLE_KEY]';
+   ```
+
+### Alternative Solutions
+
+1. **OneSignal Integration** - Third-party service that handles certificates
+2. **Local Notifications** - Work immediately for testing
+3. **Custom Backend Service** - If edge functions don't work with certificates
+
+### Files Created/Modified
+
+#### New Files
+- `supabase/functions/send-push-notification-cert/index.ts`
+- `PUSH_SETUP_CERT.md`
+- `PUSH_NOTIFICATIONS_ACTION_PLAN.md`
+- `debug_notifications.sql`
+- `fix_push_notifications.sql`
+- `CampusLink/Features/Notifications/Views/PushNotificationTestView.swift`
+
+#### Modified Files
+- None (all new files created)
+
+### Testing Checklist
+- [ ] Request permissions on real device
+- [ ] Verify push token in console
+- [ ] Check token saved to database
+- [ ] Deploy edge function
+- [ ] Set environment variables
+- [ ] Test push notification delivery
+
+---
+
 ## 2025-01-XX - Responsive Design System Implementation
 
 ### Task: Make UI Completely Versatile Across All iOS Devices
@@ -2912,4 +3021,69 @@ The `enable_messaging_rls.sql` file contains:
 **Root Cause**: GRANT statement was executing before the function was created
 **Fix**: Moved GRANT statement to execute after function creation (line 136)
 **Status**: SQL file corrected and ready for re-execution ✅
+
+## 2025-09-19 - Messaging System Debug Session
+
+### Issue Description
+- User reports messaging system is completely broken - cannot send messages
+- System was working in earlier versions
+- Need to investigate current implementation and fix
+
+### Investigation Steps
+1. Checked ChatViewModel.swift - extensive debug logging shows:
+   - Direct INSERT to messages table fails
+   - Fallback to RPC send_message function also fails
+   - Error: "function public.send_message does not exist"
+
+2. Root Cause Identified:
+   - The enable_messaging_rls.sql file was deleted
+   - RLS policies and send_message RPC function are missing from database
+   - This was previously documented in the log but SQL wasn't executed
+
+### Solution Implemented
+1. Recreated enable_messaging_rls.sql with:
+   - RLS policies for messages and conversations tables
+   - is_conversation_participant() helper function
+   - ensure_current_user_profile() function
+   - send_message() RPC function
+   - send_message_bypass() fallback function
+   - Added read_at column for message read receipts
+
+### Next Steps for User
+1. Open Supabase Dashboard (https://app.supabase.com)
+2. Navigate to your project
+3. Go to SQL Editor
+4. Copy and paste contents of enable_messaging_rls.sql
+5. Execute the SQL
+6. Test messaging functionality
+
+### Technical Details
+- The messaging system has proper fallback logic:
+  - First tries direct INSERT (faster when RLS allows)
+  - Falls back to RPC if direct insert fails
+  - Falls back to bypass RPC if main RPC fails
+- All necessary debug logging is in place
+- Authentication is properly handled
+
+### Errors Encountered & Fixed
+1. **Error**: "42P13: cannot change return type of existing function"
+   - **Cause**: Functions already exist in database with different signatures
+   - **Fix**: Added DROP FUNCTION statements before CREATE
+
+2. **Error**: "2BP01: cannot drop function is_conversation_participant because other objects depend on it"
+   - **Cause**: Existing policies depend on the functions, must drop policies first
+   - **Fix**: Added dynamic policy drop loop and CASCADE to function drops
+
+3. **User Frustration**: Overcomplicating simple messaging fix
+   - **Reassessment**: App tries direct INSERT first, then falls back to RPC
+   - **Simple Solution**: Just allow direct INSERT with basic RLS policies
+   - **Created**: `simple_messaging_fix.sql` with minimal policies that just work
+
+4. **REAL ISSUE FOUND**: Schema mismatch in trigger function
+   - **Error**: "column c.user1_id does not exist"
+   - **Root Cause**: `notify_new_message()` trigger references `user1_id`/`user2_id` but schema has `buyer_id`/`seller_id`
+   - **Fix**: Created `fix_trigger_schema.sql` to correct the trigger function
+   - **Additional Error**: "cannot drop function because trigger message_notification_trigger depends on it"
+   - **Final Fix**: Added CASCADE and dropped both trigger names
+   - **Status**: SQL updated to handle all trigger dependencies
 

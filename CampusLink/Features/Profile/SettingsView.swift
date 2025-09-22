@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var notificationManager: NotificationManager
     @Environment(\.presentationMode) var presentationMode
     
     @State private var showDeleteConfirm = false
@@ -101,6 +102,40 @@ struct SettingsView: View {
                             .padding(.horizontal)
                         }
                         
+                        // Testing Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Testing")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 0) {
+                                NavigationLink(destination: PushNotificationTestView()) {
+                                    HStack {
+                                        Image(systemName: "bell.badge")
+                                            .font(.title3)
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Push Notification Test")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding()
+                                    .background(Color(UIColor.systemBackground))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .cornerRadius(10)
+                            .padding(.horizontal)
+                        }
+                        
                         // About Section
                         VStack(alignment: .leading, spacing: 12) {
                             Text("About")
@@ -189,5 +224,6 @@ struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SettingsView()
             .environmentObject(AuthManager())
+            .environmentObject(NotificationManager.shared)
     }
 }

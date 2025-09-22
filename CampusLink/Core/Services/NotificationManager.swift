@@ -21,19 +21,29 @@ class NotificationManager: NSObject, ObservableObject {
     
     /// Initialize notification manager and request permissions if needed
     func initialize() async {
-        guard AppConfig.enableNotifications else { return }
+        print("🔔 NotificationManager: Starting initialization...")
+        print("🔔 AppConfig.enableNotifications: \(AppConfig.enableNotifications)")
+        
+        guard AppConfig.enableNotifications else { 
+            print("🔔 Notifications disabled in AppConfig")
+            return 
+        }
         
         await getCurrentAuthorizationStatus()
+        print("🔔 Current authorization status: \(authorizationStatus)")
         
         if authorizationStatus == .notDetermined {
+            print("🔔 Requesting notification permissions...")
             await requestPermissions()
         }
         
         if authorizationStatus == .authorized {
+            print("🔔 Registering for push notifications...")
             await registerForPushNotifications()
         }
         
         isInitialized = true
+        print("🔔 NotificationManager initialization complete")
     }
     
     // MARK: - Permission Management
@@ -42,21 +52,25 @@ class NotificationManager: NSObject, ObservableObject {
     func requestPermissions() async {
         guard AppConfig.enableNotifications else { return }
         
+        print("🔔 Requesting notification permissions...")
+        
         do {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .badge, .sound, .criticalAlert, .provisional]
+                options: [.alert, .badge, .sound]
             )
             
+            print("🔔 Permission granted: \(granted)")
+            
             await getCurrentAuthorizationStatus()
+            print("🔔 New authorization status: \(authorizationStatus)")
             
             if granted {
+                print("🔔 Registering for push notifications...")
                 await registerForPushNotifications()
             }
             
         } catch {
-            #if DEBUG
-            print("Failed to request notification permissions: \(error)")
-            #endif
+            print("🔔 Failed to request notification permissions: \(error)")
         }
     }
     
@@ -81,8 +95,8 @@ class NotificationManager: NSObject, ObservableObject {
     /// Register for remote push notifications
     private func registerForPushNotifications() async {
         guard AppConfig.enableNotifications else { return }
-        
-        await UIApplication.shared.registerForRemoteNotifications()
+        // Must be called on main thread; method is synchronous
+        UIApplication.shared.registerForRemoteNotifications()
     }
     
     /// Handle successful push token registration
