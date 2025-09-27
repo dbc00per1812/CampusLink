@@ -369,11 +369,6 @@ struct OffersListView: View {
     }
     
     private func createOfferPaymentIntent(offerId: String, buyerId: String) async throws -> (String, Int, Int, Int) {
-        // Get the base URL from the supabase URL and construct the functions URL
-        let baseURLString = supabase.supabaseURL.absoluteString
-        let functionsURL = URL(string: "\(baseURLString)/functions/v1")!
-        let url = functionsURL.appendingPathComponent("create_offer_payment_intent")
-        
         struct RequestBody: Encodable {
             let offer_id: String
             let buyer_id: String
@@ -386,37 +381,29 @@ struct OffersListView: View {
             let total_amount_cents: Int
         }
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Add auth header
-        if let token = supabase.auth.currentSession?.accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        
-        // Add Supabase anon key
-        request.setValue(supabase.supabaseKey, forHTTPHeaderField: "apikey")
-        
         let body = RequestBody(offer_id: offerId, buyer_id: buyerId)
-        request.httpBody = try JSONEncoder().encode(body)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "OfferPayment", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
-        }
-        
-        if httpResponse.statusCode != 200 {
-            if let errorData = try? JSONDecoder().decode([String: String].self, from: data),
-               let errorMessage = errorData["error"] {
-                throw NSError(domain: "OfferPayment", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        do {
+            let response: ResponseBody = try await supabase.functions.invoke(
+                "create_offer_payment_intent",
+                options: FunctionInvokeOptions(
+                    method: .post,
+                    body: body
+                )
+            )
+            
+            return (response.client_secret, response.base_amount_cents, response.stripe_fee_cents, response.total_amount_cents)
+        } catch {
+            // Handle function errors properly
+            if let functionError = error as? FunctionsError {
+                throw NSError(
+                    domain: "OfferPayment",
+                    code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: functionError.localizedDescription]
+                )
             }
-            throw NSError(domain: "OfferPayment", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Payment setup failed"])
+            throw error
         }
-        
-        let responseBody = try JSONDecoder().decode(ResponseBody.self, from: data)
-        return (responseBody.client_secret, responseBody.base_amount_cents, responseBody.stripe_fee_cents, responseBody.total_amount_cents)
     }
     
     private func handleStripePaymentResult(_ paymentResult: PaymentSheetResult, for offer: Offer) async {
