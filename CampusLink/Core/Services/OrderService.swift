@@ -23,9 +23,9 @@ final class OrderService: ObservableObject {
             
             // Create order directly in the database with Stripe Connect fields
             let orderData = OrderInsert(
-                listingId: orderCreate.listingId,
-                buyerId: orderCreate.buyerId,
-                sellerId: orderCreate.sellerId,
+                listingId: orderCreate.listingId.uuidString,
+                buyerId: orderCreate.buyerId.uuidString,
+                sellerId: orderCreate.sellerId.uuidString,
                 priceCents: orderCreate.priceCents,
                 paymentMethod: orderCreate.paymentMethod.rawValue,
                 orderStatus: "placed",
@@ -33,7 +33,7 @@ final class OrderService: ObservableObject {
                 stripeEscrowAccountId: escrowAccountId,
                 marketplaceFeeCents: 0,
                 stripePaymentIntentId: nil,
-                timeSlotId: orderCreate.timeSlotId
+                timeSlotId: orderCreate.timeSlotId?.uuidString
             )
             
             let order: Order = try await supabase
