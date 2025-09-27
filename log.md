@@ -726,6 +726,26 @@ The REAL issue: Trying to create orders for seek listings!
   - Offer only marked accepted after successful payment
 - Payment properly goes into escrow as expected
 
+## Critical UUID Type Fix
+
+### MAJOR ISSUE: Broke entire checkout system
+- Changed database insert structs to use UUID types instead of String
+- This broke EVERYTHING: normal checkout, offers, messaging
+- Error: "Payment succeeded but order creation failed: invalid input syntax for type json"
+
+### Root Cause:
+- Supabase/PostgreSQL expects UUID values as STRINGS in JSON
+- Cannot send UUID types directly - must be String
+
+### Fix:
+- Reverted all insert structs to use String for UUID fields
+- `OrderInsert`, `OfferInsert`, `ConversationInsert`, `MessageInsert`
+- Added `.uuidString` conversions when creating insert objects
+
+### Rule: 
+- Database insert/update structs MUST use String for UUID fields
+- Model structs can use UUID type, but convert with `.uuidString` for database
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
