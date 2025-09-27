@@ -12,6 +12,21 @@ private struct OfferInsert: Encodable {
     let order_id: UUID?
 }
 
+// MARK: - Conversation Insert Model
+private struct ConversationInsert: Encodable {
+    let listing_id: UUID
+    let buyer_id: UUID
+    let seller_id: UUID
+}
+
+// MARK: - Message Insert Model
+private struct MessageInsert: Encodable {
+    let conversation_id: UUID
+    let sender_id: UUID
+    let content: String
+    let message_type: String
+}
+
 struct OfferComposeView: View {
     let seekListing: ListingWithUser
     @Environment(\.dismiss) private var dismiss
@@ -432,11 +447,11 @@ struct OfferComposeView: View {
                 conversation = existing
             } else {
                 // Create new conversation
-                let newConversation = [
-                    "listing_id": seekListingId,
-                    "buyer_id": UUID(uuidString: seekerId) ?? UUID(),
-                    "seller_id": UUID(uuidString: sellerId) ?? UUID()
-                ] as [String: Any]
+                let newConversation = ConversationInsert(
+                    listing_id: seekListingId,
+                    buyer_id: UUID(uuidString: seekerId) ?? UUID(),
+                    seller_id: UUID(uuidString: sellerId) ?? UUID()
+                )
                 
                 let created: [Conversation] = try await supabase
                     .from("conversations")
@@ -458,12 +473,12 @@ struct OfferComposeView: View {
             
             messageContent += "\n\n🔗 Accept this offer in your messages or wallet to proceed with purchase."
             
-            let message = [
-                "conversation_id": conversation.id,
-                "sender_id": UUID(uuidString: sellerId) ?? UUID(),
-                "content": messageContent,
-                "message_type": "offer_notification"
-            ] as [String: Any]
+            let message = MessageInsert(
+                conversation_id: conversation.id,
+                sender_id: UUID(uuidString: sellerId) ?? UUID(),
+                content: messageContent,
+                message_type: "offer_notification"
+            )
             
             let _: [Message] = try await supabase
                 .from("messages")
