@@ -211,22 +211,36 @@ struct OffersListView: View {
     
     private func createOrderFromOffer(_ offer: Offer) async {
         do {
-            // Get the seller's listing details to determine price
-            let sellerListing: Listing = try await supabase
-                .from("listings")
-                .select("*")
-                .eq("id", value: offer.offerListingId.uuidString)
-                .single()
-                .execute()
-                .value
+            // Determine price and listing based on offer type
+            let priceCents: Int
+            let listingId: UUID
+            
+            if let offerListingId = offer.offerListingId {
+                // Traditional offer with existing listing
+                let sellerListing: Listing = try await supabase
+                    .from("listings")
+                    .select("*")
+                    .eq("id", value: offerListingId.uuidString)
+                    .single()
+                    .execute()
+                    .value
+                
+                priceCents = Int((sellerListing.price ?? 0) * 100)
+                listingId = offerListingId
+            } else if let offerPriceCents = offer.priceCents {
+                // Custom price offer
+                priceCents = offerPriceCents
+                listingId = offer.seekListingId // Use the seek listing as reference
+            } else {
+                throw OfferError.invalidOfferData
+            }
             
             // Create OrderCreate object
-            let basePriceCents = Int((sellerListing.price ?? 0) * 100)
             let orderCreate = OrderCreate(
-                listingId: offer.offerListingId,  // Use seller's listing, not the seek
+                listingId: listingId,
                 buyerId: UUID(uuidString: offer.seekerId) ?? UUID(),
                 sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
-                priceCents: basePriceCents, // Convert to cents
+                priceCents: priceCents,
                 paymentMethod: .card, // Default to card for now
                 timeSlotId: nil // TODO: Handle time slots if needed
             )
@@ -347,11 +361,12 @@ extension Offer {
 struct OfferWithDetails: Codable {
     let id: UUID
     let seekListingId: UUID
-    let offerListingId: UUID
+    let offerListingId: UUID?
     let seekerId: String
     let sellerId: String
     let message: String?
     let status: String
+    let priceCents: Int?
     let createdAt: Date
     let updatedAt: Date
     
@@ -366,6 +381,7 @@ struct OfferWithDetails: Codable {
         case seekerId = "seeker_id"
         case sellerId = "seller_id"
         case message, status
+        case priceCents = "price_cents"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case offerListing = "offer_listing"
@@ -381,6 +397,7 @@ struct OfferWithDetails: Codable {
             sellerId: sellerId,
             message: message,
             status: status,
+            priceCents: priceCents,
             createdAt: createdAt,
             updatedAt: updatedAt
         )

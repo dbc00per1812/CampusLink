@@ -108,8 +108,8 @@ class NotificationManager: NSObject, ObservableObject {
         
         // Update token in notification service
         Task {
-            let success = await notificationService.updatePushToken(tokenString)
-            print("📱 Token Save Result: \(success ? "✅ SUCCESS" : "❌ FAILED")")
+            await notificationService.updatePushToken(tokenString)
+            print("📱 Token Save Result: ✅ COMPLETED")
         }
         
         #if DEBUG

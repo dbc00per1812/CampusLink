@@ -1,6 +1,16 @@
 import SwiftUI
 import Supabase
 
+// MARK: - Offer Insert Model
+private struct OfferInsert: Encodable {
+    let seek_listing_id: String
+    let seller_id: String
+    let seeker_id: String
+    let price_cents: Int
+    let message: String
+    let status: String
+}
+
 struct OfferComposeView: View {
     let seekListing: ListingWithUser
     @Environment(\.dismiss) private var dismiss
@@ -258,15 +268,14 @@ struct OfferComposeView: View {
         
         do {
             // Create the offer with custom price
-            let offer = [
-                "seek_listing_id": seekListingId.uuidString,
-                "offer_listing_id": NSNull(), // No specific listing, just a price offer
-                "seller_id": sellerId,
-                "seeker_id": seekerId,
-                "price_cents": priceCents,
-                "message": message ?? "",
-                "status": "pending"
-            ] as [String: Any]
+            let offer = OfferInsert(
+                seek_listing_id: seekListingId.uuidString,
+                seller_id: sellerId,
+                seeker_id: seekerId,
+                price_cents: priceCents,
+                message: message ?? "",
+                status: "pending"
+            )
             
             let _: [Offer] = try await supabase
                 .from("offers")

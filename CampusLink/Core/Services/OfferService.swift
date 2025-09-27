@@ -1,6 +1,23 @@
 import Foundation
 import Supabase
 
+// MARK: - Offer Service Parameters
+private struct AcceptOfferParams: Encodable {
+    let p_offer_id: String
+    let p_user_id: String
+}
+
+private struct DeclineOfferParams: Encodable {
+    let p_offer_id: String
+    let p_user_id: String
+    let p_reason: String?
+}
+
+private struct GetUserOffersParams: Encodable {
+    let p_user_id: String
+    let p_role: String
+}
+
 // MARK: - Offer Service
 final class OfferService: ObservableObject {
     static let shared = OfferService()
@@ -12,18 +29,18 @@ final class OfferService: ObservableObject {
             throw OfferError.userNotAuthenticated
         }
         
-        let params: [String: Any] = [
-            "p_offer_id": offerId.uuidString,
-            "p_user_id": userId.uuidString
-        ]
+        let params = AcceptOfferParams(
+            p_offer_id: offerId.uuidString,
+            p_user_id: userId.uuidString
+        )
         
         let response = try await supabase
             .rpc("accept_offer", params: params)
             .execute()
         
         // Parse the response
-        if let data = response.data,
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let data = response.data
+        if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
            let success = json["success"] as? Bool {
             
             if success {
@@ -56,22 +73,19 @@ final class OfferService: ObservableObject {
             throw OfferError.userNotAuthenticated
         }
         
-        var params: [String: Any] = [
-            "p_offer_id": offerId.uuidString,
-            "p_user_id": userId.uuidString
-        ]
-        
-        if let reason = reason {
-            params["p_reason"] = reason
-        }
+        let params = DeclineOfferParams(
+            p_offer_id: offerId.uuidString,
+            p_user_id: userId.uuidString,
+            p_reason: reason
+        )
         
         let response = try await supabase
             .rpc("decline_offer", params: params)
             .execute()
         
         // Check if successful
-        if let data = response.data,
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let data = response.data
+        if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
            let success = json["success"] as? Bool,
            !success {
             let error = json["error"] as? String ?? "Failed to decline offer"
@@ -85,10 +99,10 @@ final class OfferService: ObservableObject {
             throw OfferError.userNotAuthenticated
         }
         
-        let params: [String: Any] = [
-            "p_user_id": userId.uuidString,
-            "p_role": role.rawValue
-        ]
+        let params = GetUserOffersParams(
+            p_user_id: userId.uuidString,
+            p_role: role.rawValue
+        )
         
         let response = try await supabase
             .rpc("get_user_offers", params: params)
@@ -121,26 +135,16 @@ final class OfferService: ObservableObject {
         if let match = message.content.firstMatch(of: /💰 New Offer: \$([0-9.]+)/) {
             // Try to find the offer
             do {
-                // First get the conversation if not included in message
-                var listingId: String?
-                if let conversationListingId = message.conversation?.listingId {
-                    listingId = conversationListingId.uuidString
-                } else {
-                    // Fetch conversation details
-                    let conversations: [Conversation] = try await supabase
-                        .from("conversations")
-                        .select("*")
-                        .eq("id", value: message.conversationId.uuidString)
-                        .single()
-                        .execute()
-                        .value
-                    
-                    if let conversation = conversations.first {
-                        listingId = conversation.listingId?.uuidString
-                    }
-                }
+                // Fetch conversation details to get the listing ID
+                let conversation: Conversation = try await supabase
+                    .from("conversations")
+                    .select("*")
+                    .eq("id", value: message.conversationId.uuidString)
+                    .single()
+                    .execute()
+                    .value
                 
-                guard let seekListingId = listingId else { return nil }
+                guard let seekListingId = conversation.listingId?.uuidString else { return nil }
                 
                 let offers: [Offer] = try await supabase
                     .from("offers")
@@ -170,6 +174,7 @@ enum OfferError: LocalizedError {
     case invalidResponse
     case serverError(String)
     case offerNotFound
+    case invalidOfferData
     
     var errorDescription: String? {
         switch self {
@@ -181,6 +186,8 @@ enum OfferError: LocalizedError {
             return message
         case .offerNotFound:
             return "Offer not found"
+        case .invalidOfferData:
+            return "Invalid offer data - missing price or listing information"
         }
     }
 }
@@ -202,7 +209,7 @@ enum OfferRole: String {
     case both = "both"
 }
 
-struct UserOffer: Codable {
+struct UserOffer: Codable, Identifiable {
     let offerId: UUID
     let seekListingId: UUID
     let seekListingTitle: String
@@ -220,6 +227,9 @@ struct UserOffer: Codable {
     let updatedAt: Date
     let isSeeker: Bool
     let canAccept: Bool
+    
+    // Identifiable conformance
+    var id: UUID { offerId }
     
     enum CodingKeys: String, CodingKey {
         case offerId = "offer_id"

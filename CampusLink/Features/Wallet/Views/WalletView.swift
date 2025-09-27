@@ -226,7 +226,7 @@ struct WalletView: View {
                     .font(.headline)
                 Spacer()
                 if viewModel.pendingOffers.count > 3 {
-                    NavigationLink(destination: OffersListView()) {
+                    NavigationLink(destination: AllOffersView()) {
                         Text("See All")
                             .font(.subheadline)
                             .foregroundColor(Color("ThemeColor"))
