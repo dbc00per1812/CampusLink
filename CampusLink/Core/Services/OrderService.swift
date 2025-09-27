@@ -36,6 +36,14 @@ final class OrderService: ObservableObject {
                 timeSlotId: orderCreate.timeSlotId?.uuidString
             )
             
+            print("📝 Creating order with data:")
+            print("   - listingId: \(orderData.listingId)")
+            print("   - buyerId: \(orderData.buyerId)")  
+            print("   - sellerId: \(orderData.sellerId)")
+            print("   - priceCents: \(orderData.priceCents)")
+            print("   - paymentMethod: \(orderData.paymentMethod)")
+            print("   - timeSlotId: \(orderData.timeSlotId ?? "nil")")
+            
             let order: Order = try await supabase
                 .from("orders")
                 .insert(orderData)

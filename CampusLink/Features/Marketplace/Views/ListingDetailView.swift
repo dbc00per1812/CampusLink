@@ -501,10 +501,15 @@ struct ListingDetailView: View {
         }
         
         // Create order with wallet payment
+        guard let sellerId = UUID(uuidString: listing.user.id) else {
+            print("❌ Invalid seller UUID format: '\(listing.user.id)'")
+            throw PaymentError.orderCreationFailed
+        }
+        
         let orderCreate = OrderCreate(
             listingId: listing.id,
             buyerId: currentUserId,
-            sellerId: UUID(uuidString: listing.user.id) ?? UUID(),
+            sellerId: sellerId,
             priceCents: priceCents,
             paymentMethod: .wallet,
             timeSlotId: selectedTimeSlot?.id
@@ -566,10 +571,15 @@ struct ListingDetailView: View {
                                         self.processingFeeCents = processingFeeCents
                                     }
                                     
+                                    guard let sellerId = UUID(uuidString: listing.user.id) else {
+                                        print("❌ Invalid seller UUID: \(listing.user.id)")
+                                        throw PaymentError.orderCreationFailed
+                                    }
+                                    
                                     let orderCreate = OrderCreate(
                                         listingId: listing.id,
                                         buyerId: currentUserId,
-                                        sellerId: UUID(uuidString: listing.user.id) ?? UUID(),
+                                        sellerId: sellerId,
                                         priceCents: basePriceCents,
                                         paymentMethod: .card,
                                         timeSlotId: selectedTimeSlot?.id
