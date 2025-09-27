@@ -201,17 +201,19 @@ struct OffersListView: View {
     private func acceptOffer(_ offer: Offer) async {
         do {
             // Step 1: Accept the offer (just updates status)
-            let acceptedOffer = try await OfferService.shared.acceptOfferStatus(offer.id)
+            let success = try await OfferService.shared.acceptOfferStatus(offer.id)
             
-            await MainActor.run {
-                // Step 2: Store the accepted offer and show payment method selection
-                selectedOffer = acceptedOffer
-                loadWalletBalance()
-                showPaymentMethodSheet = true
-                
-                // Refresh offers list to show accepted status
-                Task {
-                    await loadOffers()
+            if success {
+                await MainActor.run {
+                    // Step 2: Store the accepted offer and show payment method selection
+                    selectedOffer = offer
+                    loadWalletBalance()
+                    showPaymentMethodSheet = true
+                    
+                    // Refresh offers list to show accepted status
+                    Task {
+                        await loadOffers()
+                    }
                 }
             }
             

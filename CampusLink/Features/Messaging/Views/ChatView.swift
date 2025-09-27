@@ -262,12 +262,14 @@ struct ChatView: View {
         
         Task {
             do {
-                let _ = try await OfferService.shared.acceptOfferStatus(offer.id)
+                let success = try await OfferService.shared.acceptOfferStatus(offer.id)
                 await MainActor.run {
                     isProcessingOffer = false
                     showingOfferAcceptance = false
                     // Navigate to order or show success
-                    viewModel.errorMessage = "Offer accepted! Please check your wallet to complete payment."
+                    if success {
+                        viewModel.errorMessage = "Offer accepted! Please check your wallet to complete payment."
+                    }
                 }
             } catch {
                 await MainActor.run {

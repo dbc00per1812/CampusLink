@@ -190,11 +190,13 @@ struct AllOffersView: View {
         
         Task {
             do {
-                let _ = try await OfferService.shared.acceptOfferStatus(offerId)
+                let success = try await OfferService.shared.acceptOfferStatus(offerId)
                 await MainActor.run {
                     isProcessingOffer = false
                     showingOfferAcceptance = false
-                    errorMessage = "Offer accepted! Please check your wallet to complete payment."
+                    if success {
+                        errorMessage = "Offer accepted! Please check your wallet to complete payment."
+                    }
                     // Refresh offers
                     Task {
                         await loadOffers()

@@ -538,12 +538,14 @@ struct WalletView: View {
         
         Task {
             do {
-                let _ = try await OfferService.shared.acceptOfferStatus(offerId)
+                let success = try await OfferService.shared.acceptOfferStatus(offerId)
                 await MainActor.run {
                     isProcessingOffer = false
                     showingOfferAcceptance = false
-                    viewModel.errorMessage = "Offer accepted! Please proceed with payment to complete the order."
-                    viewModel.isShowingError = true
+                    if success {
+                        viewModel.errorMessage = "Offer accepted! Please proceed with payment to complete the order."
+                        viewModel.isShowingError = true
+                    }
                     // Refresh data
                     Task {
                         await viewModel.refreshData()

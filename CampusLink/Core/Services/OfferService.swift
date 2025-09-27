@@ -24,7 +24,7 @@ final class OfferService: ObservableObject {
     private init() {}
     
     // MARK: - Accept Offer (Simplified - just updates status)
-    func acceptOfferStatus(_ offerId: UUID) async throws -> Offer {
+    func acceptOfferStatus(_ offerId: UUID) async throws -> Bool {
         guard let userId = try? await supabase.auth.session.user.id else {
             throw OfferError.userNotAuthenticated
         }
@@ -43,23 +43,8 @@ final class OfferService: ObservableObject {
         if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
            let success = json["success"] as? Bool {
             
-            if success,
-               let offerData = json["offer"] as? [String: Any],
-               let offerJson = try? JSONSerialization.data(withJSONObject: offerData),
-               let offer = try? JSONDecoder().decode(OfferData.self, from: offerJson) {
-                
-                return Offer(
-                    id: offer.id,
-                    seekListingId: offer.seek_listing_id,
-                    offerListingId: nil,
-                    seekerId: offer.seeker_id,
-                    sellerId: offer.seller_id,
-                    message: nil,
-                    status: "accepted",
-                    priceCents: offer.price_cents,
-                    createdAt: Date(),
-                    updatedAt: Date()
-                )
+            if success {
+                return true
             } else {
                 let error = json["error"] as? String ?? "Unknown error"
                 throw OfferError.serverError(error)
@@ -202,13 +187,7 @@ enum OfferRole: String {
     case both = "both"
 }
 
-struct OfferData: Codable {
-    let id: UUID
-    let seek_listing_id: UUID
-    let seller_id: String
-    let seeker_id: String
-    let price_cents: Int?
-}
+// OfferData struct no longer needed - simplified to bool return
 
 struct UserOffer: Codable, Identifiable {
     let offerId: UUID
