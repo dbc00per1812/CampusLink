@@ -1,5 +1,12 @@
 # Offer Payment Fix Summary
 
+## Latest Update
+Added proper confirmation flow when offer is sent:
+- Beautiful confirmation screen shows offer details
+- Explains payment will happen when offer is accepted  
+- Clear next steps and actions
+- No more abrupt dismissal!
+
 ## The Problem
 You were getting "invalid input syntax for type json" when trying to make an offer with card payment.
 
