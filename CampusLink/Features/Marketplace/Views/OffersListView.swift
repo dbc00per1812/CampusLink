@@ -1,5 +1,6 @@
 import SwiftUI
 import Supabase
+import StripePaymentSheet
 
 struct OffersListView: View {
     let seekListing: ListingWithUser
@@ -19,6 +20,8 @@ struct OffersListView: View {
     @State private var purchaseError: String?
     @State private var selectedOrderId: UUID?
     @State private var showOrderDetail = false
+    @State private var stripePaymentSheet: PaymentSheet?
+    @State private var selectedPaymentMethod: PaymentMethod?
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -212,46 +215,20 @@ struct OffersListView: View {
     }
     
     private func acceptOffer(_ offer: Offer) async {
-        do {
-            // Accept the offer (just updates status)
-            let success = try await OfferService.shared.acceptOfferStatus(offer.id)
-            
-            if success {
-                await MainActor.run {
-                    // Check if offer already has an associated order (was paid when created)
-                    if let orderId = offer.orderId {
-                        // Offer was already paid for, just navigate to the order
-                        selectedOrderId = orderId
-                        showOrderDetail = true
-                        print("📊 Analytics: Navigating to existing order for accepted offer - Order: \(orderId)")
-                    } else {
-                        // Legacy flow: offer needs payment after acceptance
-                        // This shouldn't happen with the new flow where payment happens when making the offer
-                        selectedOffer = offer
-                        loadWalletBalance()
-                        showPaymentMethodSheet = true
-                        print("⚠️ Legacy offer without pre-payment detected - Offer: \(offer.id)")
-                    }
-                    
-                    // Refresh offers list to show accepted status
-                    Task {
-                        await loadOffers()
-                    }
-                }
+        await MainActor.run {
+            // Check if offer already has an associated order (shouldn't happen in new flow)
+            if let orderId = offer.orderId {
+                // Offer was already paid for, just navigate to the order
+                selectedOrderId = orderId
+                showOrderDetail = true
+                print("📊 Analytics: Navigating to existing order for accepted offer - Order: \(orderId)")
+            } else {
+                // Normal flow: offer needs payment before acceptance
+                selectedOffer = offer
+                loadWalletBalance()
+                showPaymentMethodSheet = true
+                print("🔄 Starting payment flow for offer: \(offer.id)")
             }
-            
-            print("📊 Analytics: Offer accepted - Seek: \(seekListing.id), Offer: \(offer.id)")
-            
-        } catch {
-            await MainActor.run {
-                let errorDesc = error.localizedDescription
-                if errorDesc.contains("function") || errorDesc.contains("accept_offer") {
-                    errorMessage = "Database setup required. Please run the offers migration script in Supabase first."
-                } else {
-                    errorMessage = "Failed to accept offer: \(errorDesc)"
-                }
-            }
-            print("❌ Failed to accept offer: \(error)")
         }
     }
     
@@ -315,10 +292,24 @@ struct OffersListView: View {
         
         let order = try await orderService.createOrder(orderCreate)
         
+        // Now that payment is successful, update offer status to accepted
+        do {
+            _ = try await OfferService.shared.acceptOfferStatus(offer.id)
+            print("✅ Offer accepted after wallet payment - Offer: \(offer.id), Order: \(order.id)")
+        } catch {
+            print("⚠️ Payment succeeded but failed to update offer status: \(error)")
+            // Payment went through, so continue to show confirmation
+        }
+        
         await MainActor.run {
             isPrimaryActionLoading = false
             createdOrder = order
             activeSheet = .purchaseConfirmation
+            
+            // Refresh offers list to show accepted status
+            Task {
+                await loadOffers()
+            }
         }
     }
     
@@ -334,24 +325,37 @@ struct OffersListView: View {
         
         await MainActor.run {
             self.processingFeeCents = processingFeeCents
+            isPrimaryActionLoading = false
         }
         
-        // Create order with card payment using existing flow
-        let orderCreate = OrderCreate(
-            listingId: offer.seekListingId,
-            buyerId: currentUserId,
-            sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
-            priceCents: priceCents,
-            paymentMethod: .card,
-            timeSlotId: nil
-        )
+        // For card payments, we need to use Stripe payment sheet
+        // Create a virtual listing to represent the offer for payment
+        let virtualListing = createVirtualListing(from: offer)
         
-        let order = try await orderService.createOrder(orderCreate)
-        
-        await MainActor.run {
-            isPrimaryActionLoading = false
-            createdOrder = order
-            activeSheet = .purchaseConfirmation
+        do {
+            // Show Stripe payment sheet
+            if let paymentSheet = try await paymentService.preparePaymentSheet(
+                for: virtualListing,
+                timeSlot: nil,
+                buyerId: currentUserId.uuidString
+            ) {
+                await MainActor.run {
+                    self.stripePaymentSheet = paymentSheet
+                    
+                    // Present the payment sheet
+                    // Note: In production, you'd get the view controller from the SwiftUI environment
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let rootViewController = windowScene.windows.first?.rootViewController {
+                        paymentSheet.present(from: rootViewController) { paymentResult in
+                            Task {
+                                await self.handleStripePaymentResult(paymentResult, for: offer)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            throw error
         }
     }
     
@@ -420,6 +424,66 @@ struct OffersListView: View {
             budgetMax: nil,
             expiresAt: nil
         )
+    }
+    
+    /// Handles the result from Stripe payment sheet
+    private func handleStripePaymentResult(_ paymentResult: PaymentSheetResult, for offer: Offer) async {
+        switch paymentResult {
+        case .completed:
+            // Payment successful, create order and accept offer
+            guard let currentUserId = authManager.session?.user.id else { return }
+            
+            do {
+                let orderCreate = OrderCreate(
+                    listingId: offer.seekListingId,
+                    buyerId: currentUserId,
+                    sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
+                    priceCents: offer.priceCents ?? 0,
+                    paymentMethod: .card,
+                    timeSlotId: nil
+                )
+                
+                let order = try await orderService.createOrder(orderCreate)
+                
+                // Now accept the offer after successful payment
+                do {
+                    _ = try await OfferService.shared.acceptOfferStatus(offer.id)
+                    print("✅ Offer accepted after card payment - Offer: \(offer.id), Order: \(order.id)")
+                } catch {
+                    print("⚠️ Payment succeeded but failed to update offer status: \(error)")
+                }
+                
+                await MainActor.run {
+                    createdOrder = order
+                    selectedPaymentMethod = .card
+                    activeSheet = .purchaseConfirmation
+                    
+                    // Refresh offers list
+                    Task {
+                        await loadOffers()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    purchaseError = "Failed to create order: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+            
+        case .canceled:
+            print("Payment canceled by user")
+            await MainActor.run {
+                isPrimaryActionLoading = false
+            }
+            
+        case .failed(let error):
+            print("Payment failed: \(error)")
+            await MainActor.run {
+                purchaseError = error.localizedDescription
+                showErrorAlert = true
+                isPrimaryActionLoading = false
+            }
+        }
     }
 }
 
