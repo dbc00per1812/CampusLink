@@ -30,6 +30,7 @@ struct ListingDetailView: View {
     @State private var selectedPhotoIndex = 0
     @State private var isImageViewerPresented = false
     @State private var showingOfferCompose = false
+    @State private var showingOffersList = false
 
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { 
@@ -169,6 +170,12 @@ struct ListingDetailView: View {
             OfferComposeView(seekListing: listing)
                 .environmentObject(authManager)
         }
+        
+        // Offers List Sheet (for seekers to view received offers)
+        .sheet(isPresented: $showingOffersList) {
+            OffersListView(seekListing: listing)
+                .environmentObject(authManager)
+        }
 
         .sheet(isPresented: $showPaymentMethodSheet) {
             PaymentMethodSheet(
@@ -242,8 +249,7 @@ struct ListingDetailView: View {
     }
     
     private func handleViewOffers() {
-        // Phase 3: Navigate to OffersListView
-        print("📋 View Offers - Coming Soon!")
+        showingOffersList = true
     }
     
     private func deleteListing() async {

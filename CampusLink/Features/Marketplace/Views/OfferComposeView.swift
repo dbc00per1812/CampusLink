@@ -302,8 +302,19 @@ struct OfferComposeView: View {
             
         } catch {
             await MainActor.run {
-                errorMessage = "Failed to send offer: \(error.localizedDescription)"
+                let errorDesc = error.localizedDescription
+                if errorDesc.contains("price_cents") || errorDesc.contains("column") {
+                    errorMessage = "Database setup required. Please run the offers migration script in Supabase first."
+                } else if errorDesc.contains("format") {
+                    errorMessage = "Database schema mismatch. Please check if the offers table is up to date."
+                } else {
+                    errorMessage = "Failed to send offer: \(errorDesc)"
+                }
                 isLoading = false
+                
+                #if DEBUG
+                print("❌ Offer creation failed: \(error)")
+                #endif
             }
         }
     }

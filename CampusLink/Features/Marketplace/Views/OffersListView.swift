@@ -142,61 +142,36 @@ struct OffersListView: View {
     }
     
     private func acceptOffer(_ offer: Offer) async {
-        guard let currentUserId = authManager.currentUserId else { return }
-        
         do {
-            // Update offer status to accepted
-            let _: [Offer] = try await supabase
-                .from("offers")
-                .update(["status": "accepted", "updated_at": Date().ISO8601Format()])
-                .eq("id", value: offer.id.uuidString)
-                .execute()
-                .value
+            let response = try await OfferService.shared.acceptOffer(offer.id)
             
-            // Archive the seek listing
-            let _: [Listing] = try await supabase
-                .from("listings")
-                .update(["archived": "true", "status": "inactive"])
-                .eq("id", value: seekListing.id.uuidString)
-                .execute()
-                .value
+            await MainActor.run {
+                errorMessage = "Offer accepted! Order #\(response.orderId.uuidString.prefix(8)) created."
+                // Refresh offers list
+                Task {
+                    await loadOffers()
+                }
+            }
             
-            // Create order using the seller's listing
-            await createOrderFromOffer(offer)
-            
-            // Decline all other pending offers for this seek
-            let _: [Offer] = try await supabase
-                .from("offers")
-                .update(["status": "declined"])
-                .eq("seek_listing_id", value: seekListing.id.uuidString)
-                .neq("id", value: offer.id.uuidString)
-                .eq("status", value: "pending")
-                .execute()
-                .value
-            
-            // Analytics: Track offer acceptance
             print("📊 Analytics: Offer accepted - Seek: \(seekListing.id), Offer: \(offer.id)")
-            
-            // Refresh offers list
-            await loadOffers()
             
         } catch {
             await MainActor.run {
-                errorMessage = "Failed to accept offer: \(error.localizedDescription)"
+                let errorDesc = error.localizedDescription
+                if errorDesc.contains("function") || errorDesc.contains("accept_offer") {
+                    errorMessage = "Database setup required. Please run the offers migration script in Supabase first."
+                } else {
+                    errorMessage = "Failed to accept offer: \(errorDesc)"
+                }
             }
+            print("❌ Failed to accept offer: \(error)")
         }
     }
     
     private func declineOffer(_ offer: Offer) async {
         do {
-            let _: [Offer] = try await supabase
-                .from("offers")
-                .update(["status": "declined", "updated_at": Date().ISO8601Format()])
-                .eq("id", value: offer.id.uuidString)
-                .execute()
-                .value
+            try await OfferService.shared.declineOffer(offer.id)
             
-            // Analytics: Track offer decline
             print("📊 Analytics: Offer declined - Seek: \(seekListing.id), Offer: \(offer.id)")
             
             // Refresh offers list
@@ -204,59 +179,18 @@ struct OffersListView: View {
             
         } catch {
             await MainActor.run {
-                errorMessage = "Failed to decline offer: \(error.localizedDescription)"
+                let errorDesc = error.localizedDescription
+                if errorDesc.contains("function") || errorDesc.contains("decline_offer") {
+                    errorMessage = "Database setup required. Please run the offers migration script in Supabase first."
+                } else {
+                    errorMessage = "Failed to decline offer: \(errorDesc)"
+                }
             }
+            print("❌ Failed to decline offer: \(error)")
         }
     }
     
-    private func createOrderFromOffer(_ offer: Offer) async {
-        do {
-            // Determine price and listing based on offer type
-            let priceCents: Int
-            let listingId: UUID
-            
-            if let offerListingId = offer.offerListingId {
-                // Traditional offer with existing listing
-                let sellerListing: Listing = try await supabase
-                    .from("listings")
-                    .select("*")
-                    .eq("id", value: offerListingId.uuidString)
-                    .single()
-                    .execute()
-                    .value
-                
-                priceCents = Int((sellerListing.price ?? 0) * 100)
-                listingId = offerListingId
-            } else if let offerPriceCents = offer.priceCents {
-                // Custom price offer
-                priceCents = offerPriceCents
-                listingId = offer.seekListingId // Use the seek listing as reference
-            } else {
-                throw OfferError.invalidOfferData
-            }
-            
-            // Create OrderCreate object
-            let orderCreate = OrderCreate(
-                listingId: listingId,
-                buyerId: UUID(uuidString: offer.seekerId) ?? UUID(),
-                sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
-                priceCents: priceCents,
-                paymentMethod: .card, // Default to card for now
-                timeSlotId: nil // TODO: Handle time slots if needed
-            )
-            
-            // Create the order using OrderService
-            let _ = try await OrderService.shared.createOrder(orderCreate)
-            
-            print("✅ Order created successfully from offer \(offer.id)")
-            
-        } catch {
-            await MainActor.run {
-                errorMessage = "Failed to create order: \(error.localizedDescription)"
-            }
-            print("❌ Failed to create order from offer: \(error)")
-        }
-    }
+    // createOrderFromOffer is no longer needed - the accept_offer RPC function handles order creation
 }
 
 enum OfferAction {
@@ -270,76 +204,138 @@ struct OfferRowView: View {
     let offer: Offer
     let onAction: (OfferAction) -> Void
     
+    @State private var sellerName: String = "Loading..."
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Offer from \(offer.sellerId)")
-                    .font(.headline)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Offer from \(sellerName)")
+                        .font(.headline)
+                        .lineLimit(1)
+                    
+                    // Show offer amount
+                    if let price = offer.formattedPrice {
+                        Text(price)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("ThemeColor"))
+                    } else {
+                        Text("Custom offer")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
                 
                 Spacer()
                 
-                Text(offer.createdAt, style: .relative)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(offer.createdAt, style: .relative)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    // Status badge
+                    Text(offer.status.capitalized)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(offer.statusColor.opacity(0.2))
+                        .foregroundColor(offer.statusColor)
+                        .cornerRadius(8)
+                }
             }
             
+            // Message from seller
             if let message = offer.message, !message.isEmpty {
-                Text(message)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .lineLimit(3)
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 8)
-                    .background(Color(.systemGray5))
-                    .cornerRadius(8)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Message:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fontWeight(.medium)
+                    
+                    Text(message)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .lineLimit(3)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                }
             }
             
-            // Status badge
-            HStack {
-                Text(offer.status.capitalized)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(offer.statusColor)
-                    .foregroundColor(.white)
-                    .cornerRadius(6)
-                Spacer()
-            }
-            
-            // Action buttons - only show for pending offers
+            // Action buttons for pending offers
             if offer.status == "pending" {
                 HStack(spacing: 12) {
-                    Button("Accept") {
-                        onAction(.accept)
+                    Button(action: { onAction(.accept) }) {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Accept")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.green)
+                        .cornerRadius(10)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityLabel("Accept offer")
-                    .accessibilityHint("Accepts this offer and creates an order")
                     
-                    Button("Decline") {
-                        onAction(.decline)
+                    Button(action: { onAction(.decline) }) {
+                        HStack {
+                            Image(systemName: "xmark.circle")
+                            Text("Decline")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
                     }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Decline offer")
-                    .accessibilityHint("Declines this offer")
                     
                     Spacer()
                     
-                    Button("View Listing") {
-                        onAction(.viewListing)
+                    // Only show "View Listing" if there's an actual listing (not custom price)
+                    if offer.offerListingId != nil {
+                        Button(action: { onAction(.viewListing) }) {
+                            Text("View Item")
+                                .font(.caption)
+                                .foregroundColor(Color("ThemeColor"))
+                        }
                     }
-                    .font(.caption)
-                    .foregroundColor(Color("ThemeColor"))
-                    .accessibilityLabel("View offered listing")
-                    .accessibilityHint("Shows details of the item being offered")
                 }
             }
         }
         .padding()
-        .background(Color(.systemGray6))
+        .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .task {
+            await loadSellerName()
+        }
+    }
+    
+    private func loadSellerName() async {
+        do {
+            let seller: User = try await supabase
+                .from("users")
+                .select("name")
+                .eq("id", value: offer.sellerId)
+                .single()
+                .execute()
+                .value
+            
+            await MainActor.run {
+                sellerName = seller.name ?? "Unknown Seller"
+            }
+        } catch {
+            await MainActor.run {
+                sellerName = "Seller"
+            }
+        }
     }
 }
 
