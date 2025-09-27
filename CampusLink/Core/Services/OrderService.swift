@@ -30,11 +30,9 @@ final class OrderService: ObservableObject {
                 paymentMethod: orderCreate.paymentMethod.rawValue,
                 orderStatus: "placed",
                 paymentStatus: "succeeded",
-                createdAt: ISO8601DateFormatter().string(from: Date()),
-                updatedAt: ISO8601DateFormatter().string(from: Date()),
-                stripeEscrowAccountId: escrowAccountId, // Set escrow account ID
-                marketplaceFeeCents: 0, // No marketplace fees initially, only Stripe processing fees
-                stripePaymentIntentId: nil, // Will be set when payment intent is created
+                stripeEscrowAccountId: escrowAccountId,
+                marketplaceFeeCents: 0,
+                stripePaymentIntentId: nil,
                 timeSlotId: orderCreate.timeSlotId?.uuidString
             )
             

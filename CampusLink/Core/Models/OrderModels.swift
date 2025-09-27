@@ -304,8 +304,6 @@ struct OrderInsert: Codable {
     let paymentMethod: String
     let orderStatus: String
     let paymentStatus: String
-    let createdAt: String
-    let updatedAt: String
     let stripeEscrowAccountId: String?
     let marketplaceFeeCents: Int
     let stripePaymentIntentId: String?
@@ -319,8 +317,6 @@ struct OrderInsert: Codable {
         case paymentMethod = "payment_method"
         case orderStatus = "order_status"
         case paymentStatus = "payment_status"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
         case stripeEscrowAccountId = "stripe_escrow_account_id"
         case marketplaceFeeCents = "marketplace_fee_cents"
         case stripePaymentIntentId = "stripe_payment_intent_id"

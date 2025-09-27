@@ -7,9 +7,20 @@ BEGIN;
 ALTER TABLE public.offers 
 ADD COLUMN IF NOT EXISTS price_cents integer;
 
+-- Add order_id column to link offers with orders
+ALTER TABLE public.offers 
+ADD COLUMN IF NOT EXISTS order_id uuid;
+
 -- Make offer_listing_id nullable  
 ALTER TABLE public.offers 
 ALTER COLUMN offer_listing_id DROP NOT NULL;
+
+-- Update status constraint to include new paid status
+ALTER TABLE public.offers 
+DROP CONSTRAINT IF EXISTS offers_status_check,
+ADD CONSTRAINT offers_status_check CHECK (
+    status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'withdrawn'::text, 'expired'::text, 'paid_pending_acceptance'::text])
+);
 
 -- Simple accept function that just updates offer status
 CREATE OR REPLACE FUNCTION accept_offer(
@@ -22,17 +33,18 @@ AS $$
 DECLARE
     v_offer_row record;
 BEGIN
-    -- Get the offer
+    -- Get the offer (accept both pending and paid_pending_acceptance)
     SELECT * INTO v_offer_row FROM public.offers 
-    WHERE id = p_offer_id AND status = 'pending';
+    WHERE id = p_offer_id 
+    AND status IN ('pending', 'paid_pending_acceptance');
     
     IF v_offer_row IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Offer not found');
+        RETURN jsonb_build_object('success', false, 'error', 'Offer not found or already processed');
     END IF;
     
     -- Verify user is the seeker
     IF v_offer_row.seeker_id::uuid != p_user_id THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+        RETURN jsonb_build_object('success', false, 'error', 'Only the seeker can accept offers');
     END IF;
     
     -- Update offer status to accepted
@@ -45,7 +57,7 @@ BEGIN
     SET status = 'declined'
     WHERE seek_listing_id = v_offer_row.seek_listing_id 
     AND id != p_offer_id 
-    AND status = 'pending';
+    AND status IN ('pending', 'paid_pending_acceptance');
     
     -- Archive the seek listing (no updated_at column)
     UPDATE public.listings 

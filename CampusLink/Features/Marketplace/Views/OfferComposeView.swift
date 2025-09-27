@@ -9,6 +9,7 @@ private struct OfferInsert: Encodable {
     let price_cents: Int
     let message: String
     let status: String
+    let order_id: String?
 }
 
 struct OfferComposeView: View {
@@ -27,6 +28,20 @@ struct OfferComposeView: View {
     @State private var offerAmount = ""
     @State private var showingKeypad = false
     @FocusState private var isAmountFocused: Bool
+    
+    // Payment flow states (reusing existing checkout flow)
+    @State private var showPaymentMethodSheet = false
+    @State private var currentWallet: Wallet?
+    @State private var createdOrder: Order?
+    @State private var activeSheet: OfferComposeSheet?
+    @State private var isPrimaryActionLoading = false
+    @State private var processingFeeCents: Int = 0
+    @State private var showErrorAlert = false
+    @State private var purchaseError: String?
+    
+    @StateObject private var paymentService = PaymentService.shared
+    @StateObject private var orderService = OrderService.shared
+    @StateObject private var walletService = WalletService.shared
     
     var body: some View {
         NavigationView {
@@ -87,7 +102,7 @@ struct OfferComposeView: View {
                                             } else if parts.count == 2 && parts[1].count > 2 {
                                                 // Limit to 2 decimal places
                                                 offerAmount = String(parts[0]) + "." + String(parts[1].prefix(2))
-                                            } else {
+                                } else {
                                                 offerAmount = filtered
                                             }
                                         }
@@ -196,6 +211,46 @@ struct OfferComposeView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .sheet(isPresented: $showPaymentMethodSheet) {
+            PaymentMethodSheet(
+                listing: createVirtualListing(),
+                wallet: currentWallet,
+                onPaymentMethodSelected: { paymentMethod in
+                    showPaymentMethodSheet = false
+                    handlePaymentMethodSelection(paymentMethod)
+                }
+            )
+        }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .purchaseConfirmation:
+                if let order = createdOrder {
+                    PurchaseConfirmationView(
+                        listing: createVirtualListing(),
+                        order: order,
+                        paymentMethod: order.paymentMethod,
+                        onDismiss: {
+                            activeSheet = nil
+                            createdOrder = nil
+                            dismiss()
+                        },
+                        onViewOrder: {
+                            if let order = createdOrder {
+                                print("📱 Navigate to order details: \(order.id)")
+                            }
+                        },
+                        onContactSeller: {
+                            print("📱 Contact seeker")
+                        }
+                    )
+                }
+            }
+        }
+        .alert("Payment Error", isPresented: $showErrorAlert) {
+            Button("OK") { purchaseError = nil }
+        } message: {
+            Text(purchaseError ?? "An unknown error occurred")
+        }
         .onAppear {
             // No need to load listings for seeking posts with custom amounts
             isLoadingListings = false
@@ -246,14 +301,14 @@ struct OfferComposeView: View {
             return
         }
         
+        // Show payment method selection immediately (like normal purchases)
+        isLoading = true
         Task {
-            await createOfferWithPrice(
-                seekListingId: seekListing.id,
-                sellerId: currentUserId,
-                seekerId: seekListing.user.id,
-                priceCents: Int(amount * 100),
-                message: message.isEmpty ? nil : message
-            )
+            await loadWalletBalance()
+            await MainActor.run {
+                isLoading = false
+                showPaymentMethodSheet = true
+            }
         }
     }
     
@@ -274,7 +329,8 @@ struct OfferComposeView: View {
                 seeker_id: seekerId,
                 price_cents: priceCents,
                 message: message ?? "",
-                status: "pending"
+                status: "pending",
+                order_id: nil // No order yet for unpaid offers
             )
             
             let response = try await supabase
@@ -421,7 +477,205 @@ struct OfferComposeView: View {
             #endif
         }
     }
+    
+    // MARK: - Payment Flow (Reused from existing checkout)
+    
+    private func loadWalletBalance() async {
+        do {
+            currentWallet = try await walletService.fetchBalance()
+        } catch {
+            print("Failed to load wallet balance: \(error)")
+        }
+    }
+    
+    private func handlePaymentMethodSelection(_ paymentMethod: PaymentMethod) {
+        guard let amount = Double(offerAmount), amount > 0 else { return }
+        guard let currentUserId = authManager.currentUserId else { return }
+        
+        isPrimaryActionLoading = true
+        
+        Task {
+            do {
+                switch paymentMethod {
+                case .wallet:
+                    try await handleWalletPayment(amount: amount, sellerId: currentUserId, seekerId: seekListing.user.id)
+                case .card:
+                    try await handleCardPayment(amount: amount, sellerId: currentUserId, seekerId: seekListing.user.id)
+                }
+            } catch {
+                await MainActor.run {
+                    isPrimaryActionLoading = false
+                    purchaseError = error.localizedDescription
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+    
+    private func handleWalletPayment(amount: Double, sellerId: String, seekerId: String) async throws {
+        guard let currentUserId = authManager.session?.user.id else {
+            throw PaymentError.userNotAuthenticated
+        }
+        
+        guard let wallet = currentWallet else {
+            throw PaymentError.walletNotLoaded
+        }
+        
+        let priceCents = Int(amount * 100)
+        guard wallet.availableCents >= priceCents else {
+            throw PaymentError.insufficientFunds
+        }
+        
+        // Create order with wallet payment (seller is buyer, seeker will be seller after acceptance)
+        let orderCreate = OrderCreate(
+            listingId: seekListing.id,
+            buyerId: currentUserId, // Offer maker pays upfront
+            sellerId: UUID(uuidString: seekerId) ?? UUID(), // Seeker becomes seller
+            priceCents: priceCents,
+            paymentMethod: .wallet,
+            timeSlotId: nil
+        )
+        
+        let order = try await orderService.createOrder(orderCreate)
+        
+        // Also create the offer record for tracking
+        await createOfferRecord(
+            seekListingId: seekListing.id,
+            sellerId: sellerId,
+            seekerId: seekerId,
+            priceCents: priceCents,
+            orderId: order.id
+        )
+        
+        await MainActor.run {
+            isPrimaryActionLoading = false
+            createdOrder = order
+            activeSheet = .purchaseConfirmation
+        }
+    }
+    
+    private func handleCardPayment(amount: Double, sellerId: String, seekerId: String) async throws {
+        guard let currentUserId = authManager.session?.user.id else {
+            throw PaymentError.userNotAuthenticated
+        }
+        
+        let priceCents = Int(amount * 100)
+        
+        // Calculate processing fees
+        let processingFeeCents = paymentService.calculateProcessingFee(amountCents: priceCents)
+        
+        await MainActor.run {
+            self.processingFeeCents = processingFeeCents
+        }
+        
+        // Create order with card payment
+        let orderCreate = OrderCreate(
+            listingId: seekListing.id,
+            buyerId: currentUserId, // Offer maker pays upfront
+            sellerId: UUID(uuidString: seekerId) ?? UUID(), // Seeker becomes seller
+            priceCents: priceCents,
+            paymentMethod: .card,
+            timeSlotId: nil
+        )
+        
+        let order = try await orderService.createOrder(orderCreate)
+        
+        // Also create the offer record for tracking
+        await createOfferRecord(
+            seekListingId: seekListing.id,
+            sellerId: sellerId,
+            seekerId: seekerId,
+            priceCents: priceCents,
+            orderId: order.id
+        )
+        
+        await MainActor.run {
+            isPrimaryActionLoading = false
+            createdOrder = order
+            activeSheet = .purchaseConfirmation
+        }
+    }
+    
+    private func createOfferRecord(
+        seekListingId: UUID,
+        sellerId: String,
+        seekerId: String,
+        priceCents: Int,
+        orderId: UUID
+    ) async {
+        do {
+            let offer = OfferInsert(
+                seek_listing_id: seekListingId.uuidString,
+                seller_id: sellerId,
+                seeker_id: seekerId,
+                price_cents: priceCents,
+                message: message.isEmpty ? "Offer with payment" : message,
+                status: "paid_pending_acceptance", // New status for paid offers
+                order_id: orderId.uuidString // Link to the created order
+            )
+            
+            let _ = try await supabase
+                .from("offers")
+                .insert(offer)
+                .execute()
+            
+            // Send notification message
+            await createOfferMessage(
+                seekListingId: seekListingId,
+                sellerId: sellerId,
+                seekerId: seekerId,
+                priceCents: priceCents,
+                customMessage: message
+            )
+            
+        } catch {
+            print("Failed to create offer record: \(error)")
+        }
+    }
+    
+    /// Creates a virtual listing for the payment flow
+    private func createVirtualListing() -> ListingWithUser {
+        guard let amount = Double(offerAmount) else { return seekListing }
+        
+        return ListingWithUser(
+            id: seekListing.id,
+            title: "Offer for: \(seekListing.title)",
+            description: "Your offer of $\(String(format: "%.2f", amount)) for \(seekListing.title)",
+            price: amount,
+            category: seekListing.category,
+            photo: seekListing.photo,
+            photos: seekListing.photos,
+            isSold: false,
+            listingType: seekListing.listingType,
+            serviceDuration: seekListing.serviceDuration,
+            serviceLocation: seekListing.serviceLocation,
+            serviceAvailability: seekListing.serviceAvailability,
+            serviceType: seekListing.serviceType,
+            slotsAvailable: seekListing.slotsAvailable,
+            maxBookingsPerSlot: seekListing.maxBookingsPerSlot,
+            archived: false,
+            createdAt: Date(),
+            user: seekListing.user,
+            intent: .offer,
+            budgetMin: nil,
+            budgetMax: nil,
+            expiresAt: nil
+        )
+    }
 }
+
+// MARK: - Sheet Router
+enum OfferComposeSheet: Identifiable {
+    case purchaseConfirmation
+    
+    var id: String {
+        switch self {
+        case .purchaseConfirmation: return "purchaseConfirmation"
+        }
+    }
+}
+
+// PaymentError is defined in ListingDetailView.swift
 
 // MARK: - Supporting Views
 
