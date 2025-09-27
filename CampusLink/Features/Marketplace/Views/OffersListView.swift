@@ -23,7 +23,6 @@ struct OffersListView: View {
     @State private var selectedPaymentMethod: PaymentMethod?
     @State private var paymentSheet: PaymentSheet?
     @State private var paymentResult: PaymentSheetResult?
-    @State private var currentPaymentIntentId: String?
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -289,8 +288,7 @@ struct OffersListView: View {
             sellerId: UUID(uuidString: offer.sellerId) ?? UUID(), // Offer maker provides service/product
             priceCents: priceCents,
             paymentMethod: .wallet,
-            timeSlotId: nil,
-            stripePaymentIntentId: nil
+            timeSlotId: nil
         )
         
         let order = try await orderService.createOrder(orderCreate)
@@ -337,19 +335,6 @@ struct OffersListView: View {
                 buyerId: currentUserId.uuidString
             )
             
-            // Extract payment intent ID from client secret
-            // Client secret format: pi_xxx_secret_xxx
-            print("🔑 Offer client secret: \(clientSecret)")
-            let components = clientSecret.split(separator: "_")
-            print("🔑 Offer components: \(components)")
-            if components.count >= 3 && components[0] == "pi" && components[2] == "secret" {
-                let paymentIntentId = "pi_\(components[1])"
-                self.currentPaymentIntentId = paymentIntentId
-                print("🔑 Offer extracted payment intent ID: \(paymentIntentId)")
-            } else {
-                print("❌ Offer unable to extract payment intent ID from client secret")
-                self.currentPaymentIntentId = nil
-            }
             
             // Configure payment sheet
             var configuration = PaymentSheet.Configuration()
@@ -435,8 +420,7 @@ struct OffersListView: View {
                     sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
                     priceCents: offer.priceCents ?? 0,
                     paymentMethod: .card,
-                    timeSlotId: nil,
-                    stripePaymentIntentId: self.currentPaymentIntentId
+                    timeSlotId: nil
                 )
                 
                 let order = try await orderService.createOrder(orderCreate)

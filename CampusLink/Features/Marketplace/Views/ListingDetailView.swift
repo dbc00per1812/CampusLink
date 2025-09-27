@@ -501,12 +501,7 @@ struct ListingDetailView: View {
         }
         
         // Create order with wallet payment
-        print("🔍 Wallet Debug - Raw seller ID from listing: '\(listing.user.id)'")
-        print("🔍 Wallet Debug - Current user ID: '\(currentUserId.uuidString)'")
-        print("🔍 Wallet Debug - Listing ID: '\(listing.id.uuidString)'")
-        
         guard let sellerId = UUID(uuidString: listing.user.id) else {
-            print("❌ Invalid seller UUID format: '\(listing.user.id)'")
             throw PaymentError.orderCreationFailed
         }
         
@@ -516,8 +511,7 @@ struct ListingDetailView: View {
             sellerId: sellerId,
             priceCents: priceCents,
             paymentMethod: .wallet,
-            timeSlotId: selectedTimeSlot?.id,
-            stripePaymentIntentId: nil
+            timeSlotId: selectedTimeSlot?.id
         )
         
         let order = try await orderService.createOrder(orderCreate)
@@ -576,13 +570,7 @@ struct ListingDetailView: View {
                                         self.processingFeeCents = processingFeeCents
                                     }
                                     
-                                    print("🔍 Debug - Raw seller ID from listing: '\(listing.user.id)'")
-                                    print("🔍 Debug - Current user ID: '\(currentUserId.uuidString)'")
-                                    print("🔍 Debug - Listing ID: '\(listing.id.uuidString)'")
-                                    print("🔍 Debug - Payment intent ID: '\(paymentService.paymentIntentId ?? "nil")'")
-                                    
                                     guard let sellerId = UUID(uuidString: listing.user.id) else {
-                                        print("❌ Invalid seller UUID format: '\(listing.user.id)'")
                                         throw PaymentError.orderCreationFailed
                                     }
                                     
@@ -592,8 +580,7 @@ struct ListingDetailView: View {
                                         sellerId: sellerId,
                                         priceCents: basePriceCents,
                                         paymentMethod: .card,
-                                        timeSlotId: selectedTimeSlot?.id,
-                                        stripePaymentIntentId: paymentService.paymentIntentId
+                                        timeSlotId: selectedTimeSlot?.id
                                     )
                                     
                                     let order = try await orderService.createOrder(orderCreate)

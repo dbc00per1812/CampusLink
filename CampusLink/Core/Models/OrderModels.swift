@@ -284,7 +284,6 @@ struct OrderCreate: Codable {
     let priceCents: Int
     let paymentMethod: PaymentMethod
     let timeSlotId: UUID? // For slot-based services
-    let stripePaymentIntentId: String? // For card payments
     
     enum CodingKeys: String, CodingKey {
         case listingId = "listing_id"
@@ -293,7 +292,6 @@ struct OrderCreate: Codable {
         case priceCents = "price_cents"
         case paymentMethod = "payment_method"
         case timeSlotId = "time_slot_id"
-        case stripePaymentIntentId = "stripe_payment_intent_id"
     }
 }
 
@@ -323,30 +321,6 @@ struct OrderInsert: Codable {
         case marketplaceFeeCents = "marketplace_fee_cents"
         case stripePaymentIntentId = "stripe_payment_intent_id"
         case timeSlotId = "time_slot_id"
-    }
-    
-    // Custom encoding to handle nil values properly
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(listingId, forKey: .listingId)
-        try container.encode(buyerId, forKey: .buyerId)
-        try container.encode(sellerId, forKey: .sellerId)
-        try container.encode(priceCents, forKey: .priceCents)
-        try container.encode(paymentMethod, forKey: .paymentMethod)
-        try container.encode(orderStatus, forKey: .orderStatus)
-        try container.encode(paymentStatus, forKey: .paymentStatus)
-        try container.encode(marketplaceFeeCents, forKey: .marketplaceFeeCents)
-        
-        // Only encode optional fields if they have values
-        if let stripeEscrowAccountId = stripeEscrowAccountId {
-            try container.encode(stripeEscrowAccountId, forKey: .stripeEscrowAccountId)
-        }
-        if let stripePaymentIntentId = stripePaymentIntentId {
-            try container.encode(stripePaymentIntentId, forKey: .stripePaymentIntentId)
-        }
-        if let timeSlotId = timeSlotId {
-            try container.encode(timeSlotId, forKey: .timeSlotId)
-        }
     }
 }
 
