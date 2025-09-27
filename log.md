@@ -699,6 +699,19 @@ After fixing auth issues, still got "invalid input syntax for type json" when se
 ### Final Fix:
 - `OfferComposeView.swift` - handleCardPayment() now creates order directly without Stripe
 
+### Update 7 - Root Cause Found:
+The REAL issue: Trying to create orders for seek listings!
+- Orders table expects listing_id to reference a real product/service listing
+- Seek listings (intent='seek') are requests, not sellable items
+- Creating an order with a seek listing ID makes no sense
+- Solution: Don't create orders when making offers on seek listings
+- Just create the offer record, order gets created when offer is accepted
+
+### Final Working Solution:
+- `OfferComposeView.swift` - Both payment handlers now just create offer records
+- No orders are created until the seeker accepts the offer
+- This completely avoids the JSON parsing error
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
