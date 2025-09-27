@@ -17,6 +17,8 @@ struct OffersListView: View {
     @State private var processingFeeCents: Int = 0
     @State private var showErrorAlert = false
     @State private var purchaseError: String?
+    @State private var selectedOrderId: UUID?
+    @State private var showOrderDetail = false
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -143,6 +145,14 @@ struct OffersListView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .background(
+            NavigationLink(
+                destination: OrderDetailNavigationView(orderId: selectedOrderId),
+                isActive: $showOrderDetail
+            ) {
+                EmptyView()
+            }
+        )
     }
     
     private func loadOffers() async {
@@ -195,20 +205,33 @@ struct OffersListView: View {
         case .contactSeller:
             // TODO: Open chat with seller
             print("Contact seller for offer \(offer.id)")
+        case .viewOrder(let orderId):
+            selectedOrderId = orderId
+            showOrderDetail = true
         }
     }
     
     private func acceptOffer(_ offer: Offer) async {
         do {
-            // Step 1: Accept the offer (just updates status)
+            // Accept the offer (just updates status)
             let success = try await OfferService.shared.acceptOfferStatus(offer.id)
             
             if success {
                 await MainActor.run {
-                    // Step 2: Store the accepted offer and show payment method selection
-                    selectedOffer = offer
-                    loadWalletBalance()
-                    showPaymentMethodSheet = true
+                    // Check if offer already has an associated order (was paid when created)
+                    if let orderId = offer.orderId {
+                        // Offer was already paid for, just navigate to the order
+                        selectedOrderId = orderId
+                        showOrderDetail = true
+                        print("📊 Analytics: Navigating to existing order for accepted offer - Order: \(orderId)")
+                    } else {
+                        // Legacy flow: offer needs payment after acceptance
+                        // This shouldn't happen with the new flow where payment happens when making the offer
+                        selectedOffer = offer
+                        loadWalletBalance()
+                        showPaymentMethodSheet = true
+                        print("⚠️ Legacy offer without pre-payment detected - Offer: \(offer.id)")
+                    }
                     
                     // Refresh offers list to show accepted status
                     Task {
@@ -280,10 +303,11 @@ struct OffersListView: View {
         }
         
         // Create order with wallet payment using existing flow
+        // When accepting an offer: seeker (current user) pays, offer maker provides the service/product
         let orderCreate = OrderCreate(
             listingId: offer.seekListingId, // Use seek listing as reference
-            buyerId: currentUserId,
-            sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
+            buyerId: currentUserId, // Seeker pays when accepting the offer
+            sellerId: UUID(uuidString: offer.sellerId) ?? UUID(), // Offer maker provides service/product
             priceCents: priceCents,
             paymentMethod: .wallet,
             timeSlotId: nil
@@ -415,6 +439,7 @@ enum OfferAction {
     case decline
     case viewListing
     case contactSeller
+    case viewOrder(UUID)
 }
 
 struct OfferRowView: View {
@@ -422,6 +447,10 @@ struct OfferRowView: View {
     let onAction: (OfferAction) -> Void
     
     @State private var sellerName: String = "Loading..."
+    
+    private var isClickableAcceptedOffer: Bool {
+        offer.status == "accepted" && offer.orderId != nil
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -452,14 +481,21 @@ struct OfferRowView: View {
                     .foregroundColor(.secondary)
                     
                     // Status badge
-                    Text(offer.status.capitalized)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(offer.statusColor.opacity(0.2))
-                        .foregroundColor(offer.statusColor)
-                        .cornerRadius(8)
+                    HStack(spacing: 4) {
+                        if offer.orderId != nil {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                        Text(offer.displayStatus)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(offer.statusColor.opacity(0.2))
+                    .foregroundColor(offer.statusColor)
+                    .cornerRadius(8)
                 }
             }
             
@@ -482,8 +518,8 @@ struct OfferRowView: View {
             }
             }
             
-            // Action buttons for pending offers
-            if offer.status == "pending" {
+            // Action buttons for pending offers (including paid pending)
+            if offer.status == "pending" || offer.status == "paid_pending_acceptance" {
                 HStack(spacing: 12) {
                     Button(action: { onAction(.accept) }) {
                         HStack {
@@ -525,11 +561,37 @@ struct OfferRowView: View {
                     }
                 }
             }
+            
+            // Show "View Order" button for accepted offers with an order
+            if isClickableAcceptedOffer {
+                HStack {
+                    Image(systemName: "doc.text.fill")
+                        .font(.caption)
+                        .foregroundColor(Color("ThemeColor"))
+                    Text("View Order Details")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(Color("ThemeColor"))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color("ThemeColor").opacity(0.1))
+                .cornerRadius(8)
+            }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .onTapGesture {
+            if let orderId = offer.orderId, offer.status == "accepted" {
+                onAction(.viewOrder(orderId))
+            }
+        }
         .task {
             await loadSellerName()
         }
@@ -561,11 +623,19 @@ extension Offer {
     var statusColor: Color {
         switch status {
         case "pending": return .orange
+        case "paid_pending_acceptance": return .blue
         case "accepted": return .green
         case "declined": return .red
         case "withdrawn": return .gray
         case "expired": return .gray
         default: return .gray
+        }
+    }
+    
+    var displayStatus: String {
+        switch status {
+        case "paid_pending_acceptance": return "Paid - Awaiting Acceptance"
+        default: return status.capitalized
         }
     }
 }
@@ -580,6 +650,7 @@ struct OfferWithDetails: Codable {
     let message: String?
     let status: String
     let priceCents: Int?
+    let orderId: UUID?
     let createdAt: Date
     let updatedAt: Date
     
@@ -595,6 +666,7 @@ struct OfferWithDetails: Codable {
         case sellerId = "seller_id"
         case message, status
         case priceCents = "price_cents"
+        case orderId = "order_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case offerListing = "offer_listing"
@@ -611,9 +683,80 @@ struct OfferWithDetails: Codable {
             message: message,
             status: status,
             priceCents: priceCents,
+            orderId: orderId,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+}
+
+// MARK: - Order Detail Navigation Wrapper
+struct OrderDetailNavigationView: View {
+    let orderId: UUID?
+    @State private var order: Order?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading order...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let order = order {
+                OrderDetailView(order: order)
+            } else {
+                VStack(spacing: 20) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 50))
+                        .foregroundColor(.orange)
+                    
+                    Text("Order Not Found")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text(errorMessage ?? "The order could not be loaded.")
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .navigationTitle("Order Details")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadOrder()
+        }
+    }
+    
+    private func loadOrder() async {
+        guard let orderId = orderId else {
+            await MainActor.run {
+                errorMessage = "Invalid order ID"
+                isLoading = false
+            }
+            return
+        }
+        
+        do {
+            let fetchedOrder: Order = try await supabase
+                .from("orders")
+                .select("*")
+                .eq("id", value: orderId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.order = fetchedOrder
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to load order: \(error.localizedDescription)"
+                isLoading = false
+            }
+        }
     }
 }
 

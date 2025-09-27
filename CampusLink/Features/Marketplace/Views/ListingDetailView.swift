@@ -921,19 +921,15 @@ struct ListingDetailView: View {
     private var mainPhotoView: some View {
         if selectedPhotoIndex < listing.photos.count,
            let url = URL(string: listing.photos[selectedPhotoIndex]) {
-            AsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } placeholder: {
-                Rectangle()
-                    .fill(Color(UIColor.systemGray5))
-                    .overlay(ProgressView())
-                    .responsiveFrame(height: 220)
-            }
-            .frame(maxWidth: .infinity)
+            ResponsiveAsyncImage(
+                url: url,
+                maxWidth: .infinity,
+                maxHeight: 300,
+                aspectRatio: nil,
+                contentMode: .fit,
+                cornerRadius: 16
+            )
             .background(Color(UIColor.systemBackground))
-            .responsiveCornerRadius(16)
             .gesture(swipeGesture)
             .overlay(photoCounterOverlay)
             .onTapGesture {
@@ -961,18 +957,15 @@ struct ListingDetailView: View {
                 selectedPhotoIndex = index
                 isImageViewerPresented = true
             }) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Rectangle()
-                        .fill(Color(UIColor.systemGray5))
-                        .overlay(ProgressView().scaleEffect(0.5))
-                }
-                .responsiveFrame(width: 80, height: 80)
+                ResponsiveAsyncImage(
+                    url: url,
+                    width: 80,
+                    height: 80,
+                    aspectRatio: 1,
+                    contentMode: .fill,
+                    cornerRadius: 8
+                )
                 .clipped()
-                .responsiveCornerRadius(8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color("ThemeColor"), lineWidth: index == selectedPhotoIndex ? 3 : 1)
@@ -988,19 +981,15 @@ struct ListingDetailView: View {
     
     @ViewBuilder
     private func singlePhotoView(url: URL) -> some View {
-        AsyncImage(url: url) { image in
-            image
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-        } placeholder: {
-            Rectangle()
-                .fill(Color(UIColor.systemGray5))
-                .overlay(ProgressView())
-                .responsiveFrame(height: 220)
-        }
-        .frame(maxWidth: .infinity)
+        ResponsiveAsyncImage(
+            url: url,
+            maxWidth: .infinity,
+            maxHeight: 300,
+            aspectRatio: nil,
+            contentMode: .fit,
+            cornerRadius: 16
+        )
         .background(Color(UIColor.systemBackground))
-        .responsiveCornerRadius(16)
         .onTapGesture { isImageViewerPresented = true }
     }
     

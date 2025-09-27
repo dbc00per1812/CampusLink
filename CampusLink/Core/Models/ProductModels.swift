@@ -308,6 +308,7 @@ struct Offer: Codable, Identifiable {
     let message: String?
     let status: String
     let priceCents: Int?  // Custom offer amount in cents
+    let orderId: UUID?  // Associated order after payment
     let createdAt: Date
     let updatedAt: Date
     
@@ -320,6 +321,7 @@ struct Offer: Codable, Identifiable {
         case message
         case status
         case priceCents = "price_cents"
+        case orderId = "order_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

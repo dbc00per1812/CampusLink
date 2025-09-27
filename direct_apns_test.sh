@@ -26,3 +26,4 @@ echo "Environment: sandbox"
 #   -H "apns-priority: 10" \
 #   -d '{"aps":{"alert":{"title":"Test","body":"Direct APNs test"},"sound":"default"}}' \
 #   https://api.sandbox.push.apple.com/3/device/$DEVICE_TOKEN
+

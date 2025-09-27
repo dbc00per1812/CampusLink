@@ -255,13 +255,20 @@ extension HomeTabView {
 
 
     private func loadListings() async {
-        // Just load all listings - simple and clean
-        await loadAllListings()
+        // Load listings based on current filter
+        switch selectedFilter {
+        case .all:
+            await loadAllListings()
+        case .forSale:
+            await loadOfferListings()
+        case .wanted:
+            await loadSeekListings()
+        }
     }
 
     private func loadMoreListings() async {
-        // Simplified - no pagination needed for basic filters
-        // This keeps the UI happy if it tries to load more
+        // Load more using current filter (though we limit to 20 for now)
+        await refreshListings()
         await MainActor.run { 
             isLoadingMore = false
             hasMorePages = false
@@ -334,11 +341,17 @@ extension HomeTabView {
                 .execute()
                 .value
             
+            print("🔍 SEEK FILTER: Found \(result.count) seeking posts")
+            for listing in result.prefix(3) {
+                print("   - \(listing.title) (intent: \(listing.intent.rawValue), archived: \(listing.archived ?? false))")
+            }
+            
             await MainActor.run {
                 listings = result
                 isLoading = false
             }
         } catch {
+            print("❌ Error loading seek listings: \(error)")
             await MainActor.run {
                 isLoading = false
             }
@@ -347,8 +360,15 @@ extension HomeTabView {
 
 
     private func refreshListings() async {
-        // Simple refresh - just reload all listings
-        await loadAllListings()
+        // Refresh using current filter
+        switch selectedFilter {
+        case .all:
+            await loadAllListings()
+        case .forSale:
+            await loadOfferListings()
+        case .wanted:
+            await loadSeekListings()
+        }
     }
 }
 
@@ -464,32 +484,88 @@ struct ListingCard: View {
             Rectangle()
                 .fill(Color(UIColor.systemGray6))
                 .overlay(ProgressView())
-                .aspectRatio(1, contentMode: .fit)
+                .responsiveFrame(height: 200)
                 .responsiveCornerRadius(12)
-        } else {
-            TabView(selection: $currentImageIndex) {
-                ForEach(Array(urls.enumerated()), id: \.offset) { index, photoURL in
-                    if let url = URL(string: photoURL) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray5))
-                                .overlay(ProgressView())
-                        }
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(1, contentMode: .fit)
-                        .clipped()
-                        .tag(index)
-                    }
-                }
+        } else if urls.count == 1 {
+            // Single image - no TabView to avoid scroll conflicts
+            if let url = URL(string: urls[0]) {
+                ResponsiveAsyncImage(
+                    url: url,
+                    maxWidth: .infinity,
+                    maxHeight: 250,
+                    aspectRatio: nil,
+                    contentMode: .fit,
+                    cornerRadius: 12
+                )
+                .clipped()
             }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: urls.count > 1 ? .automatic : .never))
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .responsiveCornerRadius(12)
+        } else {
+            // Multiple images - use ScrollView instead of TabView to prevent scroll conflicts
+            VStack(spacing: 8) {
+                // Main image
+                if currentImageIndex < urls.count,
+                   let url = URL(string: urls[currentImageIndex]) {
+                    ResponsiveAsyncImage(
+                        url: url,
+                        maxWidth: .infinity,
+                        maxHeight: 250,
+                        aspectRatio: nil,
+                        contentMode: .fit,
+                        cornerRadius: 12
+                    )
+                    .clipped()
+                    .overlay(
+                        // Image counter
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Text("\(currentImageIndex + 1) / \(urls.count)")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(12)
+                                    .padding(.trailing, 8)
+                                    .padding(.bottom, 8)
+                            }
+                        }
+                    )
+                }
+                
+                // Thumbnail navigation
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(urls.enumerated()), id: \.offset) { index, photoURL in
+                            if let url = URL(string: photoURL) {
+                                Button(action: {
+                                    currentImageIndex = index
+                                }) {
+                                    ResponsiveAsyncImage(
+                                        url: url,
+                                        width: 60,
+                                        height: 60,
+                                        aspectRatio: 1,
+                                        contentMode: .fill,
+                                        cornerRadius: 6
+                                    )
+                                    .clipped()
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color("ThemeColor"), lineWidth: index == currentImageIndex ? 2 : 0.5)
+                                            .opacity(index == currentImageIndex ? 1 : 0.3)
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+                .frame(height: 68)
+            }
         }
     }
 

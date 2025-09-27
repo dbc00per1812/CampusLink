@@ -27,3 +27,4 @@ curl -X POST "https://vnmzijluyctlufnzxast.supabase.co/functions/v1/process-push
   -H "Content-Type: application/json"
 
 echo "✅ Test complete!"
+

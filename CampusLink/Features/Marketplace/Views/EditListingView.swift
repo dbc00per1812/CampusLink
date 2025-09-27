@@ -52,6 +52,9 @@ struct EditListingView: View {
     @State private var imageDatas: [Data] = []
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showingImageCropper = false
+    @State private var imageToCrop: UIImage?
+    @State private var cropperIndex: Int = 0
 
     // Product categories
     private let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
@@ -100,15 +103,29 @@ struct EditListingView: View {
                                                     .clipped()
                                                     .cornerRadius(12)
                                                 
-                                                Button(action: {
-                                                    imageDatas.remove(at: index)
-                                                }) {
-                                                    Image(systemName: "xmark.circle.fill")
-                                                        .foregroundColor(.red)
-                                                        .background(Color.white)
-                                                        .clipShape(Circle())
+                                                HStack {
+                                                    Button(action: {
+                                                        cropperIndex = index
+                                                        imageToCrop = ui
+                                                        showingImageCropper = true
+                                                    }) {
+                                                        Image(systemName: "crop")
+                                                            .foregroundColor(.blue)
+                                                            .background(Color.white)
+                                                            .clipShape(Circle())
+                                                    }
+                                                    .offset(x: -16, y: -8)
+                                                    
+                                                    Button(action: {
+                                                        imageDatas.remove(at: index)
+                                                    }) {
+                                                        Image(systemName: "xmark.circle.fill")
+                                                            .foregroundColor(.red)
+                                                            .background(Color.white)
+                                                            .clipShape(Circle())
+                                                    }
+                                                    .offset(x: 8, y: -8)
                                                 }
-                                                .offset(x: 8, y: -8)
                                             }
                                         }
                                     }
@@ -372,6 +389,25 @@ struct EditListingView: View {
             }
         }
         .hideKeyboardOnTap()
+        .sheet(isPresented: $showingImageCropper) {
+            if let imageToCrop = imageToCrop {
+                EnhancedImageCropperView(
+                    originalImage: imageToCrop,
+                    onCropCompleted: { croppedImage in
+                        // Replace the image data at the cropper index
+                        if let croppedData = croppedImage.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) {
+                            imageDatas[cropperIndex] = croppedData
+                        }
+                        showingImageCropper = false
+                        self.imageToCrop = nil
+                    },
+                    onCancel: {
+                        showingImageCropper = false
+                        self.imageToCrop = nil
+                    }
+                )
+            }
+        }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -379,8 +415,16 @@ struct EditListingView: View {
     }
 
     private func loadImage(from item: PhotosPickerItem?) async {
-        guard let item = item, let data = try? await item.loadTransferable(type: Data.self) else { return }
-        await MainActor.run { imageData = data }
+        guard let item = item, 
+              let data = try? await item.loadTransferable(type: Data.self),
+              let uiImage = UIImage(data: data) else { return }
+        
+        // Apply size constraints immediately
+        let resizedData = uiImage.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) ?? data
+        
+        await MainActor.run { 
+            imageData = resizedData 
+        }
     }
     
     private func loadImages(from items: [PhotosPickerItem]) async {
@@ -388,7 +432,14 @@ struct EditListingView: View {
         
         for item in items {
             guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            newImageDatas.append(data)
+            
+            // Apply size constraints to each image
+            if let uiImage = UIImage(data: data) {
+                let resizedData = uiImage.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) ?? data
+                newImageDatas.append(resizedData)
+            } else {
+                newImageDatas.append(data)
+            }
         }
         
         await MainActor.run {

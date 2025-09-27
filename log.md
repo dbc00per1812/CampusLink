@@ -606,6 +606,41 @@ Notes:
 - Supabase Swift: used `.is("read_at", value: "null")` to filter nulls, and `.neq("sender_id", value: userId)`.
 - Local cache sets `readAt = Date()` immediately for snappier UI; realtime UPDATE will reconcile server time.
 
+## Payment RLS Policy Fix - Offer Creation Error
+
+### Issue: "new row violates row-level security policy for table 'payments'" when making offers
+
+### Root Cause: 
+The payments table only had a SELECT RLS policy but no INSERT policy. When users made offers with credit card payment:
+1. OrderService.createOrder() creates an order with payment_status = 'succeeded'
+2. The trigger `create_payment_on_order_insert` automatically tries to insert a payment record
+3. The INSERT was blocked because no RLS policy allowed users to insert payment records
+
+### Solution Created:
+- Created `fix_payments_rls.sql` with comprehensive RLS policies for payments table:
+  - INSERT policy: allows users to create payments when they are buyer or seller
+  - Updated SELECT policy for clarity 
+  - Added UPDATE policy for payment status updates
+  - Added DELETE policy for completeness
+- Ensures RLS is enabled and grants necessary permissions
+
+### Files Changed:
+- `fix_payments_rls.sql` - New SQL script to fix RLS policies
+
+### Next Steps:
+- Apply the SQL script to fix the database policies
+- Test the offer creation flow
+
+### Update - JSON Type Mismatch Fix:
+After applying the RLS fix, encountered "invalid input syntax for type json" error. Root cause was type mismatch:
+- Database expects UUID types for listing_id, buyer_id, seller_id, time_slot_id
+- Swift OrderInsert struct was sending String types instead of UUID types
+- Fixed by changing OrderInsert to use UUID types and removing .uuidString conversions in OrderService
+
+### Files Changed:
+- `OrderModels.swift` - Changed OrderInsert struct to use UUID types
+- `OrderService.swift` - Removed .uuidString conversions when creating OrderInsert
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
@@ -3435,4 +3470,265 @@ The issue was in `WalletView.swift` where the `.task` modifier (lines 38-43) was
 
 ### Technical Details
 The fix leverages the existing `AuthManager.session` property to determine if the user is authenticated before attempting to load wallet data. This is a defensive programming approach that prevents unnecessary API calls and error states when the user is in the process of logging out.
+
+## December 27, 2024 - Accepted Offers Navigation to Order Details
+
+### Issue
+- Accepted offers in the OffersListView were not clickable
+- Users couldn't view order status, escrow details, or confirm delivery/receipt for accepted offers
+- No way to access the order management features after accepting an offer
+
+### Solution
+1. **Updated the Offer model** to include `orderId` field:
+   - Added `orderId: UUID?` to the Offer struct in ProductModels.swift
+   - Updated CodingKeys to map to "order_id" in database
+
+2. **Modified OffersListView** to support order navigation:
+   - Added `selectedOrderId` and `showOrderDetail` state variables
+   - Updated OfferAction enum to include `.viewOrder(UUID)` case
+   - Added NavigationLink to OrderDetailView for accepted offers
+
+3. **Enhanced OfferRowView** UI:
+   - Added visual indicator for accepted offers with orders
+   - Shows "View Order Details" button with document icon
+   - Made accepted offers clickable with onTapGesture
+   - Added chevron icon to indicate navigation
+
+4. **Created OrderDetailNavigationView**:
+   - Wrapper view that loads order data before showing OrderDetailView
+   - Handles loading state and error cases
+   - Fetches order from database using the order_id
+
+### Result
+- Users can now click on accepted offers to view full order details
+- Access to all escrow management features (confirm delivery/receipt)
+- Complete transaction flow from offer acceptance to order completion
+- Visual feedback showing which offers are clickable
+
+### Files Modified
+- CampusLink/Core/Models/ProductModels.swift
+- CampusLink/Features/Marketplace/Views/OffersListView.swift
+
+## December 27, 2024 - Fix Wallet Transaction Visibility for Orders
+
+### Issue
+- Orders created from accepted offers were not showing in wallet transactions
+- Wallet only displays records from "payments" table, but orders were only in "orders" table
+- No automatic sync between orders and payments tables
+
+### Solution
+Created SQL migration script `fix_order_payment_sync.sql` that:
+
+1. **Backfills Missing Payment Records**:
+   - Creates payment records for all existing orders that don't have them
+   - Properly converts cents to dollars for the payments table
+   - Maps order status to payment status
+
+2. **Automatic Sync Triggers**:
+   - `create_payment_on_order_insert`: Creates payment record when order is created
+   - `update_payment_on_order_update`: Updates payment when order status changes
+   - Handles escrow release status and confirmation timestamps
+
+3. **Unified Transaction View**:
+   - Created `get_wallet_transactions()` function that combines orders and payments
+   - Returns deduplicated transaction history from both tables
+   - Properly handles cases where only order or only payment exists
+
+### Result
+- All orders now automatically create payment records
+- Wallet shows complete transaction history including offer-based orders
+- Maintains compatibility with existing payment flows
+- Ensures data consistency between orders and payments tables
+
+### Files Modified
+- Created: fix_order_payment_sync.sql
+
+## December 27, 2024 - Complete Offer-Order-Wallet Flow Alignment
+
+### Issue
+- The offer acceptance flow was trying to create new payments instead of using existing orders
+- Paid offers weren't properly navigating to their associated orders
+- No visual distinction between paid and unpaid offers
+
+### Solution
+1. **Fixed Offer Acceptance Logic**:
+   - When accepting a paid offer (has order_id), navigate directly to order details
+   - No longer ask for payment when accepting already-paid offers
+   - Maintain legacy support for unpaid offers
+
+2. **Enhanced UI for Paid Offers**:
+   - Added checkmark seal icon for paid offers
+   - New status "paid_pending_acceptance" with blue color
+   - Display "Paid - Awaiting Acceptance" for better clarity
+   - Accept/Decline buttons work for both paid and unpaid offers
+
+3. **Complete Flow**:
+   - Seller makes offer with payment → Money goes to escrow
+   - Seeker accepts offer → Navigate to existing order
+   - Both parties see order in wallet transactions
+   - Can confirm delivery/receipt through normal order flow
+   - Money released from escrow when both confirm
+
+### Result
+- Seamless flow from offer creation to order completion
+- No duplicate payments or confusion
+- Clear visual indicators of offer payment status
+- Reuses 100% of existing order/escrow infrastructure
+
+### Files Modified
+- CampusLink/Features/Marketplace/Views/OffersListView.swift
+
+
+
+## Image Scrolling and Cropping Fixes - Saturday, September 27, 2025
+
+### Issue: Scrolling Problems and Oversized Images in Posts
+
+**Problem Identified:**
+User reported scrolling not working on posts and images being too big. The issue was caused by:
+1. TabView in ListingCard interfering with ScrollView scrolling
+2. No image size constraints causing layout problems  
+3. No image cropping functionality for users
+
+**Solutions Implemented:**
+
+#### 1. Fixed Scrolling Issues
+- **File Modified**: `CampusLink/Features/Home/HomeTabView.swift`
+- **Changes Made**:
+  - Replaced TabView with ScrollView-based image navigation to prevent scroll conflicts
+  - Implemented single image handling (no TabView for single images) 
+  - Added thumbnail navigation for multiple images with horizontal ScrollView
+  - Used ResponsiveAsyncImage for consistent sizing across all devices
+
+#### 2. Added Image Cropping Functionality  
+- **File Created**: `CampusLink/Shared/Views/ImageCropperView.swift`
+- **Features Added**:
+  - `ImageCropperView`: Basic SwiftUI wrapper for image cropping
+  - `EnhancedImageCropperView`: Advanced cropper with predefined aspect ratios (1:1, 4:5, 16:9, original)
+  - Automatic size constraints (max 1080px) applied to cropped images
+  - Image quality optimization with 80% JPEG compression
+
+#### 3. Implemented Image Size Constraints
+- **Files Modified**: 
+  - `CampusLink/Features/Marketplace/Views/EditListingView.swift`
+  - `CampusLink/Features/Marketplace/Views/ListingDetailView.swift`
+- **Changes Made**:
+  - Automatic image resizing on upload (max 1080px dimension)
+  - Integrated image cropper into EditListingView with crop button for each image
+  - Updated image loading functions to apply size constraints immediately  
+  - Replaced all AsyncImage instances with ResponsiveAsyncImage for consistent sizing
+
+#### 4. Enhanced Responsive Image System
+- **Files Leveraged**: 
+  - `CampusLink/Shared/Extensions/View+ResponsiveImages.swift`
+  - `CampusLink/Shared/Extensions/UIImage+Resize.swift`
+- **Improvements**:
+  - Used existing ResponsiveAsyncImage component for consistent image handling
+  - Applied responsive design patterns across all image displays
+  - Set maximum heights (300px for detail views, dynamic for cards) to prevent oversized images
+
+#### 5. UI/UX Improvements
+- **Image Navigation**: Smooth thumbnail navigation instead of conflicting TabViews
+- **Visual Feedback**: Image counters and selection indicators for better user experience  
+- **Device Adaptation**: All image components now properly scale across iPhone sizes
+- **Accessibility**: Maintained accessibility features while improving visual design
+
+**Technical Details:**
+- Used existing UIImage+Resize extension for consistent image processing
+- Leveraged ResponsiveAsyncImage component for device-adaptive image sizing
+- Applied 1080px max dimension constraint to prevent storage bloat and loading issues
+- Maintained backward compatibility with existing single-photo listings
+
+**Result**: 
+- Fixed scrolling conflicts between TabView and ScrollView
+- Users can now crop images to appropriate sizes during post creation
+- All images are automatically constrained to prevent layout issues
+- Consistent responsive behavior across all iOS device sizes
+- Better user experience with smooth navigation and proper image sizing
+
+---
+
+## September 27, 2025 - Image Sizing Fix (16:19)
+
+**Goal:** Fix oversized post images in the home feed that were taking up excessive screen space
+
+### Problem Identified:
+- User reported post pictures were "massive taking up a bunch of the home screen"  
+- Issue was in `ListingCard` component in `HomeTabView.swift`
+- Images were using `ResponsiveAsyncImage` with:
+  - `maxWidth: .infinity` (allowing unlimited width)
+  - `aspectRatio: 1` (forcing square aspect ratio) 
+  - `contentMode: .fill` (filling the entire square)
+- This combination created very large square images that dominated the screen
+
+### Solution Implemented:
+
+**Modified `listingImagesCarousel()` method in HomeTabView.swift:**
+
+1. **Empty State Fix:**
+   - Changed from `aspectRatio: 1, contentMode: .fit` to `responsiveFrame(height: 200)`
+   - Provides consistent height for loading placeholders
+
+2. **Single Image Display:**
+   - Added `maxHeight: 250` constraint to prevent oversized images
+   - Changed `aspectRatio: 1` to `aspectRatio: nil` to preserve original proportions  
+   - Changed `contentMode: .fill` to `contentMode: .fit` to show entire image
+
+3. **Multiple Images Main Display:**
+   - Applied same constraints as single images
+   - Maintained thumbnail navigation unchanged (60x60 squares are appropriate)
+
+### Technical Details:
+- **File Modified:** `CampusLink/Features/Home/HomeTabView.swift`
+- **Lines Changed:** 480-536 in `listingImagesCarousel()` method
+- **Build Status:** ✅ Successful compilation on iPhone 16 simulator
+- **Linting:** ✅ No errors introduced
+
+### Key Changes Applied:
+```swift
+// Before:
+ResponsiveAsyncImage(
+    url: url,
+    maxWidth: .infinity,
+    aspectRatio: 1,
+    contentMode: .fill,
+    cornerRadius: 12
+)
+
+// After:  
+ResponsiveAsyncImage(
+    url: url,
+    maxWidth: .infinity,
+    maxHeight: 250,
+    aspectRatio: nil,
+    contentMode: .fit,
+    cornerRadius: 12
+)
+```
+
+### Impact & Benefits:
+
+1. **User Experience:**
+   - Images display at reasonable sizes in home feed
+   - No more giant images dominating the screen
+   - Original image aspect ratios preserved (no forced squares)
+   - Complete image content visible (no cropping)
+
+2. **Responsive Design:**
+   - Still scales properly across all iPhone sizes via ResponsiveAsyncImage
+   - 250px max height provides good visibility without overwhelming interface
+   - Consistent spacing and layout maintained
+
+3. **Backward Compatibility:**
+   - ✅ Fix applies to ALL existing posts immediately (UI constraint change only)
+   - ✅ No data migration needed
+   - ✅ No changes to upload/storage logic required
+
+### Reasoning:
+- **250px max height:** Provides good image visibility without screen domination
+- **Aspect ratio preservation:** Respects photographer's original composition  
+- **Content mode .fit:** Ensures no important image details are lost to cropping
+- **Thumbnail squares maintained:** 60x60 navigation thumbnails remain appropriate
+
+**Result:** Images now display properly sized in home feed while maintaining responsive design and backward compatibility with all existing posts.
 
