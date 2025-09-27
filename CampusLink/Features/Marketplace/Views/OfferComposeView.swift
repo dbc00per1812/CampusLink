@@ -553,7 +553,8 @@ struct OfferComposeView: View {
     }
     
     private func handleWalletPayment(amount: Double, sellerId: String, seekerId: String) async throws {
-        guard let currentUserId = authManager.session?.user.id else {
+        guard let currentUserIdString = authManager.currentUserId,
+              let currentUserId = UUID(uuidString: currentUserIdString) else {
             throw PaymentError.userNotAuthenticated
         }
         
@@ -595,7 +596,8 @@ struct OfferComposeView: View {
     }
     
     private func handleCardPayment(amount: Double, sellerId: String, seekerId: String) async throws {
-        guard let currentUserId = authManager.session?.user.id else {
+        guard let currentUserIdString = authManager.currentUserId,
+              let currentUserId = UUID(uuidString: currentUserIdString) else {
             throw PaymentError.userNotAuthenticated
         }
         
