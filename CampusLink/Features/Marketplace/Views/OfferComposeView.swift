@@ -1,5 +1,6 @@
 import SwiftUI
 import Supabase
+import StripePaymentSheet
 
 // MARK: - Offer Insert Model
 private struct OfferInsert: Encodable {
@@ -53,6 +54,7 @@ struct OfferComposeView: View {
     @State private var processingFeeCents: Int = 0
     @State private var showErrorAlert = false
     @State private var purchaseError: String?
+    @State private var sentOfferDetails: (amount: Double, paymentMethod: PaymentMethod)?
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -238,9 +240,21 @@ struct OfferComposeView: View {
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
-            case .purchaseConfirmation:
-                // Not used for offers anymore
-                EmptyView()
+            case .offerConfirmation:
+                OfferConfirmationView(
+                    seekListing: seekListing,
+                    offerAmount: sentOfferDetails?.amount ?? 0,
+                    paymentMethod: sentOfferDetails?.paymentMethod ?? .wallet,
+                    onDismiss: {
+                        activeSheet = nil
+                        dismiss()
+                    },
+                    onViewOffers: {
+                        activeSheet = nil
+                        dismiss()
+                        // TODO: Navigate to offers list
+                    }
+                )
             }
         }
         .alert("Payment Error", isPresented: $showErrorAlert) {
@@ -560,15 +574,13 @@ struct OfferComposeView: View {
         
         await MainActor.run {
             isPrimaryActionLoading = false
-            // Show success and dismiss
-            dismiss()
+            sentOfferDetails = (amount: amount, paymentMethod: .wallet)
+            activeSheet = .offerConfirmation
         }
     }
     
     private func handleCardPayment(amount: Double, sellerId: String, seekerId: String) async throws {
-        // For offers on seek listings, we don't create orders immediately
-        // We just create the offer record and mark it as requiring payment
-        
+        // For card payments, we need to collect payment method using Stripe
         guard let currentUserIdString = authManager.currentUserId else {
             throw PaymentError.userNotAuthenticated
         }
@@ -580,22 +592,27 @@ struct OfferComposeView: View {
         
         await MainActor.run {
             self.processingFeeCents = processingFeeCents
+            isPrimaryActionLoading = false
         }
         
-        // Create the offer record without an order
-        // The order will be created when the seeker accepts the offer
+        // For now, just create the offer without payment method
+        // In production, you'd want to:
+        // 1. Create a SetupIntent on the backend
+        // 2. Show Stripe payment sheet to collect card
+        // 3. Save the payment method ID with the offer
+        
+        // Create the offer record
         await createOfferRecord(
             seekListingId: seekListing.id,
             sellerId: sellerId,
             seekerId: seekerId,
             priceCents: priceCents,
-            orderId: nil  // No order yet for card payment offers
+            orderId: nil
         )
         
         await MainActor.run {
-            isPrimaryActionLoading = false
-            // Show a custom confirmation for offer submission
-            dismiss()
+            sentOfferDetails = (amount: amount, paymentMethod: .card)
+            activeSheet = .offerConfirmation
         }
     }
     
@@ -669,11 +686,11 @@ struct OfferComposeView: View {
 
 // MARK: - Sheet Router
 enum OfferComposeSheet: Identifiable {
-    case purchaseConfirmation
+    case offerConfirmation
     
     var id: String {
         switch self {
-        case .purchaseConfirmation: return "purchaseConfirmation"
+        case .offerConfirmation: return "offerConfirmation"
         }
     }
 }
@@ -681,6 +698,142 @@ enum OfferComposeSheet: Identifiable {
 // PaymentError is defined in ListingDetailView.swift
 
 // MARK: - Supporting Views
+
+struct OfferConfirmationView: View {
+    let seekListing: ListingWithUser
+    let offerAmount: Double
+    let paymentMethod: PaymentMethod
+    let onDismiss: () -> Void
+    let onViewOffers: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Success Icon
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.green)
+                    .padding(.top, 40)
+                
+                Text("Offer Sent!")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .padding(.top, 20)
+                
+                Text("Your offer has been sent to \(seekListing.user.name)")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+                    .padding(.top, 8)
+                
+                // Offer Details Card
+                VStack(spacing: 16) {
+                    HStack {
+                        Text("Amount")
+                        Spacer()
+                        Text("$\(String(format: "%.2f", offerAmount))")
+                            .fontWeight(.semibold)
+                    }
+                    
+                    Divider()
+                    
+                    HStack {
+                        Text("Payment Method")
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Image(systemName: paymentMethod == .card ? "creditcard" : "wallet.pass")
+                                .font(.caption)
+                            Text(paymentMethod == .card ? "Card" : "Wallet")
+                        }
+                        .foregroundColor(.secondary)
+                    }
+                    
+                    Divider()
+                    
+                    HStack {
+                        Text("Status")
+                        Spacer()
+                        Text("Pending Response")
+                            .foregroundColor(.orange)
+                    }
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal)
+                .padding(.top, 30)
+                
+                // What happens next
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("What happens next?")
+                        .font(.headline)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label {
+                            Text(paymentMethod == .card ? 
+                                "Your card will be charged when the seeker accepts" : 
+                                "Payment will be deducted when the seeker accepts")
+                        } icon: {
+                            Image(systemName: "1.circle.fill")
+                                .foregroundColor(.blue)
+                        }
+                        
+                        Label {
+                            Text("You'll get a notification when they respond")
+                        } icon: {
+                            Image(systemName: "2.circle.fill")
+                                .foregroundColor(.blue)
+                        }
+                        
+                        Label {
+                            Text("Start the conversation once accepted")
+                        } icon: {
+                            Image(systemName: "3.circle.fill")
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .font(.caption)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Spacer()
+                
+                // Action Buttons
+                VStack(spacing: 12) {
+                    Button(action: onViewOffers) {
+                        Text("View My Offers")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    
+                    Button(action: onDismiss) {
+                        Text("Done")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.gray.opacity(0.2))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 30)
+            }
+            .navigationBarItems(
+                trailing: Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.secondary)
+                }
+            )
+        }
+    }
+}
 
 struct ListingSelectionRow: View {
     let listing: ListingWithUser
