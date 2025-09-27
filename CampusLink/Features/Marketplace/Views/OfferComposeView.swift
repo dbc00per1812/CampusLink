@@ -3,26 +3,26 @@ import Supabase
 
 // MARK: - Offer Insert Model
 private struct OfferInsert: Encodable {
-    let seek_listing_id: UUID
-    let seller_id: UUID
-    let seeker_id: UUID
+    let seek_listing_id: String
+    let seller_id: String
+    let seeker_id: String
     let price_cents: Int
     let message: String
     let status: String
-    let order_id: UUID?
+    let order_id: String?
 }
 
 // MARK: - Conversation Insert Model
 private struct ConversationInsert: Encodable {
-    let listing_id: UUID
-    let buyer_id: UUID
-    let seller_id: UUID
+    let listing_id: String
+    let buyer_id: String
+    let seller_id: String
 }
 
-// MARK: - Message Insert Model
+// MARK: - Message Insert Model  
 private struct MessageInsert: Encodable {
-    let conversation_id: UUID
-    let sender_id: UUID
+    let conversation_id: String
+    let sender_id: String
     let content: String
     let message_type: String
 }
@@ -325,9 +325,9 @@ struct OfferComposeView: View {
         do {
             // Create the offer with custom price
             let offer = OfferInsert(
-                seek_listing_id: seekListingId,
-                seller_id: UUID(uuidString: sellerId) ?? UUID(),
-                seeker_id: UUID(uuidString: seekerId) ?? UUID(),
+                seek_listing_id: seekListingId.uuidString,
+                seller_id: sellerId,
+                seeker_id: seekerId,
                 price_cents: priceCents,
                 message: message ?? "",
                 status: "pending",
@@ -435,9 +435,9 @@ struct OfferComposeView: View {
             } else {
                 // Create new conversation
                 let newConversation = ConversationInsert(
-                    listing_id: seekListingId,
-                    buyer_id: UUID(uuidString: seekerId) ?? UUID(),
-                    seller_id: UUID(uuidString: sellerId) ?? UUID()
+                    listing_id: seekListingId.uuidString,
+                    buyer_id: seekerId,
+                    seller_id: sellerId
                 )
                 
                 let created: [Conversation] = try await supabase
@@ -461,8 +461,8 @@ struct OfferComposeView: View {
             messageContent += "\n\n🔗 Accept this offer in your messages or wallet to proceed with purchase."
             
             let message = MessageInsert(
-                conversation_id: conversation.id,
-                sender_id: UUID(uuidString: sellerId) ?? UUID(),
+                conversation_id: conversation.id.uuidString,
+                sender_id: sellerId,
                 content: messageContent,
                 message_type: "offer_notification"
             )
