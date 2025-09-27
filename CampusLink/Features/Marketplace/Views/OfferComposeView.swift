@@ -480,52 +480,8 @@ struct OfferComposeView: View {
         }
     }
     
-    // MARK: - Payment Flow (Reused from existing checkout)
-    
-    private func loadWalletBalance() async throws {
-        do {
-            currentWallet = try await walletService.fetchBalance()
-        } catch {
-            print("Failed to load wallet balance: \(error)")
-            await MainActor.run {
-                // Continue even if wallet loading fails - user can still pay with card
-                purchaseError = "Could not load wallet balance. You can still pay with card."
-            }
-            // Re-throw to allow proper error handling
-            throw error
-        }
-    }
     
     
-    /// Creates a virtual listing for the payment flow
-    private func createVirtualListing() -> ListingWithUser {
-        guard let amount = Double(offerAmount) else { return seekListing }
-        
-        return ListingWithUser(
-            id: seekListing.id,
-            title: "Offer for: \(seekListing.title)",
-            description: "Your offer of $\(String(format: "%.2f", amount)) for \(seekListing.title)",
-            price: amount,
-            category: seekListing.category,
-            photo: seekListing.photo,
-            photos: seekListing.photos,
-            isSold: false,
-            listingType: seekListing.listingType,
-            serviceDuration: seekListing.serviceDuration,
-            serviceLocation: seekListing.serviceLocation,
-            serviceAvailability: seekListing.serviceAvailability,
-            serviceType: seekListing.serviceType,
-            slotsAvailable: seekListing.slotsAvailable,
-            maxBookingsPerSlot: seekListing.maxBookingsPerSlot,
-            archived: false,
-            createdAt: Date(),
-            user: seekListing.user,
-            intent: .offer,
-            budgetMin: nil,
-            budgetMax: nil,
-            expiresAt: nil
-        )
-    }
 }
 
 // MARK: - Sheet Router
