@@ -277,11 +277,12 @@ struct OfferComposeView: View {
                 status: "pending"
             )
             
-            let _: [Offer] = try await supabase
+            let response = try await supabase
                 .from("offers")
                 .insert(offer)
                 .execute()
-                .value
+            
+            print("✅ Offer inserted successfully")
             
             // Send a message with the offer details
             await createOfferMessage(
