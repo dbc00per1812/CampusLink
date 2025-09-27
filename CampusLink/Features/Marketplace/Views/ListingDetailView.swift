@@ -217,7 +217,7 @@ struct ListingDetailView: View {
             // Clear any stale payment state when view appears
             paymentService.paymentResult = nil
             paymentService.paymentSheet = nil
-            activeSheet = nil  // Ensure no sheet is shown on appear
+            // Don't clear activeSheet here - it interferes with purchase confirmation
             
             // Load wallet balance for payment method selection
             if !isOwnListing && listing.listingType == .product {
@@ -228,7 +228,7 @@ struct ListingDetailView: View {
             // Clear to prevent re-triggering elsewhere
             paymentService.paymentResult = nil
             paymentService.paymentSheet = nil
-            activeSheet = nil  // Clear sheet state
+            // Don't clear activeSheet here - let natural dismissal handle it
         }
     }
 
