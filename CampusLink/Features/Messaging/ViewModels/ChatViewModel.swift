@@ -233,10 +233,6 @@ class ChatViewModel: ObservableObject {
                 #if DEBUG
                 print("Failed to send message via RPC: \(error)")
                 print("RPC Error details: \(error.localizedDescription)")
-                if let supabaseError = error as? PostgRESTError {
-                    print("PostgREST RPC Error: \(supabaseError)")
-                }
-                print("Params sent: \(params)")
                 print("User ID: \(userId)")
                 print("Conversation ID: \(conversation.id.uuidString)")
                 print("Is participant: \(conversation.isParticipant(userId: userId))")
