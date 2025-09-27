@@ -27,6 +27,14 @@ private struct MessageInsert: Encodable {
     let message_type: String
 }
 
+// MARK: - Pending Card Payment Model
+private struct PendingCardPayment {
+    let amount: Double
+    let sellerId: String
+    let seekerId: String
+    let currentUserId: UUID
+}
+
 struct OfferComposeView: View {
     let seekListing: ListingWithUser
     @Environment(\.dismiss) private var dismiss
@@ -53,6 +61,7 @@ struct OfferComposeView: View {
     @State private var processingFeeCents: Int = 0
     @State private var showErrorAlert = false
     @State private var purchaseError: String?
+    @State private var pendingCardPayment: PendingCardPayment?
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -596,6 +605,9 @@ struct OfferComposeView: View {
     }
     
     private func handleCardPayment(amount: Double, sellerId: String, seekerId: String) async throws {
+        // For offers, we skip Stripe payment flow and create a pending order
+        // The actual payment will be processed when the offer is accepted
+        
         guard let currentUserIdString = authManager.currentUserId,
               let currentUserId = UUID(uuidString: currentUserIdString) else {
             throw PaymentError.userNotAuthenticated
@@ -603,26 +615,29 @@ struct OfferComposeView: View {
         
         let priceCents = Int(amount * 100)
         
-        // Calculate processing fees
+        // Calculate processing fees for display
         let processingFeeCents = paymentService.calculateProcessingFee(amountCents: priceCents)
         
         await MainActor.run {
             self.processingFeeCents = processingFeeCents
         }
         
-        // Create order with card payment
+        // Create a pending order for the offer
+        // Note: For offers, we create an order with status "pending" that will be 
+        // processed when the seeker accepts the offer
         let orderCreate = OrderCreate(
             listingId: seekListing.id,
-            buyerId: currentUserId, // Offer maker pays upfront
-            sellerId: UUID(uuidString: seekerId) ?? UUID(), // Seeker becomes seller
+            buyerId: currentUserId,
+            sellerId: UUID(uuidString: seekerId) ?? UUID(),
             priceCents: priceCents,
             paymentMethod: .card,
             timeSlotId: nil
         )
         
+        // Create order with pending payment status
         let order = try await orderService.createOrder(orderCreate)
         
-        // Also create the offer record for tracking
+        // Create the offer record linking to this order
         await createOfferRecord(
             seekListingId: seekListing.id,
             sellerId: sellerId,
