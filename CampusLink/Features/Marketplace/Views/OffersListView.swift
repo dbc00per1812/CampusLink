@@ -8,6 +8,19 @@ struct OffersListView: View {
     @State private var offers: [Offer] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var showPaymentMethodSheet = false
+    @State private var selectedOffer: Offer?
+    @State private var currentWallet: Wallet?
+    @State private var createdOrder: Order?
+    @State private var activeSheet: OfferSheet?
+    @State private var isPrimaryActionLoading = false
+    @State private var processingFeeCents: Int = 0
+    @State private var showErrorAlert = false
+    @State private var purchaseError: String?
+    
+    @StateObject private var paymentService = PaymentService.shared
+    @StateObject private var orderService = OrderService.shared
+    @StateObject private var walletService = WalletService.shared
     
     var body: some View {
         NavigationView {
@@ -78,6 +91,50 @@ struct OffersListView: View {
                 Task { await loadOffers() }
             }
         }
+        .sheet(isPresented: $showPaymentMethodSheet) {
+            if let offer = selectedOffer {
+                PaymentMethodSheet(
+                    listing: createVirtualListing(from: offer),
+                    wallet: currentWallet,
+                    onPaymentMethodSelected: { paymentMethod in
+                        showPaymentMethodSheet = false
+                        handlePaymentMethodSelection(paymentMethod)
+                    }
+                )
+            }
+        }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .purchaseConfirmation:
+                if let order = createdOrder, let offer = selectedOffer {
+                    PurchaseConfirmationView(
+                        listing: createVirtualListing(from: offer),
+                        order: order,
+                        paymentMethod: order.paymentMethod,
+                        onDismiss: {
+                            activeSheet = nil
+                            createdOrder = nil
+                            selectedOffer = nil
+                        },
+                        onViewOrder: {
+                            // Navigate to order details
+                            if let order = createdOrder {
+                                print("📱 Navigate to order details: \(order.id)")
+                            }
+                        },
+                        onContactSeller: {
+                            // Navigate to chat with seller
+                            print("📱 Contact seller")
+                        }
+                    )
+                }
+            }
+        }
+        .alert("Payment Error", isPresented: $showErrorAlert) {
+            Button("OK") { purchaseError = nil }
+        } message: {
+            Text(purchaseError ?? "An unknown error occurred")
+        }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -143,11 +200,16 @@ struct OffersListView: View {
     
     private func acceptOffer(_ offer: Offer) async {
         do {
-            let response = try await OfferService.shared.acceptOffer(offer.id)
+            // Step 1: Accept the offer (just updates status)
+            let acceptedOffer = try await OfferService.shared.acceptOfferStatus(offer.id)
             
             await MainActor.run {
-                errorMessage = "Offer accepted! Order #\(response.orderId.uuidString.prefix(8)) created."
-                // Refresh offers list
+                // Step 2: Store the accepted offer and show payment method selection
+                selectedOffer = acceptedOffer
+                loadWalletBalance()
+                showPaymentMethodSheet = true
+                
+                // Refresh offers list to show accepted status
                 Task {
                     await loadOffers()
                 }
@@ -165,6 +227,105 @@ struct OffersListView: View {
                 }
             }
             print("❌ Failed to accept offer: \(error)")
+        }
+    }
+    
+    private func loadWalletBalance() {
+        Task {
+            do {
+                currentWallet = try await walletService.fetchBalance()
+            } catch {
+                print("Failed to load wallet balance: \(error)")
+            }
+        }
+    }
+    
+    private func handlePaymentMethodSelection(_ paymentMethod: PaymentMethod) {
+        guard let offer = selectedOffer else { return }
+        
+        isPrimaryActionLoading = true
+        
+        Task {
+            do {
+                switch paymentMethod {
+                case .wallet:
+                    try await handleWalletPayment(for: offer)
+                case .card:
+                    try await handleCardPayment(for: offer)
+                }
+            } catch {
+                await MainActor.run {
+                    isPrimaryActionLoading = false
+                    purchaseError = error.localizedDescription
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+    
+    private func handleWalletPayment(for offer: Offer) async throws {
+        guard let currentUserId = authManager.session?.user.id else {
+            throw PaymentError.userNotAuthenticated
+        }
+        
+        guard let wallet = currentWallet else {
+            throw PaymentError.walletNotLoaded
+        }
+        
+        let priceCents = offer.priceCents ?? 0
+        guard wallet.availableCents >= priceCents else {
+            throw PaymentError.insufficientFunds
+        }
+        
+        // Create order with wallet payment using existing flow
+        let orderCreate = OrderCreate(
+            listingId: offer.seekListingId, // Use seek listing as reference
+            buyerId: currentUserId,
+            sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
+            priceCents: priceCents,
+            paymentMethod: .wallet,
+            timeSlotId: nil
+        )
+        
+        let order = try await orderService.createOrder(orderCreate)
+        
+        await MainActor.run {
+            isPrimaryActionLoading = false
+            createdOrder = order
+            activeSheet = .purchaseConfirmation
+        }
+    }
+    
+    private func handleCardPayment(for offer: Offer) async throws {
+        guard let currentUserId = authManager.session?.user.id else {
+            throw PaymentError.userNotAuthenticated
+        }
+        
+        let priceCents = offer.priceCents ?? 0
+        
+        // Calculate processing fees
+        let processingFeeCents = paymentService.calculateProcessingFee(amountCents: priceCents)
+        
+        await MainActor.run {
+            self.processingFeeCents = processingFeeCents
+        }
+        
+        // Create order with card payment using existing flow
+        let orderCreate = OrderCreate(
+            listingId: offer.seekListingId,
+            buyerId: currentUserId,
+            sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
+            priceCents: priceCents,
+            paymentMethod: .card,
+            timeSlotId: nil
+        )
+        
+        let order = try await orderService.createOrder(orderCreate)
+        
+        await MainActor.run {
+            isPrimaryActionLoading = false
+            createdOrder = order
+            activeSheet = .purchaseConfirmation
         }
     }
     
@@ -190,7 +351,61 @@ struct OffersListView: View {
         }
     }
     
-    // createOrderFromOffer is no longer needed - the accept_offer RPC function handles order creation
+    // MARK: - Helper Functions
+    
+    /// Creates a virtual listing for the payment flow using offer data
+    private func createVirtualListing(from offer: Offer) -> ListingWithUser {
+        // Create a virtual seller user from the offer seller ID
+        let virtualSeller = User(
+            id: offer.sellerId,
+            name: "Seller", // Will be loaded dynamically in UI
+            bio: nil,
+            profilePic: nil,
+            email: nil,
+            createdAt: Date(),
+            campusEmailVerified: nil,
+            trustScore: nil,
+            stripeConnectId: nil,
+            stripePayoutsEnabled: nil,
+            stripeDetailsSubmitted: nil
+        )
+        
+        return ListingWithUser(
+            id: offer.seekListingId,
+            title: seekListing.title + " (Accepted Offer)",
+            description: "Accepted offer for \(seekListing.title)",
+            price: offer.price,
+            category: seekListing.category,
+            photo: seekListing.photo,
+            photos: seekListing.photos,
+            isSold: false,
+            listingType: seekListing.listingType,
+            serviceDuration: seekListing.serviceDuration,
+            serviceLocation: seekListing.serviceLocation,
+            serviceAvailability: seekListing.serviceAvailability,
+            serviceType: seekListing.serviceType,
+            slotsAvailable: seekListing.slotsAvailable,
+            maxBookingsPerSlot: seekListing.maxBookingsPerSlot,
+            archived: false,
+            createdAt: offer.createdAt,
+            user: virtualSeller, // The seller who made the offer
+            intent: .offer, // Change to offer for payment flow compatibility
+            budgetMin: nil,
+            budgetMax: nil,
+            expiresAt: nil
+        )
+    }
+}
+
+// MARK: - Sheet Router
+enum OfferSheet: Identifiable {
+    case purchaseConfirmation
+    
+    var id: String {
+        switch self {
+        case .purchaseConfirmation: return "purchaseConfirmation"
+        }
+    }
 }
 
 enum OfferAction {
@@ -211,8 +426,8 @@ struct OfferRowView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Offer from \(sellerName)")
-                        .font(.headline)
-                        .lineLimit(1)
+                    .font(.headline)
+                    .lineLimit(1)
                     
                     // Show offer amount
                     if let price = offer.formattedPrice {
@@ -230,9 +445,9 @@ struct OfferRowView: View {
                 Spacer()
                 
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(offer.createdAt, style: .relative)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                Text(offer.createdAt, style: .relative)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                     
                     // Status badge
                     Text(offer.status.capitalized)
@@ -254,15 +469,15 @@ struct OfferRowView: View {
                         .foregroundColor(.secondary)
                         .fontWeight(.medium)
                     
-                    Text(message)
-                        .font(.body)
+                Text(message)
+                    .font(.body)
                         .foregroundColor(.primary)
-                        .lineLimit(3)
+                    .lineLimit(3)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 12)
                         .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                }
+                    .cornerRadius(8)
+            }
             }
             
             // Action buttons for pending offers

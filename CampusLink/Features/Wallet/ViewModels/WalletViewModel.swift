@@ -46,6 +46,10 @@ class WalletViewModel: ObservableObject {
                 errorMessage = "Request was cancelled. Please try again."
             } else if error.localizedDescription.contains("network") {
                 errorMessage = "Network error. Please check your connection and try again."
+            } else if error.localizedDescription.contains("session") || error.localizedDescription.contains("auth") {
+                // Don't show error for auth session issues - user is likely logging out
+                print("🔵 WalletViewModel: Auth session issue - likely user logging out")
+                return
             } else {
                 errorMessage = "Failed to load wallet data: \(error.localizedDescription)"
             }

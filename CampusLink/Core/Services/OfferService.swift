@@ -23,8 +23,8 @@ final class OfferService: ObservableObject {
     static let shared = OfferService()
     private init() {}
     
-    // MARK: - Accept Offer
-    func acceptOffer(_ offerId: UUID) async throws -> AcceptOfferResponse {
+    // MARK: - Accept Offer (Simplified - just updates status)
+    func acceptOfferStatus(_ offerId: UUID) async throws -> Offer {
         guard let userId = try? await supabase.auth.session.user.id else {
             throw OfferError.userNotAuthenticated
         }
@@ -43,20 +43,22 @@ final class OfferService: ObservableObject {
         if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
            let success = json["success"] as? Bool {
             
-            if success {
-                guard let orderId = json["order_id"] as? String,
-                      let orderUuid = UUID(uuidString: orderId),
-                      let conversationId = json["conversation_id"] as? String,
-                      let conversationUuid = UUID(uuidString: conversationId),
-                      let priceCents = json["price_cents"] as? Int else {
-                    throw OfferError.invalidResponse
-                }
+            if success,
+               let offerData = json["offer"] as? [String: Any],
+               let offerJson = try? JSONSerialization.data(withJSONObject: offerData),
+               let offer = try? JSONDecoder().decode(OfferData.self, from: offerJson) {
                 
-                return AcceptOfferResponse(
-                    success: true,
-                    orderId: orderUuid,
-                    conversationId: conversationUuid,
-                    priceCents: priceCents
+                return Offer(
+                    id: offer.id,
+                    seekListingId: offer.seek_listing_id,
+                    offerListingId: nil,
+                    seekerId: offer.seeker_id,
+                    sellerId: offer.seller_id,
+                    message: nil,
+                    status: "accepted",
+                    priceCents: offer.price_cents,
+                    createdAt: Date(),
+                    updatedAt: Date()
                 )
             } else {
                 let error = json["error"] as? String ?? "Unknown error"
@@ -192,21 +194,20 @@ enum OfferError: LocalizedError {
     }
 }
 
-struct AcceptOfferResponse {
-    let success: Bool
-    let orderId: UUID
-    let conversationId: UUID
-    let priceCents: Int
-    
-    var price: Double {
-        Double(priceCents) / 100.0
-    }
-}
+// AcceptOfferResponse no longer needed - using existing order flow
 
 enum OfferRole: String {
     case seeker = "seeker"
     case seller = "seller"
     case both = "both"
+}
+
+struct OfferData: Codable {
+    let id: UUID
+    let seek_listing_id: UUID
+    let seller_id: String
+    let seeker_id: String
+    let price_cents: Int?
 }
 
 struct UserOffer: Codable, Identifiable {

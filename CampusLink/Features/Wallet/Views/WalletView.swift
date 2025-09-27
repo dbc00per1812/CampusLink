@@ -33,9 +33,22 @@ struct WalletView: View {
             }
             .navigationTitle("Wallet")
             .navigationBarTitleDisplayMode(.large)
-            .refreshable { await viewModel.refreshData() }
+            .refreshable { 
+                // Only refresh if user is authenticated
+                guard authManager.session != nil else {
+                    print("🔵 WalletView: Skipping refresh - no authentication session")
+                    return
+                }
+                await viewModel.refreshData() 
+            }
         }
         .task { 
+            // Only load wallet data if user is authenticated
+            guard authManager.session != nil else {
+                print("🔵 WalletView: Skipping wallet data load - no authentication session")
+                return
+            }
+            
             await viewModel.loadWalletData()
             if AppConfig.enableSeekMode {
                 await viewModel.loadPendingOffers()
@@ -525,11 +538,11 @@ struct WalletView: View {
         
         Task {
             do {
-                let response = try await OfferService.shared.acceptOffer(offerId)
+                let _ = try await OfferService.shared.acceptOfferStatus(offerId)
                 await MainActor.run {
                     isProcessingOffer = false
                     showingOfferAcceptance = false
-                    viewModel.errorMessage = "Offer accepted! Order #\(response.orderId.uuidString.prefix(8)) created."
+                    viewModel.errorMessage = "Offer accepted! Please proceed with payment to complete the order."
                     viewModel.isShowingError = true
                     // Refresh data
                     Task {
