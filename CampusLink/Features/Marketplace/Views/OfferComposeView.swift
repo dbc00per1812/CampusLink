@@ -316,22 +316,15 @@ struct OfferComposeView: View {
             return
         }
         
-        // Show payment method selection immediately (like normal purchases)
-        isLoading = true
-        Task {
-            do {
-                await loadWalletBalance()
-                await MainActor.run {
-                    isLoading = false
-                    showPaymentMethodSheet = true
-                }
-            } catch {
-                await MainActor.run {
-                    isLoading = false
-                    errorMessage = "Failed to load payment options: \(error.localizedDescription)"
-                }
-            }
-        }
+        // EMERGENCY FIX: Skip wallet loading if it causes issues
+        print("🔵 submitOffer: Starting offer submission - BYPASSING WALLET")
+        
+        // Set wallet to nil and go directly to payment sheet
+        currentWallet = nil
+        isLoading = false
+        showPaymentMethodSheet = true
+        
+        print("✅ submitOffer: Directly showing payment sheet (wallet bypassed)")
     }
     
     private func createOfferWithPrice(
@@ -502,7 +495,7 @@ struct OfferComposeView: View {
     
     // MARK: - Payment Flow (Reused from existing checkout)
     
-    private func loadWalletBalance() async {
+    private func loadWalletBalance() async throws {
         do {
             currentWallet = try await walletService.fetchBalance()
         } catch {
@@ -511,6 +504,8 @@ struct OfferComposeView: View {
                 // Continue even if wallet loading fails - user can still pay with card
                 purchaseError = "Could not load wallet balance. You can still pay with card."
             }
+            // Re-throw to allow proper error handling
+            throw error
         }
     }
     

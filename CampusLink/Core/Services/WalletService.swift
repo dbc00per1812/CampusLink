@@ -3,19 +3,25 @@ import Supabase
 
 // MARK: - Timeout Helper
 func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
-    return try await withThrowingTaskGroup(of: T.self) { group in
-        group.addTask {
-            try await operation()
-        }
-        
-        group.addTask {
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    let task = Task {
+        try await operation()
+    }
+    
+    let timeoutTask = Task {
+        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        task.cancel()
+    }
+    
+    do {
+        let result = try await task.value
+        timeoutTask.cancel()
+        return result
+    } catch {
+        timeoutTask.cancel()
+        if error is CancellationError || task.isCancelled {
             throw WalletServiceError.requestCancelled
         }
-        
-        let result = try await group.next()!
-        group.cancelAll()
-        return result
+        throw error
     }
 }
 
@@ -26,12 +32,24 @@ final class WalletService: ObservableObject {
     
     // Fetch the current user's wallet balance
     func fetchBalance() async throws -> Wallet {
+        print("🔵 WalletService.fetchBalance: Starting")
         do {
-            // Add timeout to prevent infinite hang
-            let session = try await withTimeout(seconds: 10) {
-                try await supabase.auth.session
+            // Get session with shorter timeout to prevent UI freeze
+            let session: Session
+            do {
+                print("🔵 WalletService.fetchBalance: Getting auth session with 3s timeout")
+                session = try await withTimeout(seconds: 3) {
+                    print("🔵 WalletService.fetchBalance: Inside timeout - calling supabase.auth.session")
+                    return try await supabase.auth.session
+                }
+                print("✅ WalletService.fetchBalance: Got session successfully")
+            } catch {
+                print("❌ WalletService.fetchBalance: Auth session timeout or error: \(error)")
+                throw WalletServiceError.requestCancelled
             }
+            
             let userId: UUID = session.user.id
+            print("🔵 WalletService.fetchBalance: User ID: \(userId)")
             
             // Fetch as array to gracefully handle 0 rows
             let rows: [Wallet] = try await supabase
@@ -110,10 +128,17 @@ final class WalletService: ObservableObject {
     // Basic transaction history using payments table for now
     func getTransactionHistory(limit: Int = 50) async throws -> [PaymentTransaction] {
         do {
-            // Add timeout to prevent infinite hang
-            let session = try await withTimeout(seconds: 10) {
-                try await supabase.auth.session
+            // Get session with shorter timeout to prevent UI freeze
+            let session: Session
+            do {
+                session = try await withTimeout(seconds: 3) {
+                    try await supabase.auth.session
+                }
+            } catch {
+                print("⚠️ WalletService: Auth session timeout in getTransactionHistory: \(error)")
+                throw WalletServiceError.requestCancelled
             }
+            
             let userId = session.user.id.uuidString
             
             let transactions: [PaymentTransaction] = try await supabase
