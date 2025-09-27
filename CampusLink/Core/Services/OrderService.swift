@@ -36,6 +36,20 @@ final class OrderService: ObservableObject {
                 timeSlotId: orderCreate.timeSlotId?.uuidString
             )
             
+            // Validate UUID formats before sending
+            if !isValidUUID(orderData.listingId) {
+                throw OrderServiceError.invalidData("Invalid listing ID format")
+            }
+            if !isValidUUID(orderData.buyerId) {
+                throw OrderServiceError.invalidData("Invalid buyer ID format")
+            }
+            if !isValidUUID(orderData.sellerId) {
+                throw OrderServiceError.invalidData("Invalid seller ID format")
+            }
+            if let timeSlotId = orderData.timeSlotId, !isValidUUID(timeSlotId) {
+                throw OrderServiceError.invalidData("Invalid time slot ID format")
+            }
+            
             print("📝 Creating order with data:")
             print("   - listingId: \(orderData.listingId)")
             print("   - buyerId: \(orderData.buyerId)")  
@@ -44,15 +58,33 @@ final class OrderService: ObservableObject {
             print("   - paymentMethod: \(orderData.paymentMethod)")
             print("   - timeSlotId: \(orderData.timeSlotId ?? "nil")")
             
-            let order: Order = try await supabase
-                .from("orders")
-                .insert(orderData)
-                .select()
-                .single()
-                .execute()
-                .value
-            
-            return order
+            do {
+                let order: Order = try await supabase
+                    .from("orders")
+                    .insert(orderData)
+                    .select()
+                    .single()
+                    .execute()
+                    .value
+                
+                return order
+            } catch {
+                print("❌ Order creation database error: \(error)")
+                
+                // Check for specific database errors
+                let errorMessage = error.localizedDescription
+                if errorMessage.contains("invalid input syntax for type json") {
+                    print("❌ JSON syntax error - likely a UUID format issue")
+                    print("   Debug info:")
+                    print("   - listingId: '\(orderData.listingId)'")
+                    print("   - buyerId: '\(orderData.buyerId)'")
+                    print("   - sellerId: '\(orderData.sellerId)'")
+                    print("   - timeSlotId: '\(orderData.timeSlotId ?? "nil")'")
+                    throw OrderServiceError.invalidData("Invalid UUID format in order data")
+                }
+                
+                throw error
+            }
         } catch {
             throw handleError(error)
         }
@@ -672,6 +704,10 @@ final class OrderService: ObservableObject {
     }
     
     // MARK: - Helper Methods
+    private func isValidUUID(_ string: String) -> Bool {
+        return UUID(uuidString: string) != nil
+    }
+    
     private func handleError(_ error: Error) -> Error {
         if error.localizedDescription.contains("cancelled") {
             return OrderServiceError.requestCancelled
@@ -712,6 +748,7 @@ enum OrderServiceError: Error, LocalizedError {
     case invalidOrderState
     case invalidOrderStatus(String)
     case walletUpdateFailed(String)
+    case invalidData(String)
     
     var errorDescription: String? {
         switch self {
@@ -733,6 +770,8 @@ enum OrderServiceError: Error, LocalizedError {
             return message
         case .walletUpdateFailed(let message):
             return "Failed to update wallet: \(message)"
+        case .invalidData(let message):
+            return message
         }
     }
     
@@ -756,6 +795,8 @@ enum OrderServiceError: Error, LocalizedError {
             return "Please ensure the order is in the correct status for this operation. \(message)"
         case .walletUpdateFailed(let message):
             return "Please contact support as there was an issue updating the seller's wallet. \(message)"
+        case .invalidData(let message):
+            return "Please check the data and try again. \(message)"
         }
     }
 }
