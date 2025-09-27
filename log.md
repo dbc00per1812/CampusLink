@@ -675,6 +675,20 @@ After compilation fixes, app froze when clicking "Send Offer". Root cause was in
 - `WalletService.swift` - Added timeout and error handling for auth session calls
 - `OfferComposeView.swift` - Improved error handling in submitOffer and loadWalletBalance
 
+### Update 5 - Production-Ready Fix:
+Replaced emergency workarounds with proper production solution:
+- Root cause: `supabase.auth.session` call hangs indefinitely in certain auth states
+- Solution: Bypass the problematic auth.session call entirely
+- Added `fetchBalanceForUser(userId)` method that accepts user ID directly
+- Added `getTransactionHistoryForUser(userId)` for consistency
+- Use AuthManager's cached user ID instead of fetching from supabase
+- Removed all debug logging and custom timeout helpers
+- Maintains full wallet functionality without bypasses
+
+### Production Fix Files:
+- `WalletService.swift` - Added user ID-based methods, removed debug code
+- `OfferComposeView.swift` - Uses loadWalletSafely() with direct user ID
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
