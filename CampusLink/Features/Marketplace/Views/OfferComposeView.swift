@@ -3,13 +3,13 @@ import Supabase
 
 // MARK: - Offer Insert Model
 private struct OfferInsert: Encodable {
-    let seek_listing_id: String
-    let seller_id: String
-    let seeker_id: String
+    let seek_listing_id: UUID
+    let seller_id: UUID
+    let seeker_id: UUID
     let price_cents: Int
     let message: String
     let status: String
-    let order_id: String?
+    let order_id: UUID?
 }
 
 struct OfferComposeView: View {
@@ -324,9 +324,9 @@ struct OfferComposeView: View {
         do {
             // Create the offer with custom price
             let offer = OfferInsert(
-                seek_listing_id: seekListingId.uuidString,
-                seller_id: sellerId,
-                seeker_id: seekerId,
+                seek_listing_id: seekListingId,
+                seller_id: UUID(uuidString: sellerId) ?? UUID(),
+                seeker_id: UUID(uuidString: seekerId) ?? UUID(),
                 price_cents: priceCents,
                 message: message ?? "",
                 status: "pending",
@@ -421,9 +421,9 @@ struct OfferComposeView: View {
             let existingConversations: [Conversation] = try await supabase
                 .from("conversations")
                 .select("*")
-                .eq("listing_id", value: seekListingId.uuidString)
-                .eq("buyer_id", value: seekerId)
-                .eq("seller_id", value: sellerId)
+                .eq("listing_id", value: seekListingId)
+                .eq("buyer_id", value: UUID(uuidString: seekerId) ?? UUID())
+                .eq("seller_id", value: UUID(uuidString: sellerId) ?? UUID())
                 .execute()
                 .value
             
@@ -433,10 +433,10 @@ struct OfferComposeView: View {
             } else {
                 // Create new conversation
                 let newConversation = [
-                    "listing_id": seekListingId.uuidString,
-                    "buyer_id": seekerId,
-                    "seller_id": sellerId
-                ]
+                    "listing_id": seekListingId,
+                    "buyer_id": UUID(uuidString: seekerId) ?? UUID(),
+                    "seller_id": UUID(uuidString: sellerId) ?? UUID()
+                ] as [String: Any]
                 
                 let created: [Conversation] = try await supabase
                     .from("conversations")
@@ -459,11 +459,11 @@ struct OfferComposeView: View {
             messageContent += "\n\n🔗 Accept this offer in your messages or wallet to proceed with purchase."
             
             let message = [
-                "conversation_id": conversation.id.uuidString,
-                "sender_id": sellerId,
+                "conversation_id": conversation.id,
+                "sender_id": UUID(uuidString: sellerId) ?? UUID(),
                 "content": messageContent,
                 "message_type": "offer_notification"
-            ]
+            ] as [String: Any]
             
             let _: [Message] = try await supabase
                 .from("messages")
@@ -605,13 +605,13 @@ struct OfferComposeView: View {
     ) async {
         do {
             let offer = OfferInsert(
-                seek_listing_id: seekListingId.uuidString,
-                seller_id: sellerId,
-                seeker_id: seekerId,
+                seek_listing_id: seekListingId,
+                seller_id: UUID(uuidString: sellerId) ?? UUID(),
+                seeker_id: UUID(uuidString: seekerId) ?? UUID(),
                 price_cents: priceCents,
                 message: message.isEmpty ? "Offer with payment" : message,
                 status: "paid_pending_acceptance", // New status for paid offers
-                order_id: orderId.uuidString // Link to the created order
+                order_id: orderId // Link to the created order
             )
             
             let _ = try await supabase

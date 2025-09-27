@@ -641,6 +641,15 @@ After applying the RLS fix, encountered "invalid input syntax for type json" err
 - `OrderModels.swift` - Changed OrderInsert struct to use UUID types
 - `OrderService.swift` - Removed .uuidString conversions when creating OrderInsert
 
+### Update 2 - Additional JSON Type Mismatches Fixed:
+After the first fix, still encountered same JSON error. Root cause was additional type mismatches:
+- OfferInsert struct also had String types instead of UUID types
+- Conversation and message insertions were converting UUIDs to strings
+- Fixed all database insertions to use UUID types directly
+
+### Additional Files Changed:
+- `OfferComposeView.swift` - Fixed OfferInsert struct and all UUID conversions
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
