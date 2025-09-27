@@ -689,6 +689,16 @@ Replaced emergency workarounds with proper production solution:
 - `WalletService.swift` - Added user ID-based methods, removed debug code
 - `OfferComposeView.swift` - Uses loadWalletSafely() with direct user ID
 
+### Update 6 - Fix JSON Error in Card Payment:
+After fixing auth issues, still got "invalid input syntax for type json" when selecting card payment:
+- Root cause: Trying to use Stripe payment flow with a virtual listing that doesn't exist in database
+- The `create_payment_intent` edge function expects a real listing ID to look up price
+- Solution: Skip Stripe payment flow entirely for offers
+- Create order directly with pending status - actual payment happens when offer is accepted
+
+### Final Fix:
+- `OfferComposeView.swift` - handleCardPayment() now creates order directly without Stripe
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe

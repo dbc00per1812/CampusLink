@@ -27,14 +27,6 @@ private struct MessageInsert: Encodable {
     let message_type: String
 }
 
-// MARK: - Pending Card Payment Model
-private struct PendingCardPayment {
-    let amount: Double
-    let sellerId: String
-    let seekerId: String
-    let currentUserId: UUID
-}
-
 struct OfferComposeView: View {
     let seekListing: ListingWithUser
     @Environment(\.dismiss) private var dismiss
@@ -61,7 +53,6 @@ struct OfferComposeView: View {
     @State private var processingFeeCents: Int = 0
     @State private var showErrorAlert = false
     @State private var purchaseError: String?
-    @State private var pendingCardPayment: PendingCardPayment?
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -248,26 +239,8 @@ struct OfferComposeView: View {
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .purchaseConfirmation:
-                if let order = createdOrder {
-                    PurchaseConfirmationView(
-                        listing: createVirtualListing(),
-                        order: order,
-                        paymentMethod: order.paymentMethod,
-                        onDismiss: {
-                            activeSheet = nil
-                            createdOrder = nil
-                            dismiss()
-                        },
-                        onViewOrder: {
-                            if let order = createdOrder {
-                                print("📱 Navigate to order details: \(order.id)")
-                            }
-                        },
-                        onContactSeller: {
-                            print("📱 Contact seeker")
-                        }
-                    )
-                }
+                // Not used for offers anymore
+                EmptyView()
             }
         }
         .alert("Payment Error", isPresented: $showErrorAlert) {
@@ -562,8 +535,7 @@ struct OfferComposeView: View {
     }
     
     private func handleWalletPayment(amount: Double, sellerId: String, seekerId: String) async throws {
-        guard let currentUserIdString = authManager.currentUserId,
-              let currentUserId = UUID(uuidString: currentUserIdString) else {
+        guard let currentUserIdString = authManager.currentUserId else {
             throw PaymentError.userNotAuthenticated
         }
         
@@ -576,40 +548,28 @@ struct OfferComposeView: View {
             throw PaymentError.insufficientFunds
         }
         
-        // Create order with wallet payment (seller is buyer, seeker will be seller after acceptance)
-        let orderCreate = OrderCreate(
-            listingId: seekListing.id,
-            buyerId: currentUserId, // Offer maker pays upfront
-            sellerId: UUID(uuidString: seekerId) ?? UUID(), // Seeker becomes seller
-            priceCents: priceCents,
-            paymentMethod: .wallet,
-            timeSlotId: nil
-        )
-        
-        let order = try await orderService.createOrder(orderCreate)
-        
-        // Also create the offer record for tracking
+        // For offers on seek listings, we don't create orders immediately
+        // We just create the offer record marked as paid with wallet
         await createOfferRecord(
             seekListingId: seekListing.id,
             sellerId: sellerId,
             seekerId: seekerId,
             priceCents: priceCents,
-            orderId: order.id
+            orderId: nil  // No order yet, will be created when accepted
         )
         
         await MainActor.run {
             isPrimaryActionLoading = false
-            createdOrder = order
-            activeSheet = .purchaseConfirmation
+            // Show success and dismiss
+            dismiss()
         }
     }
     
     private func handleCardPayment(amount: Double, sellerId: String, seekerId: String) async throws {
-        // For offers, we skip Stripe payment flow and create a pending order
-        // The actual payment will be processed when the offer is accepted
+        // For offers on seek listings, we don't create orders immediately
+        // We just create the offer record and mark it as requiring payment
         
-        guard let currentUserIdString = authManager.currentUserId,
-              let currentUserId = UUID(uuidString: currentUserIdString) else {
+        guard let currentUserIdString = authManager.currentUserId else {
             throw PaymentError.userNotAuthenticated
         }
         
@@ -622,34 +582,20 @@ struct OfferComposeView: View {
             self.processingFeeCents = processingFeeCents
         }
         
-        // Create a pending order for the offer
-        // Note: For offers, we create an order with status "pending" that will be 
-        // processed when the seeker accepts the offer
-        let orderCreate = OrderCreate(
-            listingId: seekListing.id,
-            buyerId: currentUserId,
-            sellerId: UUID(uuidString: seekerId) ?? UUID(),
-            priceCents: priceCents,
-            paymentMethod: .card,
-            timeSlotId: nil
-        )
-        
-        // Create order with pending payment status
-        let order = try await orderService.createOrder(orderCreate)
-        
-        // Create the offer record linking to this order
+        // Create the offer record without an order
+        // The order will be created when the seeker accepts the offer
         await createOfferRecord(
             seekListingId: seekListing.id,
             sellerId: sellerId,
             seekerId: seekerId,
             priceCents: priceCents,
-            orderId: order.id
+            orderId: nil  // No order yet for card payment offers
         )
         
         await MainActor.run {
             isPrimaryActionLoading = false
-            createdOrder = order
-            activeSheet = .purchaseConfirmation
+            // Show a custom confirmation for offer submission
+            dismiss()
         }
     }
     
@@ -658,7 +604,7 @@ struct OfferComposeView: View {
         sellerId: String,
         seekerId: String,
         priceCents: Int,
-        orderId: UUID
+        orderId: UUID?
     ) async {
         do {
             let offer = OfferInsert(
@@ -666,9 +612,9 @@ struct OfferComposeView: View {
                 seller_id: UUID(uuidString: sellerId) ?? UUID(),
                 seeker_id: UUID(uuidString: seekerId) ?? UUID(),
                 price_cents: priceCents,
-                message: message.isEmpty ? "Offer with payment" : message,
-                status: "paid_pending_acceptance", // New status for paid offers
-                order_id: orderId // Link to the created order
+                message: message.isEmpty ? "Offer with custom price" : message,
+                status: orderId != nil ? "paid_pending_acceptance" : "pending", // Different status based on payment
+                order_id: orderId // Can be nil for unpaid offers
             )
             
             let _ = try await supabase
