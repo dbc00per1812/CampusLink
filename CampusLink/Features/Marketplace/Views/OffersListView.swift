@@ -1,5 +1,6 @@
 import SwiftUI
 import Supabase
+import StripePaymentSheet
 
 struct OffersListView: View {
     let seekListing: ListingWithUser
@@ -20,6 +21,8 @@ struct OffersListView: View {
     @State private var selectedOrderId: UUID?
     @State private var showOrderDetail = false
     @State private var selectedPaymentMethod: PaymentMethod?
+    @State private var paymentSheet: PaymentSheet?
+    @State private var paymentResult: PaymentSheetResult?
     
     @StateObject private var paymentService = PaymentService.shared
     @StateObject private var orderService = OrderService.shared
@@ -323,16 +326,156 @@ struct OffersListView: View {
         
         await MainActor.run {
             self.processingFeeCents = processingFeeCents
-            isPrimaryActionLoading = false
         }
         
-        // For offers, card payments are not yet implemented
-        // This would require a custom edge function to handle offer-specific payment intents
-        throw NSError(
-            domain: "OfferPayment",
-            code: 0,
-            userInfo: [NSLocalizedDescriptionKey: "Card payments for offers are temporarily unavailable. Please use wallet payment."]
-        )
+        // Call the new edge function for offer payments
+        do {
+            let (clientSecret, _, _, _) = try await createOfferPaymentIntent(
+                offerId: offer.id.uuidString,
+                buyerId: currentUserId.uuidString
+            )
+            
+            // Configure payment sheet
+            var configuration = PaymentSheet.Configuration()
+            configuration.merchantDisplayName = "CampusLink"
+            
+            // Initialize payment sheet
+            await MainActor.run {
+                self.paymentSheet = PaymentSheet(
+                    paymentIntentClientSecret: clientSecret,
+                    configuration: configuration
+                )
+                self.isPrimaryActionLoading = false
+            }
+            
+            // Present the payment sheet
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootViewController = windowScene.windows.first?.rootViewController {
+                await MainActor.run {
+                    paymentSheet?.present(from: rootViewController) { paymentResult in
+                        Task {
+                            await self.handleStripePaymentResult(paymentResult, for: offer)
+                        }
+                    }
+                }
+            }
+            
+        } catch {
+            await MainActor.run {
+                self.isPrimaryActionLoading = false
+            }
+            throw error
+        }
+    }
+    
+    private func createOfferPaymentIntent(offerId: String, buyerId: String) async throws -> (String, Int, Int, Int) {
+        // Get the base URL from the supabase URL and construct the functions URL
+        let baseURLString = supabase.supabaseURL.absoluteString
+        let functionsURL = URL(string: "\(baseURLString)/functions/v1")!
+        let url = functionsURL.appendingPathComponent("create_offer_payment_intent")
+        
+        struct RequestBody: Encodable {
+            let offer_id: String
+            let buyer_id: String
+        }
+        
+        struct ResponseBody: Decodable {
+            let client_secret: String
+            let base_amount_cents: Int
+            let stripe_fee_cents: Int
+            let total_amount_cents: Int
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Add auth header
+        if let token = supabase.auth.currentSession?.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        // Add Supabase anon key
+        request.setValue(supabase.supabaseKey, forHTTPHeaderField: "apikey")
+        
+        let body = RequestBody(offer_id: offerId, buyer_id: buyerId)
+        request.httpBody = try JSONEncoder().encode(body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "OfferPayment", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        
+        if httpResponse.statusCode != 200 {
+            if let errorData = try? JSONDecoder().decode([String: String].self, from: data),
+               let errorMessage = errorData["error"] {
+                throw NSError(domain: "OfferPayment", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+            }
+            throw NSError(domain: "OfferPayment", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Payment setup failed"])
+        }
+        
+        let responseBody = try JSONDecoder().decode(ResponseBody.self, from: data)
+        return (responseBody.client_secret, responseBody.base_amount_cents, responseBody.stripe_fee_cents, responseBody.total_amount_cents)
+    }
+    
+    private func handleStripePaymentResult(_ paymentResult: PaymentSheetResult, for offer: Offer) async {
+        switch paymentResult {
+        case .completed:
+            // Payment successful, create order and accept offer
+            guard let currentUserId = authManager.session?.user.id else { return }
+            
+            do {
+                let orderCreate = OrderCreate(
+                    listingId: offer.seekListingId,
+                    buyerId: currentUserId,
+                    sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
+                    priceCents: offer.priceCents ?? 0,
+                    paymentMethod: .card,
+                    timeSlotId: nil
+                )
+                
+                let order = try await orderService.createOrder(orderCreate)
+                
+                // Now accept the offer after successful payment
+                do {
+                    _ = try await OfferService.shared.acceptOfferStatus(offer.id)
+                    print("✅ Offer accepted after card payment - Offer: \(offer.id), Order: \(order.id)")
+                } catch {
+                    print("⚠️ Payment succeeded but failed to update offer status: \(error)")
+                }
+                
+                await MainActor.run {
+                    createdOrder = order
+                    selectedPaymentMethod = .card
+                    activeSheet = .purchaseConfirmation
+                    
+                    // Refresh offers list
+                    Task {
+                        await loadOffers()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    purchaseError = "Failed to create order: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+            
+        case .canceled:
+            print("Payment canceled by user")
+            await MainActor.run {
+                isPrimaryActionLoading = false
+            }
+            
+        case .failed(let error):
+            print("Payment failed: \(error)")
+            await MainActor.run {
+                purchaseError = error.localizedDescription
+                showErrorAlert = true
+                isPrimaryActionLoading = false
+            }
+        }
     }
     
     private func declineOffer(_ offer: Offer) async {
