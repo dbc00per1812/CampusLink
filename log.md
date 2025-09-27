@@ -712,6 +712,20 @@ The REAL issue: Trying to create orders for seek listings!
 - No orders are created until the seeker accepts the offer
 - This completely avoids the JSON parsing error
 
+## Offer Acceptance Payment Flow Fix
+
+### Issue: Offers were marked as accepted before payment
+- User clicks "Accept Offer" → offer immediately marked as accepted
+- Payment failure would leave offer in accepted state without payment
+
+### Fix: Payment required before acceptance
+- `OffersListView.swift` - Updated acceptance flow:
+  - `acceptOffer()` now shows payment options first
+  - Wallet payment: Create order → Accept offer status
+  - Card payment: Stripe sheet → Create order → Accept offer status
+  - Offer only marked accepted after successful payment
+- Payment properly goes into escrow as expected
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
