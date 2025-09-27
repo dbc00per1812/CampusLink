@@ -319,10 +319,17 @@ struct OfferComposeView: View {
         // Show payment method selection immediately (like normal purchases)
         isLoading = true
         Task {
-            await loadWalletBalance()
-            await MainActor.run {
-                isLoading = false
-                showPaymentMethodSheet = true
+            do {
+                await loadWalletBalance()
+                await MainActor.run {
+                    isLoading = false
+                    showPaymentMethodSheet = true
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = "Failed to load payment options: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -500,6 +507,10 @@ struct OfferComposeView: View {
             currentWallet = try await walletService.fetchBalance()
         } catch {
             print("Failed to load wallet balance: \(error)")
+            await MainActor.run {
+                // Continue even if wallet loading fails - user can still pay with card
+                purchaseError = "Could not load wallet balance. You can still pay with card."
+            }
         }
     }
     

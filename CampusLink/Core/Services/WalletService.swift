@@ -1,6 +1,24 @@
 import Foundation
 import Supabase
 
+// MARK: - Timeout Helper
+func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    return try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask {
+            try await operation()
+        }
+        
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw WalletServiceError.requestCancelled
+        }
+        
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
+    }
+}
+
 // MARK: - Wallet Service
 final class WalletService: ObservableObject {
     static let shared = WalletService()
@@ -9,7 +27,10 @@ final class WalletService: ObservableObject {
     // Fetch the current user's wallet balance
     func fetchBalance() async throws -> Wallet {
         do {
-            let session = try await supabase.auth.session
+            // Add timeout to prevent infinite hang
+            let session = try await withTimeout(seconds: 10) {
+                try await supabase.auth.session
+            }
             let userId: UUID = session.user.id
             
             // Fetch as array to gracefully handle 0 rows
@@ -89,7 +110,10 @@ final class WalletService: ObservableObject {
     // Basic transaction history using payments table for now
     func getTransactionHistory(limit: Int = 50) async throws -> [PaymentTransaction] {
         do {
-            let session = try await supabase.auth.session
+            // Add timeout to prevent infinite hang
+            let session = try await withTimeout(seconds: 10) {
+                try await supabase.auth.session
+            }
             let userId = session.user.id.uuidString
             
             let transactions: [PaymentTransaction] = try await supabase

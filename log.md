@@ -650,6 +650,31 @@ After the first fix, still encountered same JSON error. Root cause was additiona
 ### Additional Files Changed:
 - `OfferComposeView.swift` - Fixed OfferInsert struct and all UUID conversions
 
+### Update 3 - Encodable Compilation Errors Fixed:
+After UUID fixes, encountered "Type 'Any' cannot conform to 'Encodable'" compilation errors. Root cause:
+- Using [String: Any] dictionaries for conversation/message insertions
+- Supabase requires Encodable types for JSON serialization 
+- Fixed by creating proper Encodable structs (ConversationInsert, MessageInsert)
+
+### Final Files Changed:
+- `OfferComposeView.swift` - Added ConversationInsert and MessageInsert structs, replaced dictionaries
+
+### Update 4 - App Freeze Fix:
+After compilation fixes, app froze when clicking "Send Offer". Root cause was infinite hang in `WalletService.fetchBalance()`:
+- `supabase.auth.session` call was hanging indefinitely due to authentication issues
+- No timeout or error handling caused UI freeze
+- Fixed by adding timeout wrapper function and better error handling
+
+### Fixes Applied:
+- Added `withTimeout` function to prevent infinite hangs
+- Applied 10-second timeout to `supabase.auth.session` calls
+- Improved error handling in `loadWalletBalance()` and `submitOffer()`
+- Allow user to continue with card payment even if wallet loading fails
+
+### Additional Files Changed:
+- `WalletService.swift` - Added timeout and error handling for auth session calls
+- `OfferComposeView.swift` - Improved error handling in submitOffer and loadWalletBalance
+
 ## Payout Cancellation with Stripe Integration Fix
 
 ### Issue: Payout cancellation was not integrated with Stripe
