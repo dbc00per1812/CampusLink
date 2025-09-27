@@ -339,9 +339,16 @@ struct OffersListView: View {
             
             // Extract payment intent ID from client secret
             // Client secret format: pi_xxx_secret_xxx
+            print("🔑 Offer client secret: \(clientSecret)")
             let components = clientSecret.split(separator: "_")
-            if components.count >= 2 && components[0] == "pi" {
-                self.currentPaymentIntentId = "pi_\(components[1])"
+            print("🔑 Offer components: \(components)")
+            if components.count >= 3 && components[0] == "pi" && components[2] == "secret" {
+                let paymentIntentId = "pi_\(components[1])"
+                self.currentPaymentIntentId = paymentIntentId
+                print("🔑 Offer extracted payment intent ID: \(paymentIntentId)")
+            } else {
+                print("❌ Offer unable to extract payment intent ID from client secret")
+                self.currentPaymentIntentId = nil
             }
             
             // Configure payment sheet

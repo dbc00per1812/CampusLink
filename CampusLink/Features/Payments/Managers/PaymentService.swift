@@ -138,9 +138,16 @@ final class PaymentService: ObservableObject {
         configuration.applePay = .init(merchantId: "merchant.campuslink.com.campuslink", merchantCountryCode: "US")
         // Extract payment intent ID from client secret
         // Client secret format: pi_xxx_secret_xxx
+        print("🔑 Client secret: \(clientSecret)")
         let components = clientSecret.split(separator: "_")
-        if components.count >= 2 && components[0] == "pi" {
-            self.currentPaymentIntentId = "pi_\(components[1])"
+        print("🔑 Components: \(components)")
+        if components.count >= 3 && components[0] == "pi" && components[2] == "secret" {
+            let paymentIntentId = "pi_\(components[1])"
+            self.currentPaymentIntentId = paymentIntentId
+            print("🔑 Extracted payment intent ID: \(paymentIntentId)")
+        } else {
+            print("❌ Unable to extract payment intent ID from client secret")
+            self.currentPaymentIntentId = nil
         }
         
         // Initialize PaymentSheet

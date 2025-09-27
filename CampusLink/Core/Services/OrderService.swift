@@ -38,16 +38,20 @@ final class OrderService: ObservableObject {
             
             // Validate UUID formats before sending
             if !isValidUUID(orderData.listingId) {
-                throw OrderServiceError.invalidData("Invalid listing ID format")
+                print("❌ Invalid listing ID: '\(orderData.listingId)'")
+                throw OrderServiceError.invalidData("Invalid listing ID format: '\(orderData.listingId)'")
             }
             if !isValidUUID(orderData.buyerId) {
-                throw OrderServiceError.invalidData("Invalid buyer ID format")
+                print("❌ Invalid buyer ID: '\(orderData.buyerId)'")
+                throw OrderServiceError.invalidData("Invalid buyer ID format: '\(orderData.buyerId)'")
             }
             if !isValidUUID(orderData.sellerId) {
-                throw OrderServiceError.invalidData("Invalid seller ID format")
+                print("❌ Invalid seller ID: '\(orderData.sellerId)'")
+                throw OrderServiceError.invalidData("Invalid seller ID format: '\(orderData.sellerId)'")
             }
             if let timeSlotId = orderData.timeSlotId, !isValidUUID(timeSlotId) {
-                throw OrderServiceError.invalidData("Invalid time slot ID format")
+                print("❌ Invalid time slot ID: '\(timeSlotId)'")
+                throw OrderServiceError.invalidData("Invalid time slot ID format: '\(timeSlotId)'")
             }
             
             print("📝 Creating order with data:")
