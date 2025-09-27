@@ -32,7 +32,7 @@ final class OrderService: ObservableObject {
                 paymentStatus: "succeeded",
                 stripeEscrowAccountId: escrowAccountId,
                 marketplaceFeeCents: 0,
-                stripePaymentIntentId: nil,
+                stripePaymentIntentId: orderCreate.stripePaymentIntentId,
                 timeSlotId: orderCreate.timeSlotId?.uuidString
             )
             

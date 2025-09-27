@@ -12,6 +12,7 @@ final class PaymentService: ObservableObject {
     
     @Published var paymentSheet: PaymentSheet?
     @Published var paymentResult: PaymentSheetResult?
+    private var currentPaymentIntentId: String?
     
     // MARK: - Fee Calculation
     private let feeService = FeeCalculationService.shared
@@ -28,6 +29,11 @@ final class PaymentService: ObservableObject {
     /// - Returns: Total amount including fees in cents
     func getTotalWithFees(baseAmountCents: Int) -> Int {
         return feeService.calculateTotalWithFees(baseAmountCents: baseAmountCents)
+    }
+    
+    /// Gets the current payment intent ID if available
+    var paymentIntentId: String? {
+        return currentPaymentIntentId
     }
     
     /// Gets fee breakdown for display
@@ -130,6 +136,13 @@ final class PaymentService: ObservableObject {
         
         // Enable Apple Pay
         configuration.applePay = .init(merchantId: "merchant.campuslink.com.campuslink", merchantCountryCode: "US")
+        // Extract payment intent ID from client secret
+        // Client secret format: pi_xxx_secret_xxx
+        let components = clientSecret.split(separator: "_")
+        if components.count >= 2 && components[0] == "pi" {
+            self.currentPaymentIntentId = "pi_\(components[1])"
+        }
+        
         // Initialize PaymentSheet
         self.paymentSheet = PaymentSheet(
             paymentIntentClientSecret: clientSecret,

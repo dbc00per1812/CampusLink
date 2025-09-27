@@ -512,7 +512,8 @@ struct ListingDetailView: View {
             sellerId: sellerId,
             priceCents: priceCents,
             paymentMethod: .wallet,
-            timeSlotId: selectedTimeSlot?.id
+            timeSlotId: selectedTimeSlot?.id,
+            stripePaymentIntentId: nil
         )
         
         let order = try await orderService.createOrder(orderCreate)
@@ -582,7 +583,8 @@ struct ListingDetailView: View {
                                         sellerId: sellerId,
                                         priceCents: basePriceCents,
                                         paymentMethod: .card,
-                                        timeSlotId: selectedTimeSlot?.id
+                                        timeSlotId: selectedTimeSlot?.id,
+                                        stripePaymentIntentId: paymentService.paymentIntentId
                                     )
                                     
                                     let order = try await orderService.createOrder(orderCreate)
