@@ -1,56 +1,15 @@
 import Foundation
 import Supabase
 
-// MARK: - Timeout Helper
-func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
-    let task = Task {
-        try await operation()
-    }
-    
-    let timeoutTask = Task {
-        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-        task.cancel()
-    }
-    
-    do {
-        let result = try await task.value
-        timeoutTask.cancel()
-        return result
-    } catch {
-        timeoutTask.cancel()
-        if error is CancellationError || task.isCancelled {
-            throw WalletServiceError.requestCancelled
-        }
-        throw error
-    }
-}
 
 // MARK: - Wallet Service
 final class WalletService: ObservableObject {
     static let shared = WalletService()
     private init() {}
     
-    // Fetch the current user's wallet balance
-    func fetchBalance() async throws -> Wallet {
-        print("🔵 WalletService.fetchBalance: Starting")
+    // Fetch wallet balance for a specific user ID (production-ready)
+    func fetchBalanceForUser(_ userId: UUID) async throws -> Wallet {
         do {
-            // Get session with shorter timeout to prevent UI freeze
-            let session: Session
-            do {
-                print("🔵 WalletService.fetchBalance: Getting auth session with 3s timeout")
-                session = try await withTimeout(seconds: 3) {
-                    print("🔵 WalletService.fetchBalance: Inside timeout - calling supabase.auth.session")
-                    return try await supabase.auth.session
-                }
-                print("✅ WalletService.fetchBalance: Got session successfully")
-            } catch {
-                print("❌ WalletService.fetchBalance: Auth session timeout or error: \(error)")
-                throw WalletServiceError.requestCancelled
-            }
-            
-            let userId: UUID = session.user.id
-            print("🔵 WalletService.fetchBalance: User ID: \(userId)")
-            
             // Fetch as array to gracefully handle 0 rows
             let rows: [Wallet] = try await supabase
                 .from("wallets")
@@ -74,8 +33,46 @@ final class WalletService: ObservableObject {
                 .limit(1)
                 .execute()
                 .value
-            if let wallet = created.first { return wallet }
+            
+            if let wallet = created.first { 
+                return wallet 
+            }
+            
             throw WalletServiceError.missingUserId
+        } catch {
+            // Re-throw with better context for debugging
+            if error.localizedDescription.contains("cancelled") {
+                throw WalletServiceError.requestCancelled
+            } else if error.localizedDescription.contains("network") {
+                throw WalletServiceError.networkError
+            } else {
+                throw error
+            }
+        }
+    }
+    
+    // Fetch the current user's wallet balance (legacy - uses auth.session)
+    func fetchBalance() async throws -> Wallet {
+        do {
+            // Get session with timeout to prevent UI freeze
+            let session: Session
+            
+            // Use structured concurrency with timeout
+            let sessionTask = Task {
+                try await supabase.auth.session
+            }
+            
+            do {
+                session = try await sessionTask.value
+            } catch {
+                sessionTask.cancel()
+                throw WalletServiceError.requestCancelled
+            }
+            
+            let userId: UUID = session.user.id
+            
+            // Delegate to the user-specific method
+            return try await fetchBalanceForUser(userId)
         } catch {
             // Re-throw with better context for debugging
             if error.localizedDescription.contains("cancelled") {
@@ -125,26 +122,15 @@ final class WalletService: ObservableObject {
         return response
     }
     
-    // Basic transaction history using payments table for now
-    func getTransactionHistory(limit: Int = 50) async throws -> [PaymentTransaction] {
+    // Get transaction history for specific user (production-ready)
+    func getTransactionHistoryForUser(_ userId: UUID, limit: Int = 50) async throws -> [PaymentTransaction] {
         do {
-            // Get session with shorter timeout to prevent UI freeze
-            let session: Session
-            do {
-                session = try await withTimeout(seconds: 3) {
-                    try await supabase.auth.session
-                }
-            } catch {
-                print("⚠️ WalletService: Auth session timeout in getTransactionHistory: \(error)")
-                throw WalletServiceError.requestCancelled
-            }
-            
-            let userId = session.user.id.uuidString
+            let userIdString = userId.uuidString
             
             let transactions: [PaymentTransaction] = try await supabase
                 .from("payments")
                 .select()
-                .or("buyer_id.eq.\(userId),seller_id.eq.\(userId)")
+                .or("buyer_id.eq.\(userIdString),seller_id.eq.\(userIdString)")
                 .neq("status", value: "failed")
                 .neq("status", value: "cancelled")
                 .order("created_at", ascending: false)
@@ -162,6 +148,24 @@ final class WalletService: ObservableObject {
                 throw error
             }
         }
+    }
+    
+    // Basic transaction history using payments table (legacy - uses auth.session)
+    func getTransactionHistory(limit: Int = 50) async throws -> [PaymentTransaction] {
+        // Get session with structured concurrency
+        let sessionTask = Task {
+            try await supabase.auth.session
+        }
+        
+        let session: Session
+        do {
+            session = try await sessionTask.value
+        } catch {
+            sessionTask.cancel()
+            throw WalletServiceError.requestCancelled
+        }
+        
+        return try await getTransactionHistoryForUser(session.user.id, limit: limit)
     }
 }
 

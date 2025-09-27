@@ -316,15 +316,34 @@ struct OfferComposeView: View {
             return
         }
         
-        // EMERGENCY FIX: Skip wallet loading if it causes issues
-        print("🔵 submitOffer: Starting offer submission - BYPASSING WALLET")
-        
-        // Set wallet to nil and go directly to payment sheet
-        currentWallet = nil
-        isLoading = false
-        showPaymentMethodSheet = true
-        
-        print("✅ submitOffer: Directly showing payment sheet (wallet bypassed)")
+        // Show payment method selection with proper wallet loading
+        isLoading = true
+        Task {
+            // Load wallet with proper error handling
+            await loadWalletSafely()
+            
+            await MainActor.run {
+                isLoading = false
+                showPaymentMethodSheet = true
+            }
+        }
+    }
+    
+    private func loadWalletSafely() async {
+        do {
+            // Use the current user ID we already have from AuthManager
+            guard let currentUserId = authManager.currentUserId,
+                  let userId = UUID(uuidString: currentUserId) else {
+                currentWallet = nil
+                return
+            }
+            
+            // Directly fetch wallet using the user ID, bypassing problematic auth.session call
+            currentWallet = try await walletService.fetchBalanceForUser(userId)
+        } catch {
+            // Continue without wallet - user can still pay with card
+            currentWallet = nil
+        }
     }
     
     private func createOfferWithPrice(
