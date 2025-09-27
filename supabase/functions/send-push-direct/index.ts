@@ -171,11 +171,12 @@ serve(async (req) => {
       console.log('📱 Sending to APNs:', {
         url: apnsUrl,
         device_token: userPrefs.push_token.substring(0, 12) + '…',
+        token_length: userPrefs.push_token.length,
         title,
         body
       })
 
-      // Send to APNs
+      // Send to APNs with full token as stored
       const apnsResponse = await fetch(`${apnsUrl}/3/device/${userPrefs.push_token}`, {
         method: 'POST',
         headers: {
@@ -192,7 +193,11 @@ serve(async (req) => {
       const responseText = await apnsResponse.text()
       console.log('📱 APNs response:', {
         status: apnsResponse.status,
-        body: responseText
+        statusText: apnsResponse.statusText,
+        headers: Object.fromEntries(apnsResponse.headers.entries()),
+        body: responseText,
+        url: `${apnsUrl}/3/device/${userPrefs.push_token}`,
+        tokenUsed: userPrefs.push_token
       })
 
       if (apnsResponse.ok) {
@@ -200,11 +205,18 @@ serve(async (req) => {
         console.log('✅ APNs push sent successfully')
       } else {
         let reason = `status ${apnsResponse.status}`
+        let errorDetails = {}
         try {
-          const j = JSON.parse(responseText)
-          if (j?.reason) reason = j.reason
+          errorDetails = JSON.parse(responseText)
+          if (errorDetails?.reason) reason = errorDetails.reason
         } catch {}
-        console.error(`APNs error: ${reason}`)
+        console.error('❌ APNs error:', {
+          status: apnsResponse.status,
+          reason: reason,
+          details: errorDetails,
+          token: userPrefs.push_token,
+          environment: APNS_ENV
+        })
       }
     } catch (apnsError) {
       console.error('❌ APNs failed:', apnsError)

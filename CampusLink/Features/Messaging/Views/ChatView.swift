@@ -7,6 +7,10 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextFieldFocused: Bool
     @State private var showingReportSheet = false
+    @State private var showingOfferAcceptance = false
+    @State private var selectedOffer: Offer?
+    @State private var isProcessingOffer = false
+    @State private var offerError: String?
     
     init(conversation: Conversation) {
         print("CHATVIEW INIT CALLED") // Simple print
@@ -89,6 +93,18 @@ struct ChatView: View {
                 .environmentObject(authManager)
             }
         }
+        .sheet(isPresented: $showingOfferAcceptance) {
+            if let offer = selectedOffer {
+                OfferAcceptanceView(
+                    offer: offer,
+                    isProcessing: $isProcessingOffer,
+                    errorMessage: $offerError,
+                    onAccept: acceptOffer,
+                    onDecline: declineOffer,
+                    onDismiss: { showingOfferAcceptance = false }
+                )
+            }
+        }
         .hideKeyboardOnTap()
         .onAppear {
             print("CHATVIEW ONAPPEAR CALLED") // Simple print
@@ -136,16 +152,24 @@ struct ChatView: View {
                             // Current user message on the right
                             HStack(alignment: .bottom, spacing: 8) {
                                 Spacer()
-                                MessageBubble(message: message, isFromCurrentUser: true)
-                                    .id(message.id)
+                                MessageBubble(
+                                    message: message, 
+                                    isFromCurrentUser: true,
+                                    onOfferTap: handleOfferTap
+                                )
+                                .id(message.id)
                             }
                             .padding(.horizontal, 8)
                         } else {
                             // Sender message on the left (with avatar)
                             HStack(alignment: .bottom, spacing: 8) {
                                 AvatarView(user: message.sender)
-                                MessageBubble(message: message, isFromCurrentUser: false)
-                                    .id(message.id)
+                                MessageBubble(
+                                    message: message, 
+                                    isFromCurrentUser: false,
+                                    onOfferTap: handleOfferTap
+                                )
+                                .id(message.id)
                                 Spacer()
                             }
                             .padding(.horizontal, 8)
@@ -218,16 +242,61 @@ struct ChatView: View {
     }
     
     private func testNotification() {
-        // Test local notification
-        let request = LocalNotificationRequest(
-            title: "Test Notification",
-            body: "This is a test notification from CampusLink",
-            scheduledDate: Date().addingTimeInterval(2)
-        )
+        // Test OneSignal push notification
+        Task {
+            let success = await NotificationManager.shared.sendTestNotification()
+            print("🔔 OneSignal test notification sent: \(success)")
+        }
+    }
+    
+    private func handleOfferTap(_ offer: Offer) {
+        selectedOffer = offer
+        showingOfferAcceptance = true
+    }
+    
+    private func acceptOffer() {
+        guard let offer = selectedOffer else { return }
+        
+        isProcessingOffer = true
+        offerError = nil
         
         Task {
-            let success = await NotificationManager.shared.scheduleLocalNotification(request)
-            print("🔔 Test notification scheduled: \(success)")
+            do {
+                let response = try await OfferService.shared.acceptOffer(offer.id)
+                await MainActor.run {
+                    isProcessingOffer = false
+                    showingOfferAcceptance = false
+                    // Navigate to order or show success
+                    viewModel.errorMessage = "Offer accepted! Order #\(response.orderId.uuidString.prefix(8)) created."
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessingOffer = false
+                    offerError = error.localizedDescription
+                }
+            }
+        }
+    }
+    
+    private func declineOffer() {
+        guard let offer = selectedOffer else { return }
+        
+        isProcessingOffer = true
+        offerError = nil
+        
+        Task {
+            do {
+                try await OfferService.shared.declineOffer(offer.id)
+                await MainActor.run {
+                    isProcessingOffer = false
+                    showingOfferAcceptance = false
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessingOffer = false
+                    offerError = error.localizedDescription
+                }
+            }
         }
     }
 }
@@ -235,6 +304,10 @@ struct ChatView: View {
 struct MessageBubble: View {
     let message: Message
     let isFromCurrentUser: Bool
+    var onOfferTap: ((Offer) -> Void)? = nil
+    
+    @State private var loadedOffer: Offer?
+    @State private var isLoadingOffer = false
     
     private var timeString: String {
         let formatter = DateFormatter()
@@ -242,18 +315,74 @@ struct MessageBubble: View {
         return formatter.string(from: message.createdAt)
     }
     
+    private var isOfferMessage: Bool {
+        message.messageType == "offer_notification" && message.content.contains("💰 New Offer:")
+    }
+    
     var body: some View {
         VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
-            Text(message.content)
-                .font(.body)
-                .foregroundColor(isFromCurrentUser ? .primary : .white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(isFromCurrentUser ? Color(UIColor.systemGray5) : Color.blue)
-                )
-                .frame(maxWidth: UIScreen.main.bounds.width * 0.72, alignment: isFromCurrentUser ? .trailing : .leading)
+            // Message content
+            VStack(alignment: .leading, spacing: 8) {
+                Text(message.content)
+                    .font(.body)
+                    .foregroundColor(isFromCurrentUser ? .primary : .white)
+                
+                // Add offer action buttons if this is an offer notification
+                if isOfferMessage && !isFromCurrentUser {
+                    Divider()
+                        .background(isFromCurrentUser ? Color.gray.opacity(0.3) : Color.white.opacity(0.3))
+                    
+                    if isLoadingOffer {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(isFromCurrentUser ? .gray : .white)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                    } else if let offer = loadedOffer, offer.status == "pending" {
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                onOfferTap?(offer)
+                            }) {
+                                Label("Accept", systemImage: "checkmark.circle.fill")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            
+                            Button(action: {
+                                // For now, just show decline in the offer acceptance sheet
+                                onOfferTap?(offer)
+                            }) {
+                                Label("View", systemImage: "eye")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    } else if let offer = loadedOffer {
+                        // Show offer status
+                        HStack {
+                            Image(systemName: offer.status == "accepted" ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            Text(offer.status.capitalized)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(isFromCurrentUser ? .secondary : .white.opacity(0.8))
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(isFromCurrentUser ? Color(UIColor.systemGray5) : Color.blue)
+            )
+            .frame(maxWidth: UIScreen.main.bounds.width * 0.72, alignment: isFromCurrentUser ? .trailing : .leading)
 
             HStack(spacing: 6) {
                 Text(timeString)
@@ -265,6 +394,17 @@ struct MessageBubble: View {
             .foregroundColor(.secondary)
             .padding(isFromCurrentUser ? .trailing : .leading, 6)
         }
+        .task {
+            if isOfferMessage && !isFromCurrentUser {
+                await loadOfferDetails()
+            }
+        }
+    }
+    
+    private func loadOfferDetails() async {
+        isLoadingOffer = true
+        loadedOffer = await OfferService.shared.getOfferFromMessage(message)
+        isLoadingOffer = false
     }
 }
 

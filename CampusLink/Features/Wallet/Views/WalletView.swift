@@ -6,6 +6,10 @@ struct WalletView: View {
     @EnvironmentObject private var authManager: AuthManager
     @State private var selectedTransaction: PaymentTransaction?
     @State private var selectedOrder: Order?
+    @State private var selectedOffer: UserOffer?
+    @State private var showingOfferAcceptance = false
+    @State private var isProcessingOffer = false
+    @State private var offerError: String?
     
     var body: some View {
         NavigationView {
@@ -17,6 +21,11 @@ struct WalletView: View {
                     // Action Buttons
                     actionButtons
                     
+                    // Pending Offers (if seeking mode enabled)
+                    if AppConfig.enableSeekMode {
+                        pendingOffers
+                    }
+                    
                     // Transaction History
                     transactionHistory
                 }
@@ -26,7 +35,12 @@ struct WalletView: View {
             .navigationBarTitleDisplayMode(.large)
             .refreshable { await viewModel.refreshData() }
         }
-        .task { await viewModel.loadWalletData() }
+        .task { 
+            await viewModel.loadWalletData()
+            if AppConfig.enableSeekMode {
+                await viewModel.loadPendingOffers()
+            }
+        }
         .sheet(isPresented: $viewModel.showPayoutRequestSheet, onDismiss: { viewModel.showPayoutRequestSheet = false }) { 
             if let wallet = viewModel.wallet {
                 PayoutRequestView(
@@ -57,6 +71,18 @@ struct WalletView: View {
             }
         }) { link in
             SafariView(url: link.url).ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingOfferAcceptance) {
+            if let offer = selectedOffer {
+                OfferAcceptanceDetailView(
+                    userOffer: offer,
+                    isProcessing: $isProcessingOffer,
+                    errorMessage: $offerError,
+                    onAccept: { acceptOffer(offer) },
+                    onDecline: { declineOffer(offer) },
+                    onDismiss: { showingOfferAcceptance = false }
+                )
+            }
         }
         .alert("Wallet", isPresented: $viewModel.isShowingError) {
             Button("OK") { viewModel.errorMessage = nil }
@@ -190,6 +216,98 @@ struct WalletView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Pending Offers
+    private var pendingOffers: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Pending Offers")
+                    .font(.headline)
+                Spacer()
+                if viewModel.pendingOffers.count > 3 {
+                    NavigationLink(destination: OffersListView()) {
+                        Text("See All")
+                            .font(.subheadline)
+                            .foregroundColor(Color("ThemeColor"))
+                    }
+                }
+            }
+            
+            if viewModel.isLoadingOffers {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .padding()
+                    Spacer()
+                }
+            } else if viewModel.pendingOffers.isEmpty {
+                Text("No pending offers")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .cornerRadius(12)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(viewModel.pendingOffers.prefix(3)) { offer in
+                        offerRow(offer)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Offer Row
+    private func offerRow(_ offer: UserOffer) -> some View {
+        Button(action: {
+            selectedOffer = offer
+            showingOfferAcceptance = true
+        }) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(offer.seekListingTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                        .foregroundColor(.primary)
+                    
+                    HStack(spacing: 4) {
+                        Text("From:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(offer.sellerName)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                    }
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(offer.formattedPrice ?? "$0.00")
+                        .font(.headline)
+                        .foregroundColor(Color("ThemeColor"))
+                    
+                    if offer.canAccept {
+                        Text("Accept")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color.green)
+                            .cornerRadius(8)
+                    }
+                }
+            }
+            .padding()
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - Transaction History
@@ -398,6 +516,61 @@ struct WalletView: View {
         return transaction.isCompleted ? .green : .orange
     }
     
+    // MARK: - Offer Management Functions
+    private func acceptOffer(_ offer: UserOffer) {
+        guard let offerId = UUID(uuidString: offer.offerId.uuidString) else { return }
+        
+        isProcessingOffer = true
+        offerError = nil
+        
+        Task {
+            do {
+                let response = try await OfferService.shared.acceptOffer(offerId)
+                await MainActor.run {
+                    isProcessingOffer = false
+                    showingOfferAcceptance = false
+                    viewModel.errorMessage = "Offer accepted! Order #\(response.orderId.uuidString.prefix(8)) created."
+                    viewModel.isShowingError = true
+                    // Refresh data
+                    Task {
+                        await viewModel.refreshData()
+                        await viewModel.loadPendingOffers()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessingOffer = false
+                    offerError = error.localizedDescription
+                }
+            }
+        }
+    }
+    
+    private func declineOffer(_ offer: UserOffer) {
+        guard let offerId = UUID(uuidString: offer.offerId.uuidString) else { return }
+        
+        isProcessingOffer = true
+        offerError = nil
+        
+        Task {
+            do {
+                try await OfferService.shared.declineOffer(offerId)
+                await MainActor.run {
+                    isProcessingOffer = false
+                    showingOfferAcceptance = false
+                    // Refresh offers
+                    Task {
+                        await viewModel.loadPendingOffers()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessingOffer = false
+                    offerError = error.localizedDescription
+                }
+            }
+        }
+    }
 
 }
 

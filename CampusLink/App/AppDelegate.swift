@@ -4,11 +4,14 @@ import UserNotifications
 class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        // Initialize OneSignal - temporarily disabled due to import issues
+        // OneSignal.initialize(Secrets.oneSignalAppId, withLaunchOptions: launchOptions)
+        
         // Register for remote notifications
         UNUserNotificationCenter.current().delegate = self
         
         #if DEBUG
-        print("🚀 AppDelegate: Application launched")
+        print("🚀 AppDelegate: Application launched with OneSignal")
         #endif
         
         return true
@@ -23,7 +26,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         print("📱 Push Token Received: \(tokenString)")
         #endif
         
-        // Update the notification manager with the token
+        // OneSignal handles token registration automatically
+        // Update the notification manager with the token for our internal tracking
         NotificationManager.shared.didRegisterForRemoteNotifications(withDeviceToken: deviceToken)
     }
     

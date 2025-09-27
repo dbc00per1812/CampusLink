@@ -1,0 +1,5 @@
+---
+description:always look at databasefileforconext to understand how the database is structured
+globs:
+alwaysApply: true
+---

@@ -13,6 +13,11 @@ struct OfferComposeView: View {
     @State private var myListings: [ListingWithUser] = []
     @State private var isLoadingListings = true
     
+    // Custom offer amount states
+    @State private var offerAmount = ""
+    @State private var showingKeypad = false
+    @FocusState private var isAmountFocused: Bool
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
@@ -47,37 +52,68 @@ struct OfferComposeView: View {
                             .background(Color(.secondarySystemBackground))
                             .cornerRadius(12)
                             
-                            // Listing selection
+                            // Offer amount input
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("Select your listing to offer:")
+                                Text("Your Offer Amount")
                                     .font(.headline)
                                 
-                                if isLoadingListings {
-                                    ProgressView("Loading your listings...")
-                                        .frame(maxWidth: .infinity)
-                                        .padding()
-                                } else if myListings.isEmpty {
-                                    Text("You don't have any active listings yet. Create one first to respond to this request.")
+                                HStack {
+                                    Text("$")
+                                        .font(.title2)
                                         .foregroundColor(.secondary)
-                                        .frame(maxWidth: .infinity)
-                                        .padding()
-                                        .background(Color(.systemGray6))
-                                        .cornerRadius(8)
-                                } else {
-                                    // Listing selection grid/list
-                                    ScrollView {
-                                        LazyVStack(spacing: 8) {
-                                            ForEach(myListings) { listing in
-                                                ListingSelectionRow(
-                                                    listing: listing,
-                                                    isSelected: selectedListing?.id == listing.id
-                                                ) {
-                                                    selectedListing = listing
-                                                }
+                                    
+                                    TextField("0.00", text: $offerAmount)
+                                        .font(.title)
+                                        .fontWeight(.semibold)
+                                        .keyboardType(.decimalPad)
+                                        .focused($isAmountFocused)
+                                        .onChange(of: offerAmount) { newValue in
+                                            // Format the input as currency
+                                            let filtered = newValue.filter { "0123456789.".contains($0) }
+                                            let parts = filtered.split(separator: ".")
+                                            if parts.count > 2 {
+                                                // Multiple decimal points, use only first
+                                                offerAmount = String(parts[0]) + "." + String(parts[1])
+                                            } else if parts.count == 2 && parts[1].count > 2 {
+                                                // Limit to 2 decimal places
+                                                offerAmount = String(parts[0]) + "." + String(parts[1].prefix(2))
+                                            } else {
+                                                offerAmount = filtered
                                             }
                                         }
+                                    
+                                    Spacer()
+                                    
+                                    Button(action: { isAmountFocused = true }) {
+                                        Image(systemName: "keyboard")
+                                            .font(.title2)
+                                            .foregroundColor(Color("ThemeColor"))
                                     }
-                                    .frame(maxHeight: 200)
+                                }
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(12)
+                                .onTapGesture {
+                                    isAmountFocused = true
+                                }
+                                
+                                // Budget guidance
+                                if let budgetMin = seekListing.budgetMin, let budgetMax = seekListing.budgetMax {
+                                    HStack {
+                                        Image(systemName: "info.circle")
+                                            .foregroundColor(.blue)
+                                        Text("Seeker's budget: $\(budgetMin, specifier: "%.2f") - $\(budgetMax, specifier: "%.2f")")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                } else if let budgetMax = seekListing.budgetMax {
+                                    HStack {
+                                        Image(systemName: "info.circle")
+                                            .foregroundColor(.blue)
+                                        Text("Seeker's budget: Up to $\(budgetMax, specifier: "%.2f")")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
                             
@@ -105,13 +141,13 @@ struct OfferComposeView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(selectedListing == nil ? Color.gray : Color("ThemeColor"))
+                                .background(offerAmount.isEmpty || Double(offerAmount) == nil || Double(offerAmount) == 0 ? Color.gray : Color("ThemeColor"))
                                 .foregroundColor(.white)
                                 .cornerRadius(12)
                             }
-                            .disabled(selectedListing == nil || isLoading)
-                            .accessibilityLabel(selectedListing == nil ? "Send offer button, disabled" : "Send offer")
-                            .accessibilityHint(selectedListing == nil ? "Select a listing first to enable this button" : "Sends your selected item as an offer to the seeker")
+                            .disabled(offerAmount.isEmpty || Double(offerAmount) == nil || Double(offerAmount) == 0 || isLoading)
+                            .accessibilityLabel(offerAmount.isEmpty ? "Send offer button, disabled" : "Send offer")
+                            .accessibilityHint(offerAmount.isEmpty ? "Enter an offer amount first to enable this button" : "Sends your offer to the seeker")
                         }
                         .padding()
                     }
@@ -151,7 +187,8 @@ struct OfferComposeView: View {
             Text(errorMessage ?? "")
         }
         .onAppear {
-            Task { await loadMyListings() }
+            // No need to load listings for seeking posts with custom amounts
+            isLoadingListings = false
         }
     }
     
@@ -190,42 +227,46 @@ struct OfferComposeView: View {
     
     private func submitOffer() {
         guard AppConfig.enableSeekMode else { return }
-        guard let selectedListing = selectedListing else { return }
+        guard let amount = Double(offerAmount), amount > 0 else {
+            errorMessage = "Please enter a valid offer amount"
+            return
+        }
         guard let currentUserId = authManager.currentUserId else {
             errorMessage = "You must be logged in to make offers"
             return
         }
         
         Task {
-            await createOffer(
+            await createOfferWithPrice(
                 seekListingId: seekListing.id,
-                offerListingId: selectedListing.id,
                 sellerId: currentUserId,
                 seekerId: seekListing.user.id,
+                priceCents: Int(amount * 100),
                 message: message.isEmpty ? nil : message
             )
         }
     }
     
-    private func createOffer(
+    private func createOfferWithPrice(
         seekListingId: UUID,
-        offerListingId: UUID,
         sellerId: String,
         seekerId: String,
+        priceCents: Int,
         message: String?
     ) async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         
         do {
-            // Create the offer in the database
+            // Create the offer with custom price
             let offer = [
                 "seek_listing_id": seekListingId.uuidString,
-                "offer_listing_id": offerListingId.uuidString,
+                "offer_listing_id": NSNull(), // No specific listing, just a price offer
                 "seller_id": sellerId,
                 "seeker_id": seekerId,
+                "price_cents": priceCents,
                 "message": message ?? "",
                 "status": "pending"
-            ]
+            ] as [String: Any]
             
             let _: [Offer] = try await supabase
                 .from("offers")
@@ -233,17 +274,19 @@ struct OfferComposeView: View {
                 .execute()
                 .value
             
-            // Find or create conversation between seller and seeker
-            await createOrFindConversation(
-                listingId: seekListingId,
-                buyerId: seekerId,
-                sellerId: sellerId
+            // Send a message with the offer details
+            await createOfferMessage(
+                seekListingId: seekListingId,
+                sellerId: sellerId,
+                seekerId: seekerId,
+                priceCents: priceCents,
+                customMessage: message
             )
             
             await MainActor.run {
                 isLoading = false
                 // Analytics: Track offer creation
-                print("📊 Analytics: Offer created - Seek: \(seekListingId), Offer: \(offerListingId)")
+                print("📊 Analytics: Offer created - Seek: \(seekListingId), Price: $\(Double(priceCents) / 100)")
                 dismiss()
             }
             
@@ -285,6 +328,75 @@ struct OfferComposeView: View {
         } catch {
             #if DEBUG
             print("Failed to create/find conversation: \(error)")
+            #endif
+        }
+    }
+    
+    private func createOfferMessage(
+        seekListingId: UUID,
+        sellerId: String,
+        seekerId: String,
+        priceCents: Int,
+        customMessage: String?
+    ) async {
+        do {
+            // First, find or create conversation
+            let existingConversations: [Conversation] = try await supabase
+                .from("conversations")
+                .select("*")
+                .eq("listing_id", value: seekListingId.uuidString)
+                .eq("buyer_id", value: seekerId)
+                .eq("seller_id", value: sellerId)
+                .execute()
+                .value
+            
+            let conversation: Conversation
+            if let existing = existingConversations.first {
+                conversation = existing
+            } else {
+                // Create new conversation
+                let newConversation = [
+                    "listing_id": seekListingId.uuidString,
+                    "buyer_id": seekerId,
+                    "seller_id": sellerId
+                ]
+                
+                let created: [Conversation] = try await supabase
+                    .from("conversations")
+                    .insert(newConversation)
+                    .execute()
+                    .value
+                
+                guard let firstCreated = created.first else { return }
+                conversation = firstCreated
+            }
+            
+            // Create the offer notification message
+            let offerAmount = Double(priceCents) / 100.0
+            var messageContent = "💰 New Offer: $\(String(format: "%.2f", offerAmount)) for \"\(seekListing.title)\""
+            
+            if let customMessage = customMessage, !customMessage.isEmpty {
+                messageContent += "\n\nMessage from seller:\n\(customMessage)"
+            }
+            
+            messageContent += "\n\n🔗 Accept this offer in your messages or wallet to proceed with purchase."
+            
+            let message = [
+                "conversation_id": conversation.id.uuidString,
+                "sender_id": sellerId,
+                "content": messageContent,
+                "message_type": "offer_notification"
+            ]
+            
+            let _: [Message] = try await supabase
+                .from("messages")
+                .insert(message)
+                .execute()
+                .value
+            
+        } catch {
+            #if DEBUG
+            print("Failed to create offer message: \(error)")
             #endif
         }
     }

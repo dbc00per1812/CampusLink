@@ -302,11 +302,12 @@ struct User: Codable {
 struct Offer: Codable, Identifiable {
     let id: UUID
     let seekListingId: UUID
-    let offerListingId: UUID
+    let offerListingId: UUID?
     let seekerId: String
     let sellerId: String
     let message: String?
     let status: String
+    let priceCents: Int?  // Custom offer amount in cents
     let createdAt: Date
     let updatedAt: Date
     
@@ -318,7 +319,19 @@ struct Offer: Codable, Identifiable {
         case sellerId = "seller_id"
         case message
         case status
+        case priceCents = "price_cents"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+    
+    // Computed properties
+    var price: Double? {
+        guard let cents = priceCents else { return nil }
+        return Double(cents) / 100.0
+    }
+    
+    var formattedPrice: String? {
+        guard let p = price else { return nil }
+        return String(format: "$%.2f", p)
     }
 } 

@@ -59,6 +59,7 @@ struct Message: Codable, Identifiable {
     
     // Joined data
     var sender: UserProfile?
+    var conversation: Conversation?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -69,6 +70,7 @@ struct Message: Codable, Identifiable {
         case createdAt = "created_at"
         case readAt = "read_at"
         case sender
+        case conversation
     }
     
     /// Check if message was sent by current user (case-insensitive id compare)

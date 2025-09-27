@@ -19,7 +19,12 @@ class WalletViewModel: ObservableObject {
     // Cache for order data to ensure accurate status display
     @Published var orderCache: [UUID: Order] = [:]
     
+    // Offers
+    @Published var pendingOffers: [UserOffer] = []
+    @Published var isLoadingOffers = false
+    
     private let walletService = WalletService.shared
+    private let offerService = OfferService.shared
     
     func loadWalletData() async {
         isLoading = true
@@ -195,6 +200,22 @@ class WalletViewModel: ObservableObject {
         } catch {
             print("❌ WalletViewModel: Failed to preload order data: \(error)")
         }
+    }
+    
+    // MARK: - Offers Management
+    func loadPendingOffers() async {
+        isLoadingOffers = true
+        
+        do {
+            pendingOffers = try await offerService.getUserOffers(role: .seeker)
+                .filter { $0.status == "pending" }
+            print("✅ WalletViewModel: Loaded \(pendingOffers.count) pending offers")
+        } catch {
+            print("❌ WalletViewModel: Failed to load offers: \(error)")
+            // Don't show error for offers - it's not critical
+        }
+        
+        isLoadingOffers = false
     }
 }
 

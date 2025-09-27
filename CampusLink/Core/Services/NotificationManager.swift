@@ -29,18 +29,13 @@ class NotificationManager: NSObject, ObservableObject {
             return 
         }
         
+        // Check current authorization status
         await getCurrentAuthorizationStatus()
         print("🔔 Current authorization status: \(authorizationStatus)")
         
-        if authorizationStatus == .notDetermined {
-            print("🔔 Requesting notification permissions...")
-            await requestPermissions()
-        }
-        
-        if authorizationStatus == .authorized {
-            print("🔔 Registering for push notifications...")
-            await registerForPushNotifications()
-        }
+        // Always re-register for push notifications on app launch (audit recommendation)
+        print("🔔 Re-registering for push notifications on app launch...")
+        await registerForPushNotifications()
         
         isInitialized = true
         print("🔔 NotificationManager initialization complete")
@@ -104,13 +99,30 @@ class NotificationManager: NSObject, ObservableObject {
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         pushToken = tokenString
         
+        // Log token details for debugging (audit recommendation)
+        let tokenPrefix = String(tokenString.prefix(8))
+        let tokenSuffix = String(tokenString.suffix(8))
+        print("📱 Push Token Received: \(tokenPrefix)...\(tokenSuffix)")
+        print("📱 Token Length: \(tokenString.count) characters")
+        print("📱 Token Environment: \(isDebugBuild ? "SANDBOX" : "PRODUCTION")")
+        
         // Update token in notification service
         Task {
-            await notificationService.updatePushToken(tokenString)
+            let success = await notificationService.updatePushToken(tokenString)
+            print("📱 Token Save Result: \(success ? "✅ SUCCESS" : "❌ FAILED")")
         }
         
         #if DEBUG
-        print("Push token: \(tokenString)")
+        print("📱 Full Push Token: \(tokenString)")
+        #endif
+    }
+    
+    /// Check if this is a debug build (for sandbox vs production token detection)
+    private var isDebugBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
         #endif
     }
     
@@ -317,6 +329,20 @@ class NotificationManager: NSObject, ObservableObject {
         #endif
     }
     
+    // MARK: - OneSignal Integration (Temporarily Disabled)
+    
+    /// Send a test notification to current device
+    func sendTestNotification() async -> Bool {
+        // Temporarily use local notification instead of OneSignal
+        let request = LocalNotificationRequest(
+            title: "Test Notification",
+            body: "This is a test notification from CampusLink",
+            scheduledDate: Date().addingTimeInterval(2)
+        )
+        
+        return await scheduleLocalNotification(request)
+    }
+
     // MARK: - Convenience Methods
     
     /// Check if notifications are fully enabled
@@ -439,3 +465,4 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         completionHandler()
     }
 }
+

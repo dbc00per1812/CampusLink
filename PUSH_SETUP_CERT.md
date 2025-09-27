@@ -53,7 +53,7 @@ Go to: https://vnmzijluyctlufnzxast.supabase.co/dashboard/settings/functions
 Add these:
 - `BUNDLE_ID` = `darragh.CampusLink`
 - `APNS_TEAM_ID` = `39QG7MQD33`
-- `APNS_KEY_ID` = Your 10-character Key ID
+- `APNS_KEY_ID` = Q3VU4ZW8CQ
 - `APNS_PRIVATE_KEY` = Content of .p8 file (paste the entire key including headers)
 - `APNS_ENV` = `sandbox` (change to `production` for App Store)
 
