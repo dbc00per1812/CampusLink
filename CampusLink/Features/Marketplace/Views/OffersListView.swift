@@ -1,6 +1,5 @@
 import SwiftUI
 import Supabase
-import StripePaymentSheet
 
 struct OffersListView: View {
     let seekListing: ListingWithUser
@@ -20,7 +19,6 @@ struct OffersListView: View {
     @State private var purchaseError: String?
     @State private var selectedOrderId: UUID?
     @State private var showOrderDetail = false
-    @State private var stripePaymentSheet: PaymentSheet?
     @State private var selectedPaymentMethod: PaymentMethod?
     
     @StateObject private var paymentService = PaymentService.shared
@@ -328,35 +326,13 @@ struct OffersListView: View {
             isPrimaryActionLoading = false
         }
         
-        // For card payments, we need to use Stripe payment sheet
-        // Create a virtual listing to represent the offer for payment
-        let virtualListing = createVirtualListing(from: offer)
-        
-        do {
-            // Show Stripe payment sheet
-            if let paymentSheet = try await paymentService.preparePaymentSheet(
-                for: virtualListing,
-                timeSlot: nil,
-                buyerId: currentUserId.uuidString
-            ) {
-                await MainActor.run {
-                    self.stripePaymentSheet = paymentSheet
-                    
-                    // Present the payment sheet
-                    // Note: In production, you'd get the view controller from the SwiftUI environment
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let rootViewController = windowScene.windows.first?.rootViewController {
-                        paymentSheet.present(from: rootViewController) { paymentResult in
-                            Task {
-                                await self.handleStripePaymentResult(paymentResult, for: offer)
-                            }
-                        }
-                    }
-                }
-            }
-        } catch {
-            throw error
-        }
+        // For offers, card payments are not yet implemented
+        // This would require a custom edge function to handle offer-specific payment intents
+        throw NSError(
+            domain: "OfferPayment",
+            code: 0,
+            userInfo: [NSLocalizedDescriptionKey: "Card payments for offers are temporarily unavailable. Please use wallet payment."]
+        )
     }
     
     private func declineOffer(_ offer: Offer) async {
@@ -424,66 +400,6 @@ struct OffersListView: View {
             budgetMax: nil,
             expiresAt: nil
         )
-    }
-    
-    /// Handles the result from Stripe payment sheet
-    private func handleStripePaymentResult(_ paymentResult: PaymentSheetResult, for offer: Offer) async {
-        switch paymentResult {
-        case .completed:
-            // Payment successful, create order and accept offer
-            guard let currentUserId = authManager.session?.user.id else { return }
-            
-            do {
-                let orderCreate = OrderCreate(
-                    listingId: offer.seekListingId,
-                    buyerId: currentUserId,
-                    sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
-                    priceCents: offer.priceCents ?? 0,
-                    paymentMethod: .card,
-                    timeSlotId: nil
-                )
-                
-                let order = try await orderService.createOrder(orderCreate)
-                
-                // Now accept the offer after successful payment
-                do {
-                    _ = try await OfferService.shared.acceptOfferStatus(offer.id)
-                    print("✅ Offer accepted after card payment - Offer: \(offer.id), Order: \(order.id)")
-                } catch {
-                    print("⚠️ Payment succeeded but failed to update offer status: \(error)")
-                }
-                
-                await MainActor.run {
-                    createdOrder = order
-                    selectedPaymentMethod = .card
-                    activeSheet = .purchaseConfirmation
-                    
-                    // Refresh offers list
-                    Task {
-                        await loadOffers()
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    purchaseError = "Failed to create order: \(error.localizedDescription)"
-                    showErrorAlert = true
-                }
-            }
-            
-        case .canceled:
-            print("Payment canceled by user")
-            await MainActor.run {
-                isPrimaryActionLoading = false
-            }
-            
-        case .failed(let error):
-            print("Payment failed: \(error)")
-            await MainActor.run {
-                purchaseError = error.localizedDescription
-                showErrorAlert = true
-                isPrimaryActionLoading = false
-            }
-        }
     }
 }
 
