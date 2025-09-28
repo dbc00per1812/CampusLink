@@ -200,14 +200,14 @@ class AuthManager: ObservableObject {
         }
         
         do {
-            print("🔄 Sending password reset OTP to \(email)")
+            print("🔄 Sending password reset to \(email)")
             
-            try await supabase.auth.signInWithOTP(
-                email: email,
-                redirectTo: nil
+            try await supabase.auth.resetPasswordForEmail(
+                email,
+                redirectTo: URL(string: "https://supabase.com/docs")
             )
             
-            print("✅ Password reset OTP sent successfully")
+            print("✅ Password reset email sent successfully")
             return .success(())
         } catch {
             print("❌ Password reset failed: \(error)")
