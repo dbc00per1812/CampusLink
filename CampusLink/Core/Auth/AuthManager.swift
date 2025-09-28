@@ -34,6 +34,7 @@ class AuthManager: ObservableObject {
         case profileUpdateFailed(Error)
         case signOutFailed(Error)
         case deleteFailed(Error)
+        case passwordResetFailed(Error)
     }
     
     init() {
@@ -190,6 +191,24 @@ class AuthManager: ObservableObject {
             return .success(())
         } catch {
             return .failure(.signOutFailed(error))
+        }
+    }
+    
+    func resetPassword(email: String) async -> Result<Void, AuthError> {
+        guard email.hasSuffix(".edu") else {
+            return .failure(.invalidEmail)
+        }
+        
+        do {
+            print("🔄 Sending password reset email to \(email)")
+            
+            try await supabase.auth.resetPassword(email: email)
+            
+            print("✅ Password reset email sent successfully")
+            return .success(())
+        } catch {
+            print("❌ Password reset failed: \(error)")
+            return .failure(.passwordResetFailed(error))
         }
     }
 
