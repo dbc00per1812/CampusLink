@@ -273,9 +273,18 @@ extension HomeTabView {
         let filteredListings = listings.filter { listing in
             guard let userEmail = listing.user.email,
                   let userDomain = getDomainFromEmail(userEmail) else {
+                print("⚠️ Domain Filter: Excluding listing '\(listing.title)' - user has no email or invalid domain (email: \(listing.user.email ?? "nil"))")
                 return false // Exclude listings from users without valid email domains
             }
-            return userDomain == currentDomain
+            
+            let shouldInclude = userDomain == currentDomain
+            if !shouldInclude {
+                print("🚫 Domain Filter: Excluding listing '\(listing.title)' - domain mismatch (user: \(userDomain) vs current: \(currentDomain))")
+            } else {
+                print("✅ Domain Filter: Including listing '\(listing.title)' - domain match (both: \(currentDomain))")
+            }
+            
+            return shouldInclude
         }
         
         print("🔍 Domain Filter: Filtered \(listings.count) listings to \(filteredListings.count) for domain \(currentDomain)")
