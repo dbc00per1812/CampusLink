@@ -8,6 +8,42 @@ final class SearchService: ObservableObject {
     private let preferencesManager = SearchPreferencesManager.shared
     private init() {}
     
+    // MARK: - Domain Filtering Helpers
+    
+    /// Helper function to extract domain from email
+    private func getDomainFromEmail(_ email: String) -> String? {
+        let components = email.components(separatedBy: "@")
+        return components.count == 2 ? components[1].lowercased() : nil
+    }
+    
+    /// Apply domain filtering to search listings
+    private func applyDomainFilter(_ listings: [SearchListing]) async -> [SearchListing] {
+        guard AppConfig.enableDomainFilter else { return listings }
+        
+        // Get current user's email domain
+        guard let session = try? await supabase.auth.session,
+              let currentUserEmail = session.user.email,
+              let currentDomain = getDomainFromEmail(currentUserEmail) else {
+            print("🔍 Search Domain Filter: Could not get current user's email domain")
+            return listings // Return all listings if we can't determine domain
+        }
+        
+        print("🔍 Search Domain Filter: Current user domain: \(currentDomain)")
+        
+        // Filter listings to only show those from users with the same domain
+        let filteredListings = listings.filter { listing in
+            guard let userEmail = listing.user_email,
+                  let userDomain = getDomainFromEmail(userEmail) else {
+                return false // Exclude listings from users without valid email domains
+            }
+            return userDomain == currentDomain
+        }
+        
+        print("🔍 Search Domain Filter: Filtered \(listings.count) search results to \(filteredListings.count) for domain \(currentDomain)")
+        
+        return filteredListings
+    }
+    
     // MARK: - Search Operations
     
     /// Perform text search on listings
@@ -69,8 +105,11 @@ final class SearchService: ObservableObject {
             }
             #endif
             
+            // Apply domain filtering to search results
+            let filteredListings = await applyDomainFilter(searchResponse)
+            
             // Parse the response
-            let listings = searchResponse
+            let listings = filteredListings
             var searchRank: [UUID: Float] = [:]
             
             for listing in listings {

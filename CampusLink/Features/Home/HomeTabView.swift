@@ -27,7 +27,7 @@ struct HomeTabView: View {
     // Debug states for visual debugging
     
     private let pageSize = 10
-    private let enableDomainFilter = false  // Disabled for v1.0 release
+    private let enableDomainFilter = true  // Enabled for production - campus-specific filtering
     
     enum ListingFilter: String, CaseIterable {
         case all = "All"
@@ -249,6 +249,39 @@ extension HomeTabView {
         // Trust filtering removed - ratings kept private to profiles
         return input
     }
+    
+    // Helper function to extract domain from email
+    private func getDomainFromEmail(_ email: String) -> String? {
+        let components = email.components(separatedBy: "@")
+        return components.count == 2 ? components[1].lowercased() : nil
+    }
+    
+    // Apply domain filtering to listings
+    private func applyDomainFilter(_ listings: [ListingWithUser]) async -> [ListingWithUser] {
+        guard enableDomainFilter else { return listings }
+        
+        // Get current user's email domain
+        guard let currentUserEmail = authManager.session?.user.email,
+              let currentDomain = getDomainFromEmail(currentUserEmail) else {
+            print("🔍 Domain Filter: Could not get current user's email domain")
+            return listings // Return all listings if we can't determine domain
+        }
+        
+        print("🔍 Domain Filter: Current user domain: \(currentDomain)")
+        
+        // Filter listings to only show those from users with the same domain
+        let filteredListings = listings.filter { listing in
+            guard let userEmail = listing.user.email,
+                  let userDomain = getDomainFromEmail(userEmail) else {
+                return false // Exclude listings from users without valid email domains
+            }
+            return userDomain == currentDomain
+        }
+        
+        print("🔍 Domain Filter: Filtered \(listings.count) listings to \(filteredListings.count) for domain \(currentDomain)")
+        
+        return filteredListings
+    }
 
     // If we filter client-side for trust, fetch extra rows so we can still fill a page visually.
     private var overscanMultiplier: Int { 1 }
@@ -290,8 +323,11 @@ extension HomeTabView {
             
             print("🔍 Loaded \(result.count) listings")
             
+            // Apply domain filtering
+            let filteredResult = await applyDomainFilter(result)
+            
             await MainActor.run {
-                listings = result
+                listings = filteredResult
                 isLoading = false
             }
         } catch {
@@ -316,11 +352,17 @@ extension HomeTabView {
                 .execute()
                 .value
             
+            print("🔍 Loaded \(result.count) offer listings")
+            
+            // Apply domain filtering
+            let filteredResult = await applyDomainFilter(result)
+            
             await MainActor.run {
-                listings = result
+                listings = filteredResult
                 isLoading = false
             }
         } catch {
+            print("❌ Error loading offer listings: \(error)")
             await MainActor.run {
                 isLoading = false
             }
@@ -346,8 +388,11 @@ extension HomeTabView {
                 print("   - \(listing.title) (intent: \(listing.intent.rawValue), archived: \(listing.archived ?? false))")
             }
             
+            // Apply domain filtering
+            let filteredResult = await applyDomainFilter(result)
+            
             await MainActor.run {
-                listings = result
+                listings = filteredResult
                 isLoading = false
             }
         } catch {

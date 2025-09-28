@@ -22,7 +22,7 @@ struct AppConfig {
     // MARK: - Campus Domain Filter
     
     /// Controls whether listings are filtered by campus domain
-    static let enableDomainFilter = false
+    static let enableDomainFilter = true
     
     // MARK: - Other Settings
     
