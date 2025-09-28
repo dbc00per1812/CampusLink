@@ -65,11 +65,13 @@ struct LoginView: View {
                         }
                     } else {
                         Text("Forgot Password?")
+                            .font(.footnote)
                             .foregroundColor(Color("ThemeColor"))
+                            .underline()
                     }
                 }
                 .disabled(isResettingPassword || email.isEmpty)
-                .opacity(email.isEmpty ? 0.5 : 1.0)
+                .opacity(isResettingPassword ? 0.7 : 1.0)
                 Spacer()
             }
             .padding(.top, 8)
