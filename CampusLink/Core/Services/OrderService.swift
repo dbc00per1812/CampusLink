@@ -8,9 +8,11 @@ final class OrderService: ObservableObject {
     
     // MARK: - Order Creation
     func createOrder(_ orderCreate: OrderCreate) async throws -> Order {
+        print("🔍 OrderService.createOrder called")
         do {
             let session = try await supabase.auth.session
             let currentUserId = session.user.id
+            print("🔍 Got session, user ID: \(currentUserId)")
             
             // Verify the current user is the buyer
             guard currentUserId == orderCreate.buyerId else {
@@ -18,8 +20,10 @@ final class OrderService: ObservableObject {
             }
             
             // Get or create escrow account for seller
+            print("🔍 About to call escrow service for seller: \(orderCreate.sellerId)")
             let escrowService = EscrowService.shared
             let escrowAccountId = try await escrowService.getOrCreateEscrowAccount(for: orderCreate.sellerId)
+            print("🔍 Got escrow account: \(escrowAccountId)")
             
             print("🔍 DEBUG - Order creation params:")
             print("  listing_id: \(orderCreate.listingId.uuidString)")
@@ -56,6 +60,7 @@ final class OrderService: ObservableObject {
                 print("🔍 JSON being sent: \(jsonString)")
             }
             
+            print("🔍 About to insert order into database")
             let order: Order = try await supabase
                 .from("orders")
                 .insert(orderData)
@@ -64,8 +69,11 @@ final class OrderService: ObservableObject {
                 .execute()
                 .value
             
+            print("✅ Order created successfully: \(order.id)")
             return order
         } catch {
+            print("❌ OrderService.createOrder ERROR: \(error)")
+            print("❌ Error type: \(type(of: error))")
             print("❌ Order creation error: \(error)")
             print("❌ Error type: \(type(of: error))")
             print("❌ Error localized: \(error.localizedDescription)")

@@ -469,10 +469,14 @@ struct ListingDetailView: View {
                     try await handleCardPayment()
                 }
             } catch {
+                print("❌ ListingDetailView: Payment method selection failed: \(error)")
+                print("❌ ListingDetailView: Error type: \(type(of: error))")
+                print("❌ ListingDetailView: Error description: \(error.localizedDescription)")
                 await MainActor.run {
                     isPrimaryActionLoading = false
                     purchaseError = error.localizedDescription
                     showErrorAlert = true
+                    print("❌ ListingDetailView: Set showErrorAlert = true")
                     #if DEBUG
                     print("❌ Payment method selection failed: \(error)")
                     #endif
@@ -514,7 +518,9 @@ struct ListingDetailView: View {
             timeSlotId: selectedTimeSlot?.id
         )
         
+        print("🔍 ListingDetailView: About to call orderService.createOrder")
         let order = try await orderService.createOrder(orderCreate)
+        print("✅ ListingDetailView: Order created successfully, showing confirmation")
         
         await MainActor.run {
             isPrimaryActionLoading = false
