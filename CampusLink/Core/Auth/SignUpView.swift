@@ -113,6 +113,9 @@ struct SignUpView: View {
         case .signOutFailed:
             // This case is not applicable here but is needed for the switch to be exhaustive.
             break
+        case .passwordResetFailed:
+            // This case is not applicable here but is needed for the switch to be exhaustive.
+            break
         }
         showingAlert = true
     }
