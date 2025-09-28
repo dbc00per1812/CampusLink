@@ -202,10 +202,7 @@ class AuthManager: ObservableObject {
         do {
             print("🔄 Sending password reset to \(email)")
             
-            try await supabase.auth.resetPasswordForEmail(
-                email,
-                redirectTo: URL(string: "https://supabase.com/docs")
-            )
+            try await supabase.auth.resetPasswordForEmail(email)
             
             print("✅ Password reset email sent successfully")
             return .success(())
