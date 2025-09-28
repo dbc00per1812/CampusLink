@@ -77,21 +77,23 @@ class AuthManager: ObservableObject {
             print("🔄 Starting signup process for \(email)")
             
             // Create the user account
+            print("🔄 Creating auth user...")
             let authResponse = try await supabase.auth.signUp(
                 email: email,
                 password: password,
                 data: ["name": .string(name)]
             )
             
-            print("✅ Auth user created successfully")
+            print("✅ Auth user created successfully: \(authResponse.user.id)")
             
             // Immediately sign them in, bypassing any email confirmation
+            print("🔄 Signing in user...")
             let signInResponse = try await supabase.auth.signIn(
                 email: email,
                 password: password
             )
             
-            print("✅ User signed in successfully")
+            print("✅ User signed in successfully: \(signInResponse.user.id)")
             
             // Update session immediately
             await MainActor.run {
@@ -99,11 +101,21 @@ class AuthManager: ObservableObject {
             }
             
             // Manually ensure user profile exists (more reliable than trigger)
+            print("🔄 Creating user profile manually...")
             await ensureUserProfileExists(userId: signInResponse.user.id.uuidString, email: email, name: name)
             
+            print("🎉 Signup completed successfully!")
             return .success(())
         } catch {
-            print("❌ Signup error: \(error)")
+            print("❌ Signup error at step: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            
+            // Try to provide more specific error information
+            if error.localizedDescription.contains("User already registered") {
+                print("ℹ️ User already exists - this might be expected")
+                return .failure(.signUpFailed(NSError(domain: "Auth", code: 409, userInfo: [NSLocalizedDescriptionKey: "User already exists. Try signing in instead."])))
+            }
+            
             return .failure(.signUpFailed(error))
         }
     }
