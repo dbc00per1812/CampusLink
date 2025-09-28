@@ -200,14 +200,42 @@ class AuthManager: ObservableObject {
         }
         
         do {
-            print("🔄 Sending password reset email to \(email)")
+            print("🔄 Sending password reset OTP to \(email)")
             
-            try await supabase.auth.resetPasswordForEmail(email)
+            try await supabase.auth.signInWithOTP(
+                email: email,
+                redirectTo: nil
+            )
             
-            print("✅ Password reset email sent successfully")
+            print("✅ Password reset OTP sent successfully")
             return .success(())
         } catch {
             print("❌ Password reset failed: \(error)")
+            return .failure(.passwordResetFailed(error))
+        }
+    }
+    
+    /// Verify OTP and set new password
+    func verifyOTPAndSetPassword(email: String, otp: String, newPassword: String) async -> Result<Void, AuthError> {
+        do {
+            print("🔄 Verifying OTP and setting password...")
+            
+            // Verify the OTP first
+            try await supabase.auth.verifyOTP(
+                email: email,
+                token: otp,
+                type: .email
+            )
+            
+            // Then update the password
+            try await supabase.auth.update(
+                user: UserAttributes(password: newPassword)
+            )
+            
+            print("✅ Password updated successfully via OTP")
+            return .success(())
+        } catch {
+            print("❌ OTP verification or password update failed: \(error)")
             return .failure(.passwordResetFailed(error))
         }
     }
