@@ -33,5 +33,16 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>campuslink-auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>campuslink</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
