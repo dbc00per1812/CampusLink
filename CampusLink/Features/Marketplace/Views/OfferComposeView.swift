@@ -223,10 +223,10 @@ struct OfferComposeView: View {
                 OfferConfirmationView(
                     seekListing: seekListing,
                     offerAmount: sentOfferDetails ?? 0,
-                    onDismiss: {
-                        activeSheet = nil
-                        dismiss()
-                    },
+                        onDismiss: {
+                            activeSheet = nil
+                            dismiss()
+                        },
                     onViewOffers: {
                         activeSheet = nil
                         dismiss()

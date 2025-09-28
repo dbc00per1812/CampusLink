@@ -3597,6 +3597,99 @@ After offer acceptance:
 2. Open from messages or wallet
 3. See offer details and seller info
 4. Accept to proceed with purchase
+
+## Comprehensive Notification System Implementation (September 28, 2025)
+
+**Human request:** Implement notifications for marketplace actions - orders and offers should trigger notifications for relevant parties.
+
+**What was done:**
+
+### 1. Database Infrastructure
+Created comprehensive notification system with automatic triggers:
+
+**Tables Created/Enhanced:**
+- `notifications` table with full tracking (read status, delivery, related entities)
+- `push_notification_queue` for async push notification processing
+- `user_notification_preferences` for user control over notification types
+- Proper indexes for performance on all notification queries
+
+**SQL Files Created:**
+1. `setup_notifications_complete.sql` - Complete notification infrastructure
+2. `create_order_notifications.sql` - Order-related notification triggers
+3. `create_offer_notifications.sql` - Offer-related notification triggers
+
+### 2. Notification Triggers Implemented
+
+**Order Notifications:**
+- **Order Placed**: Seller notified when buyer places order
+- **Order Confirmed**: Buyer notified when seller confirms
+- **Order Delivered**: Buyer notified when marked delivered
+- **Order Cancelled**: Both parties notified
+
+**Offer Notifications:**
+- **New Offer**: Seeker notified when someone makes offer on their seek
+- **Offer Accepted**: Offer maker notified of acceptance
+- **Offer Declined**: Offer maker notified of decline
+
+### 3. Push Notification Processing
+Created edge function `process-notification-queue` that:
+- Processes queued push notifications
+- Integrates with Apple Push Notification Service (APNs)
+- Handles batch processing for efficiency
+- Tracks delivery status and errors
+- Respects user notification preferences
+
+### 4. User Preference System
+- Automatic preference creation for new users
+- Granular control over notification types:
+  - Order notifications
+  - Message notifications
+  - Payment notifications
+  - Rating notifications
+  - Marketplace notifications
+- Push token management
+- Quiet hours support
+- Daily notification limits
+
+### 5. Security & Performance
+- Row Level Security (RLS) policies for notifications
+- Users can only see/update their own notifications
+- Efficient indexing for unread counts
+- Batch processing for push notifications
+- Automatic cleanup of old processed notifications
+
+### Technical Implementation Details
+
+**Notification Flow:**
+1. Database trigger fires on order/offer event
+2. Creates notification record in `notifications` table
+3. If push enabled, queues push notification
+4. Edge function processes queue every minute
+5. Sends push via APNs to user device
+6. Updates delivery status
+
+**Key Design Decisions:**
+- Decoupled notification creation from push delivery
+- Queue-based approach for reliability
+- Respects user preferences at trigger level
+- Comprehensive error tracking
+- Related entity tracking for deep linking
+
+### Files Created
+1. `/create_order_notifications.sql` - Order notification triggers
+2. `/create_offer_notifications.sql` - Offer notification triggers
+3. `/setup_notifications_complete.sql` - Complete infrastructure
+4. `/supabase/functions/process-notification-queue/index.ts` - Push processor
+5. `/NOTIFICATION_SETUP_GUIDE.md` - Comprehensive setup documentation
+
+### Next Steps for Implementation
+1. Run SQL migrations on Supabase database
+2. Deploy the process-notification-queue edge function
+3. Set up APNS credentials in environment variables
+4. Schedule cron job for queue processing
+5. Test with real orders and offers
+
+The notification system is now fully integrated with the existing infrastructure and ready for deployment. It provides automatic, reliable notifications for all marketplace actions while respecting user preferences.
 5. Or decline with optional reason
 
 **After Acceptance:**

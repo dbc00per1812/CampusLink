@@ -11,6 +11,7 @@ struct OffersListView: View {
     @State private var errorMessage: String?
     @State private var showPaymentMethodSheet = false
     @State private var selectedOffer: Offer?
+    @State private var offerForPayment: Offer? // Separate state for payment sheet
     @State private var currentWallet: Wallet?
     @State private var createdOrder: Order?
     @State private var activeSheet: OfferSheet?
@@ -98,16 +99,18 @@ struct OffersListView: View {
             }
         }
         .sheet(isPresented: $showPaymentMethodSheet) {
-            if let offer = selectedOffer {
-                PaymentMethodSheet(
-                    listing: createVirtualListing(from: offer),
-                    wallet: currentWallet,
-                    onPaymentMethodSelected: { paymentMethod in
-                        showPaymentMethodSheet = false
-                        handlePaymentMethodSelection(paymentMethod)
-                    }
-                )
-            }
+            PaymentMethodSheetWrapper(
+                offerForPayment: $offerForPayment,
+                selectedOffer: $selectedOffer,
+                currentWallet: currentWallet,
+                onPaymentMethodSelected: { paymentMethod in
+                    showPaymentMethodSheet = false
+                    handlePaymentMethodSelection(paymentMethod)
+                },
+                onClose: {
+                    showPaymentMethodSheet = false
+                }
+            )
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -121,6 +124,7 @@ struct OffersListView: View {
                             activeSheet = nil
                             createdOrder = nil
                             selectedOffer = nil
+                            offerForPayment = nil
                         },
                         onViewOrder: {
                             // Navigate to order details
@@ -216,30 +220,49 @@ struct OffersListView: View {
     }
     
     private func acceptOffer(_ offer: Offer) async {
-        await MainActor.run {
-            // Check if offer already has an associated order (shouldn't happen in new flow)
-            if let orderId = offer.orderId {
-                // Offer was already paid for, just navigate to the order
+        print("🔄 acceptOffer called for offer: \(offer.id)")
+        print("🔄 Offer has orderId: \(offer.orderId?.uuidString ?? "nil")")
+        
+        // Check if offer already has an associated order (shouldn't happen in new flow)
+        if let orderId = offer.orderId {
+            // Offer was already paid for, just navigate to the order
+            await MainActor.run {
                 selectedOrderId = orderId
                 showOrderDetail = true
-                print("📊 Analytics: Navigating to existing order for accepted offer - Order: \(orderId)")
-            } else {
-                // Normal flow: offer needs payment before acceptance
+            }
+            print("📊 Analytics: Navigating to existing order for accepted offer - Order: \(orderId)")
+        } else {
+            // Normal flow: offer needs payment before acceptance
+            print("🔄 Setting selectedOffer and showing payment sheet")
+            
+            // Set both selectedOffer and offerForPayment
+            await MainActor.run {
                 selectedOffer = offer
-                loadWalletBalance()
+                offerForPayment = offer
+            }
+            
+            // Load wallet balance
+            await loadWalletBalance()
+            
+            // Then show the payment sheet
+            await MainActor.run {
                 showPaymentMethodSheet = true
-                print("🔄 Starting payment flow for offer: \(offer.id)")
+                print("🔄 showPaymentMethodSheet set to: \(showPaymentMethodSheet)")
+                print("🔄 selectedOffer set to: \(selectedOffer?.id.uuidString ?? "nil")")
+                print("🔄 offerForPayment set to: \(offerForPayment?.id.uuidString ?? "nil")")
             }
         }
     }
     
-    private func loadWalletBalance() {
-        Task {
-            do {
-                currentWallet = try await walletService.fetchBalance()
-            } catch {
-                print("Failed to load wallet balance: \(error)")
+    private func loadWalletBalance() async {
+        do {
+            let wallet = try await walletService.fetchBalance()
+            await MainActor.run {
+                currentWallet = wallet
             }
+            print("🔄 Wallet balance loaded: \(wallet.formattedAvailableBalance)")
+        } catch {
+            print("❌ Failed to load wallet balance: \(error)")
         }
     }
     
@@ -349,14 +372,39 @@ struct OffersListView: View {
                 self.isPrimaryActionLoading = false
             }
             
-            // Present the payment sheet
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let rootViewController = windowScene.windows.first?.rootViewController {
-                await MainActor.run {
-                    paymentSheet?.present(from: rootViewController) { paymentResult in
-                        Task {
-                            await self.handleStripePaymentResult(paymentResult, for: offer)
-                        }
+            // Present the payment sheet from the root view controller
+            await MainActor.run {
+                // First dismiss our payment method sheet
+                showPaymentMethodSheet = false
+            }
+            
+            // Wait longer for the sheet to fully dismiss and find the topmost view controller
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            
+            // Find the topmost view controller to present from
+            await MainActor.run {
+                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                      let window = windowScene.windows.first else {
+                    print("❌ Could not find window scene")
+                    return
+                }
+                
+                // Find the topmost presented view controller
+                var topViewController = window.rootViewController
+                while let presentedViewController = topViewController?.presentedViewController {
+                    topViewController = presentedViewController
+                }
+                
+                guard let presentingVC = topViewController else {
+                    print("❌ Could not find presenting view controller")
+                    return
+                }
+                
+                print("🔍 Presenting Stripe PaymentSheet from: \(type(of: presentingVC))")
+                
+                paymentSheet?.present(from: presentingVC) { paymentResult in
+                    Task {
+                        await self.handleStripePaymentResult(paymentResult, for: offer)
                     }
                 }
             }
@@ -369,43 +417,102 @@ struct OffersListView: View {
         }
     }
     
-    private func createOfferPaymentIntent(offerId: String, buyerId: String) async throws -> (String, Int, Int, Int) {
-        struct RequestBody: Encodable {
-            let offer_id: String
-            let buyer_id: String
-        }
-        
-        struct ResponseBody: Decodable {
-            let client_secret: String
-            let base_amount_cents: Int
-            let stripe_fee_cents: Int
-            let total_amount_cents: Int
-        }
-        
-        let body = RequestBody(offer_id: offerId, buyer_id: buyerId)
-        
-        do {
-            let response: ResponseBody = try await supabase.functions.invoke(
-                "create_offer_payment_intent",
-                options: FunctionInvokeOptions(
-                    method: .post,
-                    body: body
-                )
-            )
-            
-            return (response.client_secret, response.base_amount_cents, response.stripe_fee_cents, response.total_amount_cents)
-        } catch {
-            // Handle function errors properly
-            if let functionError = error as? FunctionsError {
-                throw NSError(
-                    domain: "OfferPayment",
-                    code: 0,
-                    userInfo: [NSLocalizedDescriptionKey: functionError.localizedDescription]
-                )
-            }
-            throw error
-        }
-    }
+           // Helper function for timeout
+           private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+               try await withThrowingTaskGroup(of: T.self) { group in
+                   group.addTask {
+                       try await operation()
+                   }
+                   
+                   group.addTask {
+                       try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                       throw NSError(domain: "Timeout", code: -1, userInfo: [NSLocalizedDescriptionKey: "Operation timed out after \(seconds) seconds"])
+                   }
+                   
+                   let result = try await group.next()!
+                   group.cancelAll()
+                   return result
+               }
+           }
+           
+           private func createOfferPaymentIntent(offerId: String, buyerId: String) async throws -> (String, Int, Int, Int) {
+               print("🔍 Creating payment intent for offer: \(offerId), buyer: \(buyerId)")
+               
+               struct RequestBody: Encodable {
+                   let offer_id: String
+                   let buyer_id: String
+               }
+               
+               struct ResponseBody: Decodable {
+                   let client_secret: String
+                   let base_amount_cents: Int
+                   let stripe_fee_cents: Int
+                   let total_amount_cents: Int
+               }
+               
+               let body = RequestBody(offer_id: offerId, buyer_id: buyerId)
+               
+               // Log the request body
+               if let jsonData = try? JSONEncoder().encode(body),
+                  let jsonString = String(data: jsonData, encoding: .utf8) {
+                   print("🔍 Request body JSON: \(jsonString)")
+               }
+               
+               do {
+                   print("🔍 Calling supabase.functions.invoke...")
+                   
+                   // Add timeout to the function call
+                   let response: ResponseBody = try await withTimeout(seconds: 30) {
+                       try await supabase.functions.invoke(
+                           "create_offer_payment_intent",
+                           options: FunctionInvokeOptions(
+                               method: .post,
+                               body: body
+                           )
+                       )
+                   }
+                   
+                   print("✅ Edge Function response received:")
+                   print("  client_secret: \(response.client_secret.prefix(20))...")
+                   print("  base_amount_cents: \(response.base_amount_cents)")
+                   print("  stripe_fee_cents: \(response.stripe_fee_cents)")
+                   print("  total_amount_cents: \(response.total_amount_cents)")
+                   
+                   return (response.client_secret, response.base_amount_cents, response.stripe_fee_cents, response.total_amount_cents)
+               } catch {
+                   // Handle function errors properly with detailed logging
+                   print("❌ Edge Function Error Details:")
+                   print("  Error type: \(type(of: error))")
+                   print("  Error description: \(error.localizedDescription)")
+                   print("  Full error: \(error)")
+                   
+                   if let functionError = error as? FunctionsError {
+                       print("  FunctionsError details: \(functionError)")
+                       print("  FunctionsError message: \(functionError.localizedDescription)")
+                       throw NSError(
+                           domain: "OfferPayment",
+                           code: 0,
+                           userInfo: [NSLocalizedDescriptionKey: "Edge Function Error: \(functionError.localizedDescription)"]
+                       )
+                   }
+                   
+                   if let nsError = error as? NSError {
+                       print("  NSError domain: \(nsError.domain)")
+                       print("  NSError code: \(nsError.code)")
+                       print("  NSError userInfo: \(nsError.userInfo)")
+                   }
+                   
+                   // Try to extract more details from the error
+                   let errorString = String(describing: error)
+                   print("  Full error string: \(errorString)")
+                   
+                   throw NSError(
+                       domain: "OfferPayment",
+                       code: 0,
+                       userInfo: [NSLocalizedDescriptionKey: "Payment setup failed: \(error.localizedDescription)"]
+                   )
+               }
+           }
     
     private func handleStripePaymentResult(_ paymentResult: PaymentSheetResult, for offer: Offer) async {
         switch paymentResult {
@@ -551,6 +658,103 @@ enum OfferAction {
     case viewListing
     case contactSeller
     case viewOrder(UUID)
+}
+
+// MARK: - Payment Method Sheet Wrapper
+struct PaymentMethodSheetWrapper: View {
+    @Binding var offerForPayment: Offer?
+    @Binding var selectedOffer: Offer?
+    let currentWallet: Wallet?
+    let onPaymentMethodSelected: (PaymentMethod) -> Void
+    let onClose: () -> Void
+    
+    var body: some View {
+        Group {
+            if let offer = offerForPayment ?? selectedOffer {
+                PaymentMethodSheet(
+                    listing: createVirtualListing(from: offer),
+                    wallet: currentWallet,
+                    onPaymentMethodSelected: onPaymentMethodSelected
+                )
+                .onAppear {
+                    print("🔄 PaymentMethodSheet presented for offer: \(offer.id)")
+                    print("🔄 currentWallet exists: \(currentWallet != nil)")
+                }
+            } else {
+                VStack(spacing: 20) {
+                    Text("Error: No offer selected")
+                        .font(.headline)
+                    
+                    Text("Debug Info:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text("offerForPayment: \(offerForPayment?.id.uuidString ?? "nil")")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text("selectedOffer: \(selectedOffer?.id.uuidString ?? "nil")")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button("Close") {
+                        onClose()
+                    }
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                }
+                .onAppear {
+                    print("❌ PaymentMethodSheetWrapper: Both offers are nil")
+                    print("❌ offerForPayment: \(offerForPayment?.id.uuidString ?? "nil")")
+                    print("❌ selectedOffer: \(selectedOffer?.id.uuidString ?? "nil")")
+                }
+            }
+        }
+    }
+    
+    private func createVirtualListing(from offer: Offer) -> ListingWithUser {
+        // Create a virtual seller user from the offer seller ID
+        let virtualSeller = User(
+            id: offer.sellerId,
+            name: "Seller",
+            bio: nil,
+            profilePic: nil,
+            email: nil,
+            createdAt: Date(),
+            campusEmailVerified: nil,
+            trustScore: nil,
+            stripeConnectId: nil,
+            stripePayoutsEnabled: nil,
+            stripeDetailsSubmitted: nil
+        )
+        
+        return ListingWithUser(
+            id: offer.seekListingId,
+            title: "Accepted Offer",
+            description: "Accepted offer",
+            price: offer.price,
+            category: "Service",
+            photo: nil,
+            photos: [],
+            isSold: false,
+            listingType: .service,
+            serviceDuration: nil,
+            serviceLocation: nil,
+            serviceAvailability: nil,
+            serviceType: nil,
+            slotsAvailable: nil,
+            maxBookingsPerSlot: nil,
+            archived: false,
+            createdAt: offer.createdAt,
+            user: virtualSeller,
+            intent: .offer,
+            budgetMin: nil,
+            budgetMax: nil,
+            expiresAt: nil
+        )
+    }
 }
 
 struct OfferRowView: View {

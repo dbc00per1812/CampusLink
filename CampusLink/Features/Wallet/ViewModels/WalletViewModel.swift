@@ -216,7 +216,8 @@ class WalletViewModel: ObservableObject {
         isLoadingOffers = true
         
         do {
-            pendingOffers = try await offerService.getUserOffers(role: .seeker)
+            // Get offers where you are BOTH seeker (receiving offers) AND seller (making offers)
+            pendingOffers = try await offerService.getUserOffers(role: .both)
                 .filter { $0.status == "pending" }
             print("✅ WalletViewModel: Loaded \(pendingOffers.count) pending offers")
         } catch {

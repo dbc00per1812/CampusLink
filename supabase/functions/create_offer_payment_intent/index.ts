@@ -38,11 +38,12 @@ async function getAuthenticatedUserId(req: Request): Promise<string> {
 async function fetchOffer(offerId: string) {
   const { data, error } = await supabase
     .from("offers")
-    .select("*, seek_listing:listings!offers_seek_listing_id_fkey(id, user_id)")
+    .select("*")
     .eq("id", offerId)
     .single();
     
   if (error || !data) {
+    console.error("Offer fetch error:", error);
     throw new Error(`Offer not found: ${offerId}`);
   }
   
@@ -60,15 +61,22 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log("Starting create_offer_payment_intent function");
+    
     const userId = await getAuthenticatedUserId(req);
     const body = await req.json() as CreateOfferPaymentIntentRequest;
+    
+    console.log("Request body:", body);
+    console.log("User ID:", userId);
     
     if (!body.offer_id) {
       throw new Error("Missing offer_id");
     }
     
     // Fetch offer details
+    console.log("Fetching offer:", body.offer_id);
     const offer = await fetchOffer(body.offer_id);
+    console.log("Offer fetched:", offer);
     
     // Verify the current user is the seeker (buyer)
     if (offer.seeker_id !== userId) {
@@ -135,8 +143,12 @@ Deno.serve(async (req: Request) => {
     );
     
   } catch (error) {
+    console.error("Function error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message || "Unknown error occurred",
+        details: error.toString()
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,
