@@ -4311,4 +4311,50 @@ Darragh
 
 **Action Required:** Run `fix_signup_database_error.sql` in Supabase Dashboard SQL Editor to apply the fix.
 
+## 2025-01-14 - PASSWORD RECOVERY ADDED TO LOGIN PAGE
+
+**Feature:** Comprehensive password recovery functionality for users who forget their passwords.
+
+**Implementation:**
+
+1. **✅ Enhanced AuthManager**
+   - Added `resetPassword(email:)` async function with `.edu` email validation
+   - Added `passwordResetFailed` error type for proper error handling
+   - Uses Supabase's secure `auth.resetPassword()` method
+   - Comprehensive logging for debugging password reset flow
+
+2. **✅ Updated LoginView UI**
+   - Added "Forgot Password?" button below password field
+   - Smart button states: disabled when email empty, loading animation when sending
+   - Visual feedback with opacity changes and progress indicator
+   - Professional user experience with clear call-to-action
+
+3. **✅ User Experience Features**
+   - Email validation: requires valid `.edu` email address
+   - Success confirmation: shows detailed message when reset email sent
+   - Error handling: clear messages for different failure scenarios
+   - Loading states: prevents double-taps and shows progress
+   - Instructional messaging: guides users through reset process
+
+**Code Changes:**
+- `AuthManager.swift`: Added password reset functionality with campus email validation
+- `LoginView.swift`: Added forgot password UI with loading states and alerts
+
+**Status:** ✅ PASSWORD RECOVERY COMPLETE - PRODUCTION READY
+
+**What's now working:**
+- Users can reset passwords directly from login page
+- Campus email validation (only .edu addresses accepted)
+- Secure email delivery via Supabase Auth
+- Professional loading and success/error states
+- Clear user guidance throughout the process
+- Production-ready error handling and user feedback
+
+**How to use:**
+1. Enter email address in login form
+2. Click "Forgot Password?" button
+3. Check inbox for secure reset link
+4. Follow link to set new password
+5. Return to app and login with new password
+
 Darragh
