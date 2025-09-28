@@ -19,6 +19,7 @@ struct CampusLinkTestApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authManager = AuthManager()
     @StateObject private var notificationManager = NotificationManager.shared
+    @State private var showingPasswordReset = false
 
     var body: some Scene {
         WindowGroup {
