@@ -70,7 +70,7 @@ struct LoginView: View {
                             .underline()
                     }
                 }
-                .disabled(isResettingPassword || email.isEmpty)
+                .disabled(isResettingPassword)
                 .opacity(isResettingPassword ? 0.7 : 1.0)
                 Spacer()
             }
@@ -117,11 +117,15 @@ struct LoginView: View {
     }
     
     private func resetPassword() async {
-        guard !email.isEmpty else {
-            alertMessage = "Please enter your email address first"
-            showingAlert = true
-            return
+        await MainActor.run {
+            guard !email.isEmpty else {
+                alertMessage = "Please enter your email address first"
+                showingAlert = true
+                return
+            }
         }
+        
+        guard !email.isEmpty else { return }
         
         await MainActor.run {
             isResettingPassword = true
