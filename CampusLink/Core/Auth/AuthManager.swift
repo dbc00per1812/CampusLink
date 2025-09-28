@@ -217,7 +217,7 @@ class AuthManager: ObservableObject {
         do {
             print("🔄 Updating password...")
             
-            try await supabase.auth.updateUser(
+            try await supabase.auth.update(
                 user: UserAttributes(password: newPassword)
             )
             
