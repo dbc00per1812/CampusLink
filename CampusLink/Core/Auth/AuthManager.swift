@@ -211,6 +211,23 @@ class AuthManager: ObservableObject {
             return .failure(.passwordResetFailed(error))
         }
     }
+    
+    /// Updates user password after reset token verification
+    func updatePassword(newPassword: String) async -> Result<Void, AuthError> {
+        do {
+            print("🔄 Updating password...")
+            
+            try await supabase.auth.updateUser(
+                user: UserAttributes(password: newPassword)
+            )
+            
+            print("✅ Password updated successfully")
+            return .success(())
+        } catch {
+            print("❌ Password update failed: \(error)")
+            return .failure(.passwordResetFailed(error))
+        }
+    }
 
     /// Deletes the currently authenticated user account from Supabase via edge function.
     func deleteCurrentUser() async throws {
