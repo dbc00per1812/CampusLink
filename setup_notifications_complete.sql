@@ -136,6 +136,11 @@ $$ LANGUAGE plpgsql;
 -- RLS Policies for notifications
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
+DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
+DROP POLICY IF EXISTS "System can insert notifications" ON notifications;
+
 -- Users can only see their own notifications
 CREATE POLICY "Users can view own notifications" ON notifications
   FOR SELECT USING (auth.uid() = user_id);
@@ -150,6 +155,11 @@ CREATE POLICY "System can insert notifications" ON notifications
 
 -- RLS Policies for user_notification_preferences
 ALTER TABLE user_notification_preferences ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view own preferences" ON user_notification_preferences;
+DROP POLICY IF EXISTS "Users can update own preferences" ON user_notification_preferences;
+DROP POLICY IF EXISTS "Users can insert own preferences" ON user_notification_preferences;
 
 -- Users can view and update their own preferences
 CREATE POLICY "Users can view own preferences" ON user_notification_preferences
