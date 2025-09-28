@@ -63,7 +63,12 @@ class WalletViewModel: ObservableObject {
         isLoading = false
     }
     
-    func refreshData() async { await loadWalletData() }
+    func refreshData() async { 
+        await loadWalletData()
+        if AppConfig.enableSeekMode {
+            await loadPendingOffers()
+        }
+    }
     
 
     

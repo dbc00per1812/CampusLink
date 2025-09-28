@@ -21,21 +21,40 @@ final class OrderService: ObservableObject {
             let escrowService = EscrowService.shared
             let escrowAccountId = try await escrowService.getOrCreateEscrowAccount(for: orderCreate.sellerId)
             
-            // Create order directly in the database with Stripe Connect fields
+            print("🔍 DEBUG - Order creation params:")
+            print("  listing_id: \(orderCreate.listingId.uuidString)")
+            print("  buyer_id: \(orderCreate.buyerId.uuidString)")
+            print("  seller_id: \(orderCreate.sellerId.uuidString)")
+            print("  price_cents: \(orderCreate.priceCents)")
+            print("  payment_method: \(orderCreate.paymentMethod.rawValue)")
+            print("  escrow_account_id: \(escrowAccountId)")
+            print("  time_slot_id: \(orderCreate.timeSlotId?.uuidString ?? "nil")")
+            print("  current_user_id: \(currentUserId.uuidString)")
+            print("  buyer_id matches current user: \(currentUserId == orderCreate.buyerId)")
+            
+            // Create order with all required fields including escrow
+            // Debug: Let's see the exact JSON being sent
             let orderData = OrderInsert(
-                listingId: orderCreate.listingId.uuidString,
-                buyerId: orderCreate.buyerId.uuidString,
-                sellerId: orderCreate.sellerId.uuidString,
+                listingId: orderCreate.listingId.uuidString.lowercased(),
+                buyerId: orderCreate.buyerId.uuidString.lowercased(),
+                sellerId: orderCreate.sellerId.uuidString.lowercased(),
                 priceCents: orderCreate.priceCents,
                 paymentMethod: orderCreate.paymentMethod.rawValue,
                 orderStatus: "placed",
                 paymentStatus: "succeeded",
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                updatedAt: ISO8601DateFormatter().string(from: Date()),
                 stripeEscrowAccountId: escrowAccountId,
                 marketplaceFeeCents: 0,
                 stripePaymentIntentId: nil,
-                timeSlotId: orderCreate.timeSlotId?.uuidString
+                timeSlotId: orderCreate.timeSlotId?.uuidString.lowercased()
             )
             
+            // Debug the JSON
+            if let jsonData = try? JSONEncoder().encode(orderData),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("🔍 JSON being sent: \(jsonString)")
+            }
             
             let order: Order = try await supabase
                 .from("orders")
@@ -47,6 +66,21 @@ final class OrderService: ObservableObject {
             
             return order
         } catch {
+            print("❌ Order creation error: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            print("❌ Error localized: \(error.localizedDescription)")
+            
+            // Check if it's a Supabase/PostgREST error
+            if let supabaseError = error as? NSError {
+                print("❌ NSError domain: \(supabaseError.domain)")
+                print("❌ NSError code: \(supabaseError.code)")
+                print("❌ NSError userInfo: \(supabaseError.userInfo)")
+            }
+            
+            // Try to get the actual PostgreSQL error
+            let errorString = String(describing: error)
+            print("❌ Full error description: \(errorString)")
+            
             throw handleError(error)
         }
     }

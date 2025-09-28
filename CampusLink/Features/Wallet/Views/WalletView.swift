@@ -4,12 +4,14 @@ import SafariServices
 struct WalletView: View {
     @StateObject private var viewModel = WalletViewModel()
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tabCoordinator: TabCoordinator
     @State private var selectedTransaction: PaymentTransaction?
     @State private var selectedOrder: Order?
     @State private var selectedOffer: UserOffer?
     @State private var showingOfferAcceptance = false
     @State private var isProcessingOffer = false
     @State private var offerError: String?
+    @State private var shouldHighlightOffers = false
     
     var body: some View {
         NavigationView {
@@ -40,6 +42,25 @@ struct WalletView: View {
                     return
                 }
                 await viewModel.refreshData() 
+            }
+        }
+        .onChange(of: tabCoordinator.walletShouldFocusOffers) { shouldFocus in
+            if shouldFocus {
+                // Refresh offers when navigating from "View My Offers" button
+                Task {
+                    await viewModel.loadPendingOffers()
+                }
+                
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    shouldHighlightOffers = true
+                }
+                
+                // Reset highlight after animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        shouldHighlightOffers = false
+                    }
+                }
             }
         }
         .task { 
@@ -270,6 +291,16 @@ struct WalletView: View {
                 }
             }
         }
+        .padding(shouldHighlightOffers ? 8 : 0)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(shouldHighlightOffers ? Color.blue.opacity(0.1) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(shouldHighlightOffers ? Color.blue.opacity(0.3) : Color.clear, lineWidth: 2)
+                )
+        )
+        .animation(.easeInOut(duration: 0.3), value: shouldHighlightOffers)
     }
     
     // MARK: - Offer Row

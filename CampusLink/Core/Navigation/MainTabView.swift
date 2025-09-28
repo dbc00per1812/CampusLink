@@ -1,38 +1,43 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @StateObject private var tabCoordinator = TabCoordinator.shared
     @State private var walletBadge: String?
     
     var body: some View {
         ResponsiveContainer {
-            TabView {
+            TabView(selection: $tabCoordinator.selectedTab) {
                 // Home Tab
                 HomeTabView()
                     .tabItem {
-                        Image(systemName: "house.fill")
+                        Image(systemName: AppTab.home.systemImage)
                             .responsiveFontSize(24)
                     }
+                    .tag(AppTab.home)
                 
                 // Messages Tab
                 ConversationListView()
                     .tabItem {
-                        Image(systemName: "message.fill")
+                        Image(systemName: AppTab.messages.systemImage)
                             .responsiveFontSize(24)
                     }
+                    .tag(AppTab.messages)
                 
                 // Post Tab
                 PostView()
                     .tabItem {
-                        Image(systemName: "plus.circle.fill")
+                        Image(systemName: AppTab.post.systemImage)
                             .responsiveFontSize(24)
                     }
+                    .tag(AppTab.post)
                 
                 // Wallet Tab
                 WalletView()
                     .tabItem {
-                        Image(systemName: "creditcard.fill")
+                        Image(systemName: AppTab.wallet.systemImage)
                             .responsiveFontSize(24)
                     }
+                    .tag(AppTab.wallet)
                     .badge(walletBadge)
                     .task { await loadWalletBadge() }
                 
@@ -40,13 +45,15 @@ struct MainTabView: View {
                 // Profile Tab
                 ProfileTabView()
                     .tabItem {
-                        Image(systemName: "person.circle.fill")
+                        Image(systemName: AppTab.profile.systemImage)
                             .responsiveFontSize(24)
                     }
+                    .tag(AppTab.profile)
             }
             .accentColor(Color("ThemeColor"))
             .adaptiveBottomPadding()
         }
+        .environmentObject(tabCoordinator)
     }
     
     private func loadWalletBadge() async {

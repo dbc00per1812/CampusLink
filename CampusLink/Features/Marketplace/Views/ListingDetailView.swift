@@ -520,8 +520,12 @@ struct ListingDetailView: View {
             isPrimaryActionLoading = false
             createdOrder = order
             selectedPaymentMethod = .wallet
-            // Show order confirmation
-            activeSheet = .purchaseConfirmation
+            
+            // Slight delay to ensure UI state is updated
+            Task {
+                try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 second
+                activeSheet = .purchaseConfirmation
+            }
         }
         
         #if DEBUG
@@ -585,10 +589,17 @@ struct ListingDetailView: View {
                                     
                                     let order = try await orderService.createOrder(orderCreate)
                                     
+                                    // Show purchase confirmation
                                     await MainActor.run {
                                         createdOrder = order
                                         selectedPaymentMethod = .card
-                                        activeSheet = .purchaseConfirmation
+                                        isPrimaryActionLoading = false
+                                        
+                                        // Slight delay to ensure UI state is updated
+                                        Task {
+                                            try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 second
+                                            activeSheet = .purchaseConfirmation
+                                        }
                                     }
                                     
                                     #if DEBUG

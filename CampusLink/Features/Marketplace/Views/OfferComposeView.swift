@@ -230,7 +230,8 @@ struct OfferComposeView: View {
                     onViewOffers: {
                         activeSheet = nil
                         dismiss()
-                        // TODO: Navigate to offers list
+                        // Navigate to wallet tab with offers focus
+                        TabCoordinator.shared.navigateToWalletWithOffersFocus()
                     }
                 )
             }

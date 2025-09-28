@@ -136,7 +136,6 @@ CREATE TABLE public.orders (
   CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
   CONSTRAINT orders_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
-  CONSTRAINT orders_stripe_payment_intent_fkey FOREIGN KEY (stripe_payment_intent_id) REFERENCES public.payments(payment_intent_id),
   CONSTRAINT orders_time_slot_id_fkey FOREIGN KEY (time_slot_id) REFERENCES public.time_slots(id)
 );
 CREATE TABLE public.payments (
