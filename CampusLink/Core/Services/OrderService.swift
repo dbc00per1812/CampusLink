@@ -35,9 +35,9 @@ final class OrderService: ObservableObject {
             // Create order with all required fields including escrow
             // Debug: Let's see the exact JSON being sent
             let orderData = OrderInsert(
-                listingId: orderCreate.listingId.uuidString.lowercased(),
-                buyerId: orderCreate.buyerId.uuidString.lowercased(),
-                sellerId: orderCreate.sellerId.uuidString.lowercased(),
+                listingId: orderCreate.listingId,
+                buyerId: orderCreate.buyerId,
+                sellerId: orderCreate.sellerId,
                 priceCents: orderCreate.priceCents,
                 paymentMethod: orderCreate.paymentMethod.rawValue,
                 orderStatus: "placed",
@@ -47,7 +47,7 @@ final class OrderService: ObservableObject {
                 stripeEscrowAccountId: escrowAccountId,
                 marketplaceFeeCents: 0,
                 stripePaymentIntentId: nil,
-                timeSlotId: orderCreate.timeSlotId?.uuidString.lowercased()
+                timeSlotId: orderCreate.timeSlotId
             )
             
             // Debug the JSON

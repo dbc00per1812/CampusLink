@@ -297,9 +297,9 @@ struct OrderCreate: Codable {
 
 // MARK: - Order Insert (for database operations)
 struct OrderInsert: Codable {
-    let listingId: String
-    let buyerId: String
-    let sellerId: String
+    let listingId: UUID
+    let buyerId: UUID
+    let sellerId: UUID
     let priceCents: Int
     let paymentMethod: String
     let orderStatus: String
@@ -309,7 +309,7 @@ struct OrderInsert: Codable {
     let stripeEscrowAccountId: String?
     let marketplaceFeeCents: Int
     let stripePaymentIntentId: String?
-    let timeSlotId: String?
+    let timeSlotId: UUID?
     
     enum CodingKeys: String, CodingKey {
         case listingId = "listing_id"
