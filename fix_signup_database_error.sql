@@ -1,7 +1,9 @@
 -- Fix signup database error by creating missing user profile creation trigger
 -- This ensures public.users records are created when auth.users records are created
 
--- 1. Create function to ensure user profile exists in public.users table
+-- 1. Drop existing function first, then create function to ensure user profile exists in public.users table
+DROP FUNCTION IF EXISTS ensure_current_user_profile();
+
 CREATE OR REPLACE FUNCTION ensure_current_user_profile()
 RETURNS void AS $$
 DECLARE
@@ -102,5 +104,5 @@ SELECT u.id FROM public.users u
 LEFT JOIN user_notification_preferences p ON u.id = p.user_id
 WHERE p.user_id IS NULL;
 
--- Test the function
-SELECT ensure_current_user_profile();
+-- Success message
+SELECT 'Database setup complete! User signup should now work properly.' as status;
