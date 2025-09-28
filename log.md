@@ -4351,10 +4351,50 @@ Darragh
 - Production-ready error handling and user feedback
 
 **How to use:**
-1. Enter email address in login form
-2. Click "Forgot Password?" button
-3. Check inbox for secure reset link
-4. Follow link to set new password
-5. Return to app and login with new password
+1. Enter .edu email address on login screen
+2. Tap "Forgot Password?" button  
+3. Check email inbox for secure reset link
+4. Follow link to create new password
+
+## 2025-01-14 - PASSWORD RESET REDIRECT URL FIX
+
+**Issue:** Password reset emails were redirecting to `localhost` URLs that don't work on mobile devices. Users would get "Safari can't open the page" errors when clicking reset links from their phones.
+
+**Root Cause:** Supabase project was configured with localhost redirect URLs (`http://127.0.0.1:3000`) instead of custom URL schemes for mobile deep linking.
+
+**Solution:** Configured custom URL scheme deep linking for seamless mobile password reset flow.
+
+**Implementation:**
+
+1. **✅ iOS App URL Scheme Configuration**
+   - Added `campuslink://` custom URL scheme to `Info.plist`
+   - Configured `CFBundleURLTypes` for authentication deep links
+   - App can now handle `campuslink://auth` URLs directly
+
+2. **✅ Updated Supabase Local Config**  
+   - Changed `site_url` from `http://127.0.0.1:3000` to `campuslink://auth`
+   - Added `campuslink://auth` to `additional_redirect_urls`
+   - Maintained localhost URLs for local development compatibility
+
+3. **⏳ Production Update Required**
+   - Created `UPDATE_SUPABASE_AUTH_URLS.md` with step-by-step Supabase Dashboard instructions
+   - User needs to update Authentication → URL Configuration in Supabase Dashboard
+   - Site URL: `campuslink://auth`
+   - Add redirect URL: `campuslink://auth`
+
+**Code Changes:**
+- `Info.plist`: Added custom URL scheme registration for `campuslink://`
+- `supabase/config.toml`: Updated redirect URLs for deep linking
+- `UPDATE_SUPABASE_AUTH_URLS.md`: Production deployment guide
+
+**Status:** ✅ APP READY - ⏳ AWAITING SUPABASE DASHBOARD UPDATE
+
+**What's working:**
+- iOS app configured to handle `campuslink://auth` deep links
+- Existing `.onOpenURL` handler will process password reset tokens
+- Local development maintains localhost compatibility
+- Clear deployment guide for production URL configuration
+
+**Next Action:** Update Supabase Dashboard Authentication URLs per `UPDATE_SUPABASE_AUTH_URLS.md` guide.
 
 Darragh
