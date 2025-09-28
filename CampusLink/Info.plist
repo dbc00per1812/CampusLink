@@ -40,7 +40,7 @@
 			<string>com.campuslink.auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>campuslink</string>
+				<string>campuslinkapp</string>
 			</array>
 			<key>CFBundleURLIconFile</key>
 			<string></string>
