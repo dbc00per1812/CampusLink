@@ -121,7 +121,7 @@ class AuthManager: ObservableObject {
                     "email": email,
                     "name": name,
                     "created_at": ISO8601DateFormatter().string(from: Date()),
-                    "campus_email_verified": email.hasSuffix(".edu") as Bool
+                    "campus_email_verified": email.hasSuffix(".edu")
                 ])
                 .select()
                 .single()
