@@ -37,13 +37,11 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.campuslink.auth</string>
+			<string>CampusLinkAuth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com-campuslink-auth-2025</string>
+				<string>clauth</string>
 			</array>
-			<key>CFBundleURLIconFile</key>
-			<string></string>
 		</dict>
 	</array>
 </dict>
