@@ -202,7 +202,13 @@ class AuthManager: ObservableObject {
         do {
             print("🔄 Sending password reset to \(email)")
             
-            try await supabase.auth.resetPasswordForEmail(email)
+            // Build redirect URL with config parameters (more secure than hardcoding)
+            let redirectURL = "https://campuslink-reset.netlify.app?supabase_url=\(Secrets.supabaseURL.absoluteString)&supabase_key=\(Secrets.supabaseKey)"
+            
+            try await supabase.auth.resetPasswordForEmail(
+                email,
+                redirectTo: URL(string: redirectURL)
+            )
             
             print("✅ Password reset email sent successfully")
             return .success(())
