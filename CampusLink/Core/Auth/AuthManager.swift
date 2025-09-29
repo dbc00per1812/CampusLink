@@ -35,6 +35,8 @@ class AuthManager: ObservableObject {
         case signOutFailed(Error)
         case deleteFailed(Error)
         case passwordResetFailed(Error)
+        case emailConfirmationRequired
+        case emailConfirmationFailed(Error)
     }
     
     init() {
@@ -121,6 +123,62 @@ class AuthManager: ObservableObject {
         }
     }
     
+    /// Sign up with email confirmation required (OTP-based)
+    func signUpWithEmailConfirmation(email: String, password: String, name: String) async -> Result<Void, AuthError> {
+        guard email.hasSuffix(".edu") else {
+            return .failure(.invalidEmail)
+        }
+
+        do {
+            print("🔄 Starting signup with email confirmation for \(email)")
+            
+            // Create user account with email confirmation required
+            let authResponse = try await supabase.auth.signUp(
+                email: email,
+                password: password,
+                data: ["name": .string(name)]
+            )
+            
+            print("✅ Signup request sent - email confirmation required: \(authResponse.user.id)")
+            return .success(())
+            
+        } catch {
+            print("❌ Signup with email confirmation failed: \(error)")
+            return .failure(.signUpFailed(error))
+        }
+    }
+    
+    /// Verify email OTP and complete signup process
+    func verifyEmailAndCompleteSignup(email: String, otp: String, name: String) async -> Result<Void, AuthError> {
+        do {
+            print("🔄 Verifying email OTP and completing signup...")
+            
+            // Verify the email confirmation OTP
+            let result = try await supabase.auth.verifyOTP(
+                email: email,
+                token: otp,
+                type: .signup
+            )
+            
+            print("✅ Email OTP verified: \(result)")
+            
+            // Update session
+            await MainActor.run {
+                self.session = result.session
+            }
+            
+            // Create user profile after successful email verification
+            let userId = result.user.id.uuidString
+            await ensureUserProfileExists(userId: userId, email: email, name: name)
+            
+            print("✅ Signup completed successfully")
+            return .success(())
+            
+        } catch {
+            print("❌ Email verification/signup completion failed: \(error)")
+            return .failure(.emailConfirmationFailed(error))
+        }
+    }    
     // Manual user profile creation - more reliable than database triggers
     private func ensureUserProfileExists(userId: String, email: String, name: String) async {
         do {

@@ -6,6 +6,7 @@ struct SignUpView: View {
     @State private var password = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var showingOTPConfirmation = false
 
     @EnvironmentObject private var authManager: AuthManager
     
@@ -71,6 +72,10 @@ struct SignUpView: View {
             }
             .navigationBarHidden(true)
             .hideKeyboardOnTap()
+            .sheet(isPresented: $showingOTPConfirmation) {
+                OTPEmailConfirmationView(email: email, name: name)
+                    .environmentObject(authManager)
+            }
             .alert(isPresented: $showingAlert) {
                 Alert(title: Text("Sign Up Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
             }
@@ -81,14 +86,19 @@ struct SignUpView: View {
         #if DEBUG
         print("🔄 Starting sign-up process...")
         #endif
-        let result = await authManager.signUp(email: email, password: password, name: name)
+        let result = await authManager.signUpWithEmailConfirmation(email: email, password: password, name: name)
         
         switch result {
         case .success:
             #if DEBUG
-            print("✅ Sign-up successful!")
+            print("✅ Sign-up successful! Email confirmation required.")
+            await MainActor.run {
+                alertMessage = "Verification email sent to \(email). Check your inbox and enter the code to confirm your account."
+                showingAlert = true
+                showingOTPConfirmation = true
+            }
             #endif
-            // User will be automatically redirected via AuthManager session change
+            
         case .failure(let error):
             #if DEBUG
             print("❌ Sign-up failed: \(error)")
@@ -113,6 +123,10 @@ struct SignUpView: View {
         case .signOutFailed:
             // This case is not applicable here but is needed for the switch to be exhaustive.
             break
+        case .emailConfirmationRequired:
+            alertMessage = "Email confirmation is required. Please check your inbox."
+        case .emailConfirmationFailed(let underlyingError):
+            alertMessage = "Email confirmation failed: \(underlyingError.localizedDescription)"
         case .passwordResetFailed:
             // This case is not applicable here but is needed for the switch to be exhaustive.
             break

@@ -4906,3 +4906,36 @@ supabase.auth.verifyOTP(
 **Remaining Tasks:**
 - Only domain filtering asymmetry issue remains (IU user seeing Purdue posts)
 - Password reset system is 100% complete! 🎯
+
+## 🎯 NEW FEATURE: Email Confirmation OTP for Signup
+
+**User Request:** "implement the same kinda thing for email confirmation they get a code and type it in when they're signing up"
+
+**Current Signup Flow:** 
+- Creates user account 
+- Immediately signs them in (bypasses email confirmation)
+- Creates user profile manually
+
+**New Signup Flow (OTP-based):**
+1. User enters details → Click "Create Account"
+2. Send signup with email confirmation required 
+3. Show OTP entry screen in app
+4. User gets 6-digit code via email
+5. User enters code in app → Account confirmed
+6. Complete profile creation & sign in
+
+**Implementation Plan:**
+1. ✅ Examine current signup flow
+2. 🔄 Update AuthManager with OTP-based signup
+3. 🔄 Create OTPEmailConfirmationView (similar to password reset)
+4. 🔄 Update SignUpView to show OTP after initial registration
+5. 🔄 Configure Supabase signup email template
+6. 🔄 Test complete flow
+
+**Benefits:**
+- Same clean UX as password reset
+- Proper email verification before account activation
+- Professional onboarding flow
+- Consistent OTP experience across app
+
+**Status:** Starting implementation of signup email confirmation OTP flow
