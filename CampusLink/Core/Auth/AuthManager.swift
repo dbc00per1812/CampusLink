@@ -205,7 +205,7 @@ class AuthManager: ObservableObject {
             // Use proper redirect URL for password reset confirmation
             try await supabase.auth.resetPasswordForEmail(
                 email,
-                redirectTo: URL(string: "https://dbc00per1812.github.io/campuslink-reset/reset-password.html")
+                redirectTo: URL(string: "https://dbc00per1812.github.io/campus-link-reset/reset-password.html")
             )
             
             print("✅ Password reset email sent successfully")
