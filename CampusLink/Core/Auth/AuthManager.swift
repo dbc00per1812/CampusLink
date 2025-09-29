@@ -203,10 +203,8 @@ class AuthManager: ObservableObject {
             print("🔄 Sending password reset to \(email)")
             
             // Use proper redirect URL for password reset confirmation
-            try await supabase.auth.resetPasswordForEmail(
-                email,
-                redirectTo: URL(string: "https://dbc00per1812.github.io/campus-link-reset/reset-password.html")
-            )
+            // Send password reset OTP via email (no redirect needed)
+            try await supabase.auth.signInWithOTP(email: email)
             
             print("✅ Password reset email sent successfully")
             return .success(())
@@ -254,6 +252,34 @@ class AuthManager: ObservableObject {
             return .success(())
         } catch {
             print("❌ Password update failed: \(error)")
+            return .failure(.passwordResetFailed(error))
+        }
+    }
+    
+    /// Verify OTP and reset password (simple in-app flow)
+    func verifyOTPAndResetPassword(email: String, otp: String, newPassword: String) async -> Result<Void, AuthError> {
+        do {
+            print("🔄 Verifying OTP and resetting password...")
+            
+            // Verify OTP - this creates an authenticated session
+            let result = try await supabase.auth.verifyOTP(
+                email: email,
+                token: otp,
+                type: .magiclink
+            )
+            
+            print("✅ OTP verified: \(result)")
+            
+            // Update password with the authenticated session  
+            try await supabase.auth.update(
+                user: UserAttributes(password: newPassword)
+            )
+            
+            print("✅ Password updated successfully")
+            return .success(())
+            
+        } catch {
+            print("❌ OTP verification/password reset failed: \(error)")
             return .failure(.passwordResetFailed(error))
         }
     }

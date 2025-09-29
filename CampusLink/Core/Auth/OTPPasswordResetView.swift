@@ -1,181 +1,149 @@
 import SwiftUI
 
 struct OTPPasswordResetView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var authManager: AuthManager
-    
     let email: String
     
-    @State private var otp = ""
+    @State private var otpCode = ""
     @State private var newPassword = ""
     @State private var confirmPassword = ""
-    @State private var isVerifying = false
+    @State private var isResetting = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
-    @State private var resetSuccessful = false
+    @State private var isSuccessful = false
+    
+    @EnvironmentObject private var authManager: AuthManager
+    @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Spacer()
-                
-                // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "envelope.badge")
-                        .foregroundColor(Color("ThemeColor"))
-                        .font(.system(size: 60))
-                    
-                    Text("Check Your Email")
+                VStack(spacing: 8) {
+                    Text("Reset Password")
                         .font(.largeTitle)
                         .fontWeight(.bold)
-                        .multilineTextAlignment(.center)
                     
-                    Text("Enter the verification code sent to \(email)")
-                        .font(.body)
-                        .foregroundColor(.secondary)
+                    Text("Enter the code from your email and choose a new password")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
                 }
+                .padding(.top)
                 
-                Spacer()
-                
-                // Form Fields
                 VStack(spacing: 16) {
-                    // OTP Code
+                    // Email sent to
                     VStack(alignment: .leading, spacing: 4) {
+                        Text("Email sent to:")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text(email)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    
+                    // OTP Code input
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Verification Code")
                             .font(.headline)
-                            .foregroundColor(.primary)
                         
-                        TextField("Enter 6-digit code", text: $otp)
+                        TextField("Enter 6-digit code", text: $otpCode)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .keyboardType(.numberPad)
                             .textContentType(.oneTimeCode)
                     }
                     
-                    // New Password
-                    VStack(alignment: .leading, spacing: 4) {
+                    // New password inputs
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("New Password")
                             .font(.headline)
-                            .foregroundColor(.primary)
                         
                         SecureField("Enter new password", text: $newPassword)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                    }
-                    
-                    // Confirm Password
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Confirm Password")
-                            .font(.headline)
-                            .foregroundColor(.primary)
+                            .textContentType(.newPassword)
                         
                         SecureField("Confirm new password", text: $confirmPassword)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
+                            .textContentType(.newPassword)
                     }
-                    
-                    // Reset Button
-                    Button(action: {
-                        Task {
-                            await resetPassword()
-                        }
-                    }) {
-                        if isVerifying {
-                            HStack {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                Text("Resetting Password...")
-                                    .foregroundColor(.white)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color("ThemeColor"))
-                            .cornerRadius(10)
-                        } else {
-                            Text("Reset Password")
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color("ThemeColor"))
-                                .cornerRadius(10)
-                        }
-                    }
-                    .disabled(isVerifying || otp.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty)
-                    .opacity(isVerifying || otp.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty ? 0.6 : 1.0)
                 }
-                .padding(.horizontal, 40)
+                .padding()
+                
+                // Reset button
+                Button(action: resetPassword) {
+                    if isResetting {
+                        HStack {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                            Text("Resetting Password...")
+                        }
+                    } else {
+                        Text("Reset Password")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(isFormValid ? Color.blue : Color.gray)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+                .disabled(!isFormValid || isResetting)
+                .padding(.horizontal)
                 
                 Spacer()
-                
-                // Cancel Button
-                Button("Cancel") {
-                    dismiss()
-                }
-                .foregroundColor(.secondary)
-                .padding(.bottom, 40)
             }
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(trailing: Button("Cancel") {
+                presentationMode.wrappedValue.dismiss()
+            })
         }
         .alert("Password Reset", isPresented: $showingAlert) {
-            if resetSuccessful {
-                Button("Continue") {
-                    dismiss()
+            Button("OK") {
+                if isSuccessful {
+                    presentationMode.wrappedValue.dismiss()
                 }
-            } else {
-                Button("OK") { }
             }
         } message: {
             Text(alertMessage)
         }
     }
     
-    private func resetPassword() async {
-        guard !otp.isEmpty && !newPassword.isEmpty && !confirmPassword.isEmpty else {
-            alertMessage = "Please fill in all fields"
-            showingAlert = true
-            return
+    private var isFormValid: Bool {
+        otpCode.count == 6 && 
+        newPassword.count >= 6 && 
+        newPassword == confirmPassword
+    }
+    
+    private func resetPassword() {
+        Task {
+            await performPasswordReset()
         }
-        
-        guard newPassword == confirmPassword else {
-            alertMessage = "Passwords do not match"
-            showingAlert = true
-            return
-        }
-        
-        guard newPassword.count >= 6 else {
-            alertMessage = "Password must be at least 6 characters long"
-            showingAlert = true
-            return
-        }
-        
+    }
+    
+    private func performPasswordReset() async {
         await MainActor.run {
-            isVerifying = true
+            isResetting = true
         }
         
-        let result = await authManager.verifyOTPAndSetPassword(
+        let result = await authManager.verifyOTPAndResetPassword(
             email: email,
-            otp: otp,
+            otp: otpCode,
             newPassword: newPassword
         )
         
         await MainActor.run {
-            isVerifying = false
+            isResetting = false
             
             switch result {
             case .success:
                 alertMessage = "Password reset successfully! You can now sign in with your new password."
-                resetSuccessful = true
+                isSuccessful = true
                 showingAlert = true
+                
             case .failure(let error):
                 switch error {
                 case .passwordResetFailed(let underlyingError):
                     alertMessage = "Failed to reset password: \(underlyingError.localizedDescription)"
                 default:
-                    alertMessage = "Failed to reset password. Please check your verification code and try again."
+                    alertMessage = "An error occurred. Please try again."
                 }
                 showingAlert = true
             }
@@ -183,9 +151,7 @@ struct OTPPasswordResetView: View {
     }
 }
 
-struct OTPPasswordResetView_Previews: PreviewProvider {
-    static var previews: some View {
-        OTPPasswordResetView(email: "test@iu.edu")
-            .environmentObject(AuthManager())
-    }
+#Preview {
+    OTPPasswordResetView(email: "test@iu.edu")
+        .environmentObject(AuthManager())
 }

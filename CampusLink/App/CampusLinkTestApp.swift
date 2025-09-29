@@ -19,7 +19,6 @@ struct CampusLinkTestApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authManager = AuthManager()
     @StateObject private var notificationManager = NotificationManager.shared
-    @State private var showingPasswordReset = false
 
     var body: some Scene {
         WindowGroup {
@@ -53,32 +52,17 @@ struct CampusLinkTestApp: App {
                             print("🔗 Received URL: \(url)")
                             #endif
                             
-                            // Handle password reset URLs
-                            if url.absoluteString.contains("reset") || url.absoluteString.contains("recovery") {
-                                try await supabase.auth.session(from: url)
-                                await MainActor.run {
-                                    showingPasswordReset = true
-                                }
-                                #if DEBUG
-                                print("✅ Password reset URL handled, showing reset view")
-                                #endif
-                            } else {
-                                // Handle other auth URLs (regular login, etc.)
-                                try await supabase.auth.session(from: url)
-                                #if DEBUG
-                                print("✅ Successfully handled auth URL: \(url)")
-                                #endif
-                            }
+                            // Handle auth URLs (login, signup, etc.) 
+                            try await supabase.auth.session(from: url)
+                            #if DEBUG
+                            print("✅ Successfully handled auth URL: \(url)")
+                            #endif
                         } catch {
                             #if DEBUG
                             print("❌ Failed to handle auth URL: \(error)")
                             #endif
                         }
                     }
-                }
-                .sheet(isPresented: $showingPasswordReset) {
-                    PasswordResetView()
-                        .environmentObject(authManager)
                 }
         }
     }

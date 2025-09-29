@@ -6,9 +6,9 @@ struct LoginView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isResettingPassword = false
-    @State private var showingPasswordResetAlert = false
+    @State private var showingPasswordResetAlert = false  
     @State private var passwordResetMessage = ""
-    @State private var showingOTPReset = false
+    @State private var showingOTPPasswordReset = false
     
     @EnvironmentObject private var authManager: AuthManager
     
@@ -104,7 +104,7 @@ struct LoginView: View {
         } message: {
             Text(passwordResetMessage)
         }
-        .sheet(isPresented: $showingOTPReset) {
+        .sheet(isPresented: $showingOTPPasswordReset) {
             OTPPasswordResetView(email: email)
                 .environmentObject(authManager)
         }
@@ -143,9 +143,9 @@ struct LoginView: View {
             
             switch result {
             case .success:
-                passwordResetMessage = "Verification code sent to \(email). Check your inbox!"
+                passwordResetMessage = "Verification code sent to \(email). Check your inbox and enter the code to reset your password."
                 showingPasswordResetAlert = true
-                showingOTPReset = true
+                showingOTPPasswordReset = true
             case .failure(let error):
                 switch error {
                 case .invalidEmail:
