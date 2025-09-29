@@ -6,7 +6,7 @@ struct LoginView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isResettingPassword = false
-    @State private var showingPasswordResetAlert = true  
+    @State private var showingPasswordResetAlert = false  
     @State private var passwordResetMessage = ""
     @State private var showingOTPPasswordReset = false
     
@@ -104,7 +104,7 @@ struct LoginView: View {
         } message: {
             Text(passwordResetMessage)
         }
-        .sheet(isPresented: $showingOTPPasswordReset) {
+        .sheet(isPresented: $showingOTPPasswordReset, onDismiss: { resetPasswordResetState() }) {
             OTPPasswordResetView(email: email)
                 .environmentObject(authManager)
         }
@@ -112,6 +112,9 @@ struct LoginView: View {
     
     private func authenticate() async {
         let result = await authManager.signIn(email: email, password: password)
+        
+        // Reset password reset state on successful login
+        resetPasswordResetState()
         
         if case .failure(let error) = result {
             if case .signInFailed(let underlyingError) = error {
@@ -159,6 +162,14 @@ struct LoginView: View {
             }
         }
     }
+    
+    private func resetPasswordResetState() {
+        showingPasswordResetAlert = false
+        showingOTPPasswordReset = false
+        isResettingPassword = false
+        passwordResetMessage = ""
+    }
+
 }
 
 struct LoginView_Previews: PreviewProvider {

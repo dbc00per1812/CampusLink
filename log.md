@@ -4839,3 +4839,28 @@ supabase.auth.verifyOTP(
 4. Enter 6-digit code + new password → Success!
 
 **Status:** ✅ Fixed - OTP entry screen will now appear when user dismisses the alert
+
+## 🐛 FIXED: Login Button Triggering Password Reset
+
+**Issue:** Clicking "Log In" was showing password reset screen instead of only showing it when "Forgot Password?" is clicked.
+
+**Root Cause:** `showingPasswordResetAlert` was set to `true` by default, causing password reset flow to trigger on every login screen appearance.
+
+**Solution:**
+1. **Fixed default state:** `showingPasswordResetAlert = false` (was `true`)
+2. **Added state cleanup:** `resetPasswordResetState()` function to reset all password reset states
+3. **Added onDismiss handler:** OTP screen resets state when dismissed
+4. **Added login cleanup:** Password reset state resets after login attempts
+
+**Changes Made:**
+- LoginView.swift: Fixed default showingPasswordResetAlert state
+- Added resetPasswordResetState() function to clean up all password reset states
+- Added onDismiss handler to OTP sheet presentation
+- Reset password reset state after authentication attempts
+
+**New Behavior:**
+✅ "Log In" button = normal login flow
+✅ "Forgot Password?" button = password reset flow only
+✅ Clean state management prevents flow conflicts
+
+**Status:** ✅ Fixed - Login button now works correctly, password reset only on "Forgot Password?"
