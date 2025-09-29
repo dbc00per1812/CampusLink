@@ -4743,3 +4743,52 @@ supabase.auth.verifyOTP(
 3. Ready for production! 🚀
 
 **Status:** ✅ Production-ready URLs configured
+
+## 📱 USER EXPERIENCE: OTP Password Reset Flow
+
+**User Question:** "Where do I type the OTP code?"
+
+**Answer:** The OTP entry screen automatically appears in the app after requesting password reset.
+
+**Complete Flow:**
+1. **Login Screen:** Click "Forgot Password?" → Enter email → Send
+2. **Alert Appears:** "Verification code sent to [email]..." → Click "OK" 
+3. **OTP Screen Pops Up:** New screen with 3 fields:
+   - 6-digit verification code field
+   - New password field  
+   - Confirm password field
+4. **Check Email:** Get 6-digit code (like 123456)
+5. **Enter & Submit:** Type code + new password → Tap "Reset Password"
+6. **Success!** Return to login with new password
+
+**UX Benefits:**
+✅ Seamless in-app experience
+✅ No browser switching or external pages
+✅ Clean, focused UI for password reset
+✅ Automatic screen presentation (no user confusion)
+
+**Status:** User flow clarified - ready for testing!
+
+## 🔧 FIXED: Email Sending Magic Links Instead of OTP Codes
+
+**Issue:** User reported email contains login link instead of OTP code for in-app entry.
+
+**Root Cause:** 
+- `signInWithOTP()` sends magic links by default, not OTP codes
+- Need to configure Supabase email template to show the token
+
+**Solution:**
+1. **Switch to `resetPasswordForEmail()`** - proper method for password reset
+2. **Update verifyOTP type** from `.magiclink` to `.recovery` 
+3. **Configure Supabase email template** to show `{{ .Token }}` instead of link
+
+**Changes Made:**
+- AuthManager: `signInWithOTP()` → `resetPasswordForEmail()`
+- verifyOTP: `type: .magiclink` → `type: .recovery`
+- Created CONFIGURE_SUPABASE_OTP_EMAIL.md with email template instructions
+
+**User Action Required:**
+- Update Supabase email template to show: `{{ .Token }}`
+- This will display 6-digit code like "123456" instead of clickable link
+
+**Status:** ✅ Fixed - ready for Supabase email template configuration

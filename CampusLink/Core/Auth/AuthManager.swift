@@ -203,8 +203,8 @@ class AuthManager: ObservableObject {
             print("🔄 Sending password reset to \(email)")
             
             // Use proper redirect URL for password reset confirmation
-            // Send password reset OTP via email (no redirect needed)
-            try await supabase.auth.signInWithOTP(email: email)
+            // Send password reset email with OTP token (configured in Supabase email template)
+            try await supabase.auth.resetPasswordForEmail(email)
             
             print("✅ Password reset email sent successfully")
             return .success(())
@@ -265,7 +265,7 @@ class AuthManager: ObservableObject {
             let result = try await supabase.auth.verifyOTP(
                 email: email,
                 token: otp,
-                type: .magiclink
+                type: .recovery
             )
             
             print("✅ OTP verified: \(result)")
