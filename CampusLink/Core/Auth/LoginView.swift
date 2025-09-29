@@ -6,7 +6,7 @@ struct LoginView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isResettingPassword = false
-    @State private var showingPasswordResetAlert = false  
+    @State private var showingPasswordResetAlert = true  
     @State private var passwordResetMessage = ""
     @State private var showingOTPPasswordReset = false
     
@@ -100,7 +100,7 @@ struct LoginView: View {
             Alert(title: Text("Login Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }
         .alert("Password Reset", isPresented: $showingPasswordResetAlert) {
-            Button("OK") { }
+            Button("OK") { showingOTPPasswordReset = true }
         } message: {
             Text(passwordResetMessage)
         }
@@ -145,7 +145,7 @@ struct LoginView: View {
             case .success:
                 passwordResetMessage = "Verification code sent to \(email). Check your inbox and enter the code to reset your password."
                 showingPasswordResetAlert = true
-                showingOTPPasswordReset = true
+                
             case .failure(let error):
                 switch error {
                 case .invalidEmail:

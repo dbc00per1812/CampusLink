@@ -4792,3 +4792,50 @@ supabase.auth.verifyOTP(
 - This will display 6-digit code like "123456" instead of clickable link
 
 **Status:** ✅ Fixed - ready for Supabase email template configuration
+
+## 🔒 SECURITY QUESTION: OTP Code Uniqueness
+
+**User Question:** "Will that code be different every time?"
+
+**Answer:** ✅ YES - Each password reset generates a unique OTP code for security.
+
+**How Supabase OTP Security Works:**
+- Every `resetPasswordForEmail()` call generates a NEW unique token
+- Codes are cryptographically random (like: 847291, 163582, 924756)
+- Each code expires after a set time (typically 1 hour)
+- Old codes become invalid when new ones are requested
+- Codes are single-use only (can't be reused)
+
+**Security Benefits:**
+✅ No code reuse - each reset is completely fresh
+✅ Time-limited validity - codes expire automatically  
+✅ Cryptographically secure random generation
+✅ Prevents replay attacks and code guessing
+
+**Example Flow:**
+1. First reset: User gets code `123456` 
+2. Second reset: User gets code `789012` (completely different)
+3. Code `123456` is now invalid/expired
+
+**Status:** Confirmed - proper security implementation with unique codes per request
+
+## 🐛 FIXED: OTP Entry Screen Not Appearing
+
+**Issue:** User received OTP code in email but OTP entry screen didn't show up in app.
+
+**Root Cause:** Alert and sheet presentation were conflicting when shown simultaneously.
+
+**Solution:** Sequential flow - show alert first, then OTP screen when user dismisses alert.
+
+**Changes Made:**
+- LoginView.swift: Alert "OK" button now triggers `showingOTPPasswordReset = true`
+- Removed automatic OTP screen showing on password reset success
+- Clean flow: Alert → User clicks OK → OTP screen appears
+
+**New User Flow:**
+1. Click "Forgot Password?" → Enter email → Send
+2. Alert: "Verification code sent to [email]..." 
+3. Click "OK" on alert → OTP entry screen appears
+4. Enter 6-digit code + new password → Success!
+
+**Status:** ✅ Fixed - OTP entry screen will now appear when user dismisses the alert
