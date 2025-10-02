@@ -36,11 +36,16 @@ class TabCoordinator: ObservableObject {
     
     @Published var selectedTab: AppTab = .home
     @Published var walletShouldFocusOffers: Bool = false
+    @Published var shouldResetHomeNavigation: Bool = false
     
     private init() {}
     
     /// Navigate to a specific tab
     func navigateToTab(_ tab: AppTab) {
+        // If navigating to home tab and we're already on home tab, reset navigation
+        if tab == .home && selectedTab == .home {
+            shouldResetHomeNavigation = true
+        }
         selectedTab = tab
     }
     
@@ -53,5 +58,10 @@ class TabCoordinator: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.walletShouldFocusOffers = false
         }
+    }
+    
+    /// Reset the home navigation reset flag
+    func resetHomeNavigationFlag() {
+        shouldResetHomeNavigation = false
     }
 }

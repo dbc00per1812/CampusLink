@@ -45,29 +45,6 @@ enum ServiceLocation: String, Codable, CaseIterable {
     }
 }
 
-enum ServiceType: String, Codable, CaseIterable {
-    case calendar = "calendar"
-    case slots = "slots"
-    
-    var displayName: String {
-        switch self {
-        case .calendar:
-            return "Calendar-based"
-        case .slots:
-            return "Time Slots"
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .calendar:
-            return "Flexible scheduling based on your availability"
-        case .slots:
-            return "Pre-defined time slots with limited capacity"
-        }
-    }
-}
-
 struct Listing: Codable, Identifiable {
     let id: UUID
     let userId: String
@@ -82,9 +59,6 @@ struct Listing: Codable, Identifiable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
-    let serviceType: ServiceType?
-    let slotsAvailable: Int?
-    let maxBookingsPerSlot: Int?
     let archived: Bool?
     let createdAt: Date
     // Seek mode fields (Phase 2)
@@ -101,9 +75,6 @@ struct Listing: Codable, Identifiable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
-        case serviceType = "service_type"
-        case slotsAvailable = "slots_available"
-        case maxBookingsPerSlot = "max_bookings_per_slot"
         case archived = "archived"
         case createdAt = "created_at"
         // Seek mode fields
@@ -128,9 +99,6 @@ struct Listing: Codable, Identifiable {
         serviceDuration: nil,
         serviceLocation: nil,
         serviceAvailability: nil,
-        serviceType: nil,
-        slotsAvailable: nil,
-        maxBookingsPerSlot: nil,
         archived: false,
         createdAt: Date(),
         intent: .offer,
@@ -152,9 +120,6 @@ struct ListingCreate: Codable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
-    let serviceType: ServiceType?
-    let slotsAvailable: Int?
-    let maxBookingsPerSlot: Int?
     let archived: Bool?
     // Seek mode fields (Phase 2)
     let intent: ListingIntent
@@ -169,9 +134,6 @@ struct ListingCreate: Codable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
-        case serviceType = "service_type"
-        case slotsAvailable = "slots_available"
-        case maxBookingsPerSlot = "max_bookings_per_slot"
         case archived = "archived"
         // Seek mode fields
         case intent
@@ -194,9 +156,6 @@ struct ListingWithUser: Codable, Identifiable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
-    let serviceType: ServiceType?
-    let slotsAvailable: Int?
-    let maxBookingsPerSlot: Int?
     let archived: Bool?
     let createdAt: Date
     let user: User
@@ -213,9 +172,6 @@ struct ListingWithUser: Codable, Identifiable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
-        case serviceType = "service_type"
-        case slotsAvailable = "slots_available"
-        case maxBookingsPerSlot = "max_bookings_per_slot"
         case archived = "archived"
         case createdAt = "created_at"
         // Seek mode fields
@@ -239,9 +195,6 @@ struct ListingWithUser: Codable, Identifiable {
         serviceDuration: nil,
         serviceLocation: nil,
         serviceAvailability: nil,
-        serviceType: nil,
-        slotsAvailable: nil,
-        maxBookingsPerSlot: nil,
         archived: false,
         createdAt: Date(),
         user: User.sampleUser,

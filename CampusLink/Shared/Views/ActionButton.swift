@@ -251,9 +251,6 @@ struct ActionButton_Previews: PreviewProvider {
                     serviceDuration: nil,
                     serviceLocation: nil,
                     serviceAvailability: nil,
-                    serviceType: nil,
-                    slotsAvailable: nil,
-                    maxBookingsPerSlot: nil,
                     archived: false,
                     createdAt: Date(),
                     user: User(

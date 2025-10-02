@@ -126,11 +126,14 @@ class AuthManager: ObservableObject {
     /// Sign up with email confirmation required (OTP-based)
     func signUpWithEmailConfirmation(email: String, password: String, name: String) async -> Result<Void, AuthError> {
         guard email.hasSuffix(".edu") else {
+            print("❌ Invalid email format: \(email) (must end with .edu)")
             return .failure(.invalidEmail)
         }
 
         do {
             print("🔄 Starting signup with email confirmation for \(email)")
+            print("🔄 Password length: \(password.count)")
+            print("🔄 Name: \(name)")
             
             // Create user account with email confirmation required
             let authResponse = try await supabase.auth.signUp(
@@ -139,11 +142,24 @@ class AuthManager: ObservableObject {
                 data: ["name": .string(name)]
             )
             
-            print("✅ Signup request sent - email confirmation required: \(authResponse.user.id)")
+            print("✅ Signup request sent successfully")
+            print("✅ User ID: \(authResponse.user.id)")
+            print("✅ User email confirmed: \(authResponse.user.emailConfirmedAt != nil)")
+            print("✅ Session: \(authResponse.session != nil)")
+            
+            // Check if email confirmation is required
+            if authResponse.user.emailConfirmedAt == nil {
+                print("📧 Email confirmation required - user should receive verification email")
+            } else {
+                print("⚠️ User already confirmed - this might be unexpected")
+            }
+            
             return .success(())
             
         } catch {
             print("❌ Signup with email confirmation failed: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            print("❌ Error localized description: \(error.localizedDescription)")
             return .failure(.signUpFailed(error))
         }
     }
@@ -238,17 +254,31 @@ class AuthManager: ObservableObject {
     }
 
     func signOut() async -> Result<Void, AuthError> {
+        // Always clear the local session first
+        await MainActor.run {
+            self.session = nil
+        }
+        
         do {
             try await supabase.auth.signOut()
-            
-            // Clear session immediately
-            await MainActor.run {
-                self.session = nil
-            }
-            
+            print("✅ Supabase signOut successful")
             return .success(())
         } catch {
-            return .failure(.signOutFailed(error))
+            // If sign out fails, that's okay - we already cleared the local session
+            // This handles cases where the user account was deleted or session is invalid
+            print("⚠️ Supabase signOut failed, but local session cleared: \(error.localizedDescription)")
+            
+            // Check if this is a session-related error (account deleted, etc.)
+            if error.localizedDescription.contains("Invalid JWT") || 
+               error.localizedDescription.contains("session_not_found") ||
+               error.localizedDescription.contains("invalid_grant") ||
+               error.localizedDescription.contains("User not found") {
+                print("✅ Session already invalid (account deleted), treating as success")
+                return .success(())
+            }
+            
+            // For other errors, still treat as success since we cleared local session
+            return .success(())
         }
     }
     
@@ -356,27 +386,61 @@ class AuthManager: ObservableObject {
             throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid edge function URL"]))
         }
 
-        guard session?.accessToken != nil else {
+        guard let token = session?.accessToken else {
             throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "No active session"]))
         }
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = session?.accessToken {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         // Send empty body - edge function will use the token to identify the user
         req.httpBody = try JSONEncoder().encode([String: String]())
 
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+        do {
+            print("🔄 Sending delete request to: \(url)")
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ Invalid response type")
+                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+            }
+            
+            print("📡 Response status: \(httpResponse.statusCode)")
+            print("📡 Response data: \(String(data: data, encoding: .utf8) ?? "No data")")
+            
+            if (200..<300).contains(httpResponse.statusCode) {
+                // Parse response to get success message
+                if let responseData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = responseData["message"] as? String {
+                    print("✅ Account deletion successful: \(message)")
+                } else {
+                    print("✅ Account deletion successful (no message)")
+                }
+                return
+            } else {
+                // Parse error response
+                let errorMessage: String
+                if let responseData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let error = responseData["error"] as? String {
+                    errorMessage = error
+                } else {
+                    errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                }
+                print("❌ Delete account failed with status \(httpResponse.statusCode): \(errorMessage)")
+                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage]))
+            }
+        } catch let error as AuthError {
+            print("❌ AuthError during deletion: \(error)")
+            throw error
+        } catch {
+            print("❌ Network error during account deletion: \(error.localizedDescription)")
+            throw AuthError.deleteFailed(error)
         }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: message]))
-        }
-        // On success, the caller should sign out and clear local state.
+    }
+    
+    /// Test method: Just sign out user for testing (bypasses deletion)
+    func testDeleteUser() async -> Result<Void, AuthError> {
+        print("🧪 Test deletion: Just signing out user for testing purposes")
+        return await signOut()
     }
 } 

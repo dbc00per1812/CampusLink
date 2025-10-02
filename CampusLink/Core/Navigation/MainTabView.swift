@@ -3,17 +3,20 @@ import SwiftUI
 struct MainTabView: View {
     @StateObject private var tabCoordinator = TabCoordinator.shared
     @State private var walletBadge: String?
+    @State private var homeNavigationPath = NavigationPath()
     
     var body: some View {
         ResponsiveContainer {
             TabView(selection: $tabCoordinator.selectedTab) {
                 // Home Tab
-                HomeTabView()
-                    .tabItem {
-                        Image(systemName: AppTab.home.systemImage)
-                            .responsiveFontSize(24)
-                    }
-                    .tag(AppTab.home)
+                NavigationStack(path: $homeNavigationPath) {
+                    HomeTabView()
+                }
+                .tabItem {
+                    Image(systemName: AppTab.home.systemImage)
+                        .responsiveFontSize(24)
+                }
+                .tag(AppTab.home)
                 
                 // Messages Tab
                 ConversationListView()
@@ -54,6 +57,18 @@ struct MainTabView: View {
             .adaptiveBottomPadding()
         }
         .environmentObject(tabCoordinator)
+        .onChange(of: tabCoordinator.selectedTab) { newTab in
+            if newTab == .home {
+                // Reset home navigation when home tab is selected
+                homeNavigationPath = NavigationPath()
+            }
+        }
+        .onChange(of: tabCoordinator.shouldResetHomeNavigation) { shouldReset in
+            if shouldReset {
+                homeNavigationPath = NavigationPath()
+                tabCoordinator.resetHomeNavigationFlag()
+            }
+        }
     }
     
     private func loadWalletBadge() async {

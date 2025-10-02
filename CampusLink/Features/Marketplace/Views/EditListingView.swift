@@ -13,9 +13,6 @@ private struct ListingUpdate: Codable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
-    let serviceType: ServiceType?
-    let slotsAvailable: Int?
-    let maxBookingsPerSlot: Int?
 
     enum CodingKeys: String, CodingKey {
         case title, description, price, category, photo, photos
@@ -23,9 +20,6 @@ private struct ListingUpdate: Codable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
-        case serviceType = "service_type"
-        case slotsAvailable = "slots_available"
-        case maxBookingsPerSlot = "max_bookings_per_slot"
     }
 }
 
@@ -43,9 +37,6 @@ struct EditListingView: View {
     @State private var serviceDuration: String
     @State private var serviceLocation: ServiceLocation
     @State private var serviceAvailability: String
-    @State private var serviceType: ServiceType
-    @State private var slotsAvailable: String
-    @State private var maxBookingsPerSlot: String
     @State private var selectedImage: PhotosPickerItem?
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var imageData: Data?
@@ -78,9 +69,6 @@ struct EditListingView: View {
         _serviceDuration = State(initialValue: listing.serviceDuration ?? "")
         _serviceLocation = State(initialValue: listing.serviceLocation ?? .onCampus)
         _serviceAvailability = State(initialValue: listing.serviceAvailability ?? "")
-        _serviceType = State(initialValue: listing.serviceType ?? .calendar)
-        _slotsAvailable = State(initialValue: listing.slotsAvailable?.description ?? "")
-        _maxBookingsPerSlot = State(initialValue: listing.maxBookingsPerSlot?.description ?? "")
     }
 
     var body: some View {
@@ -333,36 +321,6 @@ struct EditListingView: View {
                                     .background(Color(UIColor.systemGray6))
                                     .cornerRadius(10)
                             }
-                            
-                            LabeledField(title: "Service Type") {
-                                Picker("Service Type", selection: $serviceType) {
-                                    ForEach(ServiceType.allCases, id: \.self) { type in
-                                        Text(type.displayName).tag(type)
-                                    }
-                                }
-                                .pickerStyle(MenuPickerStyle())
-                                .padding()
-                                .background(Color(UIColor.systemGray6))
-                                .cornerRadius(10)
-                            }
-                            
-                            if serviceType == .slots {
-                                LabeledField(title: "Number of Time Slots") {
-                                    TextField("e.g., 5, 10, 20", text: $slotsAvailable)
-                                        .keyboardType(.numberPad)
-                                        .padding()
-                                        .background(Color(UIColor.systemGray6))
-                                        .cornerRadius(10)
-                                }
-                                
-                                LabeledField(title: "Max Bookings per Slot") {
-                                    TextField("e.g., 1, 2, 5 (optional)", text: $maxBookingsPerSlot)
-                                        .keyboardType(.numberPad)
-                                        .padding()
-                                        .background(Color(UIColor.systemGray6))
-                                        .cornerRadius(10)
-                                }
-                            }
                         }
                     }
 
@@ -507,10 +465,7 @@ struct EditListingView: View {
                 listingType: listingType,
                 serviceDuration: listingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
                 serviceLocation: listingType == .service ? serviceLocation : nil,
-                serviceAvailability: listingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil,
-                serviceType: listingType == .service ? serviceType : nil,
-                slotsAvailable: listingType == .service && serviceType == .slots ? (slotsAvailable.isEmpty ? nil : Int(slotsAvailable)) : nil,
-                maxBookingsPerSlot: listingType == .service && serviceType == .slots ? (maxBookingsPerSlot.isEmpty ? nil : Int(maxBookingsPerSlot)) : nil
+                serviceAvailability: listingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil
             )
 
             do {

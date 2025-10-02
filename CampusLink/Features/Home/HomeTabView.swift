@@ -45,24 +45,21 @@ struct HomeTabView: View {
 
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                headerView()
-                if AppConfig.enableSeekMode {
-                    filterView()
-                }
-                contentView()
+        VStack(spacing: 0) {
+            headerView()
+            if AppConfig.enableSeekMode {
+                filterView()
             }
-            // keep this screen interactable even if a parent mistakenly disabled it
-            .disabled(false)
-            .allowsHitTesting(true)
-            .onAppear {
-                PaymentService.shared.paymentResult = nil
-                PaymentService.shared.paymentSheet  = nil
-                Task { await loadAllListings() }
-            }
+            contentView()
         }
-        .navigationBarHidden(true)
+        // keep this screen interactable even if a parent mistakenly disabled it
+        .disabled(false)
+        .allowsHitTesting(true)
+        .onAppear {
+            PaymentService.shared.paymentResult = nil
+            PaymentService.shared.paymentSheet  = nil
+            Task { await loadAllListings() }
+        }
         .sheet(isPresented: $showingSearchResults) {
             if AppConfig.enableSearch {
                 NavigationView {
@@ -210,10 +207,6 @@ extension HomeTabView {
                         if listing.id == listings.suffix(3).first?.id {
                             Task { await loadMoreListings() }
                         }
-                    }
-                    .onTapGesture {
-                        // Prevent navigation if data is being modified
-                        guard !isLoading && !isLoadingMore else { return }
                     }
                 }
 

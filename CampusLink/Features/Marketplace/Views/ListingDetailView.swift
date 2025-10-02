@@ -9,7 +9,6 @@ struct ListingDetailView: View {
     @StateObject private var conversationViewModel = ConversationListViewModel()
     @StateObject private var orderService = OrderService.shared
     @StateObject private var walletService = WalletService.shared
-    @StateObject private var timeSlotService = TimeSlotService.shared
 
     @State private var isContactingSeller = false
     @State private var isPrimaryActionLoading = false
@@ -24,9 +23,6 @@ struct ListingDetailView: View {
     @State private var processingFeeCents: Int = 0
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
-    @State private var timeSlots: [TimeSlot] = []
-    @State private var selectedTimeSlot: TimeSlot?
-    @State private var isLoadingTimeSlots = false
     @State private var selectedPhotoIndex = 0
     @State private var isImageViewerPresented = false
     @State private var showingOfferCompose = false
@@ -146,22 +142,6 @@ struct ListingDetailView: View {
                     dismiss()
                 }
                 .environmentObject(authManager)
-                
-            case .timeSlotSelection:
-                TimeSlotSelectionView(
-                    listing: listing,
-                    timeSlots: timeSlots,
-                    onSlotSelected: { slot in
-                        selectedTimeSlot = slot
-                        activeSheet = nil
-                        // After slot selection, show payment method sheet
-                        showPaymentMethodSheet = true
-                    },
-                    onCancel: {
-                        activeSheet = nil
-                        selectedTimeSlot = nil
-                    }
-                )
             }
         }
         
@@ -423,37 +403,9 @@ struct ListingDetailView: View {
             // Show payment method selection for products
             showPaymentMethodSheet = true
         } else if listing.listingType == .service {
-            // Check if this is a slot-based service
-            if listing.serviceType == .slots {
-                // Show time slot selection first
-                loadTimeSlots()
-                activeSheet = .timeSlotSelection
-            } else {
-                // Calendar-based service - show payment method selection directly
-                showPaymentMethodSheet = true
-            }
-        }
-    }
-    
-    private func loadTimeSlots() {
-        guard listing.serviceType == .slots else { return }
-        
-        isLoadingTimeSlots = true
-        
-        Task {
-            do {
-                let slots = try await timeSlotService.getTimeSlotsForListing(listing.id)
-                await MainActor.run {
-                    self.timeSlots = slots
-                    self.isLoadingTimeSlots = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.purchaseError = "Failed to load time slots: \(error.localizedDescription)"
-                    self.showErrorAlert = true
-                    self.isLoadingTimeSlots = false
-                }
-            }
+            // Show payment method selection directly for services
+            // Service coordination happens through messaging after payment
+            showPaymentMethodSheet = true
         }
     }
 
@@ -515,7 +467,7 @@ struct ListingDetailView: View {
             sellerId: sellerId,
             priceCents: priceCents,
             paymentMethod: .wallet,
-            timeSlotId: selectedTimeSlot?.id
+            timeSlotId: nil
         )
         
         print("🔍 ListingDetailView: About to call orderService.createOrder")
@@ -590,7 +542,7 @@ struct ListingDetailView: View {
                                         sellerId: sellerId,
                                         priceCents: basePriceCents,
                                         paymentMethod: .card,
-                                        timeSlotId: selectedTimeSlot?.id
+                                        timeSlotId: nil
                                     )
                                     
                                     let order = try await orderService.createOrder(orderCreate)
@@ -1264,7 +1216,6 @@ enum ActiveSheet: Identifiable {
     case purchaseConfirmation
     case chat(Conversation)
     case editListing
-    case timeSlotSelection
 
     var id: String {
         switch self {
@@ -1272,7 +1223,6 @@ enum ActiveSheet: Identifiable {
         case .purchaseConfirmation: return "purchaseConfirmation"
         case let .chat(conversation): return "chat:\(conversation.id)"
         case .editListing: return "editListing"
-        case .timeSlotSelection: return "timeSlotSelection"
         }
     }
 }

@@ -72,7 +72,7 @@ struct SignUpView: View {
             }
             .navigationBarHidden(true)
             .hideKeyboardOnTap()
-            .sheet(isPresented: $showingOTPConfirmation) {
+            .fullScreenCover(isPresented: $showingOTPConfirmation) {
                 OTPEmailConfirmationView(email: email, name: name)
                     .environmentObject(authManager)
             }
@@ -83,26 +83,38 @@ struct SignUpView: View {
     }
     
     private func authenticate() async {
-        #if DEBUG
-        print("🔄 Starting sign-up process...")
-        #endif
+        print("🔄 Starting sign-up process for \(email)...")
+        
+        // Validate inputs
+        guard !email.isEmpty, !password.isEmpty, !name.isEmpty else {
+            await MainActor.run {
+                alertMessage = "Please fill in all fields."
+                showingAlert = true
+            }
+            return
+        }
+        
+        guard email.hasSuffix(".edu") else {
+            await MainActor.run {
+                alertMessage = "Please use a valid .edu email address."
+                showingAlert = true
+            }
+            return
+        }
+        
         let result = await authManager.signUpWithEmailConfirmation(email: email, password: password, name: name)
         
         switch result {
         case .success:
-            #if DEBUG
             print("✅ Sign-up successful! Email confirmation required.")
             await MainActor.run {
-                alertMessage = "Verification email sent to \(email). Check your inbox and enter the code to confirm your account."
-                showingAlert = true
+                // Show OTP screen immediately - no alert needed
                 showingOTPConfirmation = true
+                print("📱 Showing OTP confirmation screen")
             }
-            #endif
             
         case .failure(let error):
-            #if DEBUG
             print("❌ Sign-up failed: \(error)")
-            #endif
             handle(error)
         }
     }

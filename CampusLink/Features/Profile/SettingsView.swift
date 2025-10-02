@@ -136,6 +136,91 @@ struct SettingsView: View {
                             .padding(.horizontal)
                         }
                         
+                        // Legal Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Legal")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 0) {
+                                // Privacy Policy Link
+                                Link(destination: URL(string: "https://campuslink.app/legal/privacy")!) {
+                                    HStack {
+                                        Image(systemName: "hand.raised")
+                                            .font(.title3)
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Privacy Policy")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding()
+                                    .background(Color(UIColor.systemBackground))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Divider()
+                                    .padding(.leading)
+                                
+                                // Terms of Service Link
+                                Link(destination: URL(string: "https://campuslink.app/legal/terms")!) {
+                                    HStack {
+                                        Image(systemName: "doc.text")
+                                            .font(.title3)
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Terms of Service")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding()
+                                    .background(Color(UIColor.systemBackground))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Divider()
+                                    .padding(.leading)
+                                
+                                // Contact Support Link
+                                Link(destination: URL(string: "mailto:support@campuslink.app")!) {
+                                    HStack {
+                                        Image(systemName: "envelope")
+                                            .font(.title3)
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Contact Support")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding()
+                                    .background(Color(UIColor.systemBackground))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .cornerRadius(10)
+                            .padding(.horizontal)
+                        }
+                        
                         // About Section
                         VStack(alignment: .leading, spacing: 12) {
                             Text("About")
@@ -208,10 +293,26 @@ struct SettingsView: View {
     
     private func deleteAccount() async {
         do {
+            // Delete the account from Supabase
             try await authManager.deleteCurrentUser()
-            // After successful deletion, sign out
-            _ = await authManager.signOut()
+            print("✅ Account deleted from Supabase")
+            
+            // Account deletion successful - user will be automatically signed out
+            // by the auth state change listener when the session becomes invalid
+            print("✅ Account deletion completed successfully")
+            
+            // Force sign out locally to ensure user gets signed out
+            let signOutResult = await authManager.signOut()
+            switch signOutResult {
+            case .success:
+                print("✅ User signed out successfully after deletion")
+            case .failure(let error):
+                print("⚠️ Sign out failed after deletion: \(error.localizedDescription)")
+                // Don't show error to user since account was deleted
+            }
+            
         } catch {
+            print("❌ Account deletion failed: \(error.localizedDescription)")
             await MainActor.run {
                 alertMessage = error.localizedDescription
                 showingAlert = true

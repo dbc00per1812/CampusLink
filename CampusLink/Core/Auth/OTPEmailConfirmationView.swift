@@ -16,6 +16,11 @@ struct OTPEmailConfirmationView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
+                // Debug info
+                Text("Debug: OTP Screen Loaded")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding()
                 VStack(spacing: 8) {
                     Text("Confirm Email")
                         .font(.largeTitle)
@@ -87,6 +92,11 @@ struct OTPEmailConfirmationView: View {
             .navigationBarItems(trailing: Button("Cancel") {
                 presentationMode.wrappedValue.dismiss()
             })
+        }
+        .onAppear {
+            print("🎯 OTP Email Confirmation View appeared!")
+            print("🎯 Email: \(email)")
+            print("🎯 Name: \(name)")
         }
         .alert("Email Confirmation", isPresented: $showingAlert) {
             Button("OK") {

@@ -33,9 +33,6 @@ struct PostView: View {
     @State private var serviceDuration = ""
     @State private var selectedServiceLocation = ServiceLocation.onCampus
     @State private var serviceAvailability = ""
-    @State private var selectedServiceType = ServiceType.calendar
-    @State private var slotsAvailable = ""
-    @State private var maxBookingsPerSlot = ""
     @State private var selectedImage: PhotosPickerItem?
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var listingImage: UIImage?
@@ -389,57 +386,6 @@ struct PostView: View {
                                     .padding()
                                     .background(Color(UIColor.systemGray6))
                                     .cornerRadius(12)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Service Type")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                
-                                Picker("Service Type", selection: $selectedServiceType) {
-                                    ForEach(ServiceType.allCases, id: \.self) { type in
-                                        VStack(alignment: .leading) {
-                                            Text(type.displayName)
-                                                .font(.subheadline)
-                                                .fontWeight(.medium)
-                                            Text(type.description)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        .tag(type)
-                                    }
-                                }
-                                .pickerStyle(MenuPickerStyle())
-                                .padding()
-                                .background(Color(UIColor.systemGray6))
-                                .cornerRadius(12)
-                            }
-                            
-                            // Slot Configuration (only for slots service type)
-                            if selectedServiceType == .slots {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Number of Time Slots Available")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                    TextField("e.g., 5, 10, 20", text: $slotsAvailable)
-                                        .focused($isTextFieldFocused)
-                                        .keyboardType(.numberPad)
-                                        .padding()
-                                        .background(Color(UIColor.systemGray6))
-                                        .cornerRadius(12)
-                                }
-                                
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Maximum Bookings per Slot")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                    TextField("e.g., 1, 2, 5 (leave empty for unlimited)", text: $maxBookingsPerSlot)
-                                        .focused($isTextFieldFocused)
-                                        .keyboardType(.numberPad)
-                                        .padding()
-                                        .background(Color(UIColor.systemGray6))
-                                        .cornerRadius(12)
-                                }
                             }
                         }
                         
@@ -919,9 +865,6 @@ struct PostView: View {
                 serviceDuration: selectedListingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
                 serviceLocation: selectedListingType == .service ? selectedServiceLocation : nil,
                 serviceAvailability: selectedListingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil,
-                serviceType: selectedListingType == .service ? selectedServiceType : nil,
-                slotsAvailable: selectedListingType == .service && selectedServiceType == .slots ? (slotsAvailable.isEmpty ? nil : Int(slotsAvailable)) : nil,
-                maxBookingsPerSlot: selectedListingType == .service && selectedServiceType == .slots ? (maxBookingsPerSlot.isEmpty ? nil : Int(maxBookingsPerSlot)) : nil,
                 archived: false,
                 // Seek mode fields (Phase 2)
                 intent: selectedIntent,
@@ -970,9 +913,6 @@ struct PostView: View {
         serviceDuration = ""
         selectedServiceLocation = .onCampus
         serviceAvailability = ""
-        selectedServiceType = .calendar
-        slotsAvailable = ""
-        maxBookingsPerSlot = ""
         listingImage = nil
         selectedImage = nil
         // Seek fields (Phase 0)
@@ -1145,9 +1085,6 @@ struct PaymentsView: View {
                         serviceDuration: listing.serviceDuration,
                         serviceLocation: listing.serviceLocation,
                         serviceAvailability: listing.serviceAvailability,
-                        serviceType: listing.serviceType,
-                        slotsAvailable: listing.slotsAvailable,
-                        maxBookingsPerSlot: listing.maxBookingsPerSlot,
                         archived: listing.archived,
                         createdAt: listing.createdAt,
                         // Seek mode fields
