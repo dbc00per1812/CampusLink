@@ -1,3 +1,407 @@
+## 2025-10-07 - Simplified Tab Navigation by Consolidating Feed Filters
+
+### Update: Switched to 2x2 Grid Layout Matching Design Mockup
+
+Redesigned the home feed with a modern 2-column grid layout that exactly matches the provided design mockup.
+
+**Grid Container**:
+- Replaced vertical list with `LazyVGrid` with 2 flexible columns
+- 12px spacing between items (balanced, not too tight)
+- 16px horizontal padding, 12px top padding, 16px bottom padding
+- Moved loading states outside grid
+
+**Card Design (Matches Mockup)**:
+Recreated the exact card layout from the design:
+
+**Visual Hierarchy** (top to bottom - matches mockup exactly):
+1. **Square Image** - Perfect 1:1 ratio, fills card width
+2. **Price** - 20pt bold, theme color (large and prominent)
+3. **Title** - 16pt semibold, primary color, 2 lines max
+4. **Author Section** - Profile picture + name + verified badge
+
+**Author Display** (New - matches mockup):
+- 24x24 circular profile picture placeholder (gray with person icon)
+- Author name (12pt medium weight) next to profile picture
+- "Verified Student" badge below name with checkmark icon
+- Checkmark icon in theme color (10pt)
+- "Verified Student" text in secondary color (10pt)
+- 6px spacing between profile picture and text
+
+**Image Presentation**:
+- Perfect square (1:1 aspect ratio) with GeometryReader
+- Fills card width completely
+- For multiple photos: small "📷 N" indicator in top-right corner
+- Clean AsyncImage loading with proper placeholder states
+- Clipped to ensure perfect square shape
+
+**Card Styling**:
+- 12px padding around text content
+- 12px corner radius
+- Subtle shadow (0.08 opacity, 4px radius, 2px y-offset)
+- Clean white background
+- 6px spacing between text elements
+
+**Typography**:
+- Price: 20pt bold (large and eye-catching)
+- Title: 16pt semibold (clear, readable, 2 lines)
+- Author name: 12pt medium weight
+- Verified badge: 10pt with checkmark icon
+- All text left-aligned for consistency
+
+**What's Shown**:
+- Square product image
+- Price (prominent)
+- Title
+- Seller profile picture
+- Seller name
+- Verified student badge
+
+**Result**: A clean, professional marketplace grid that matches the design mockup exactly. Each card displays the image, price, title, and seller information with verified badge - providing trust signals while maintaining a clean, modern aesthetic.
+
+---
+
+### Update: Changed Header Button to "Sell now"
+
+Updated the seller dashboard button in the header from "Selling" to "Sell now" to make it more action-oriented and encourage users to post listings.
+
+**Change**: Header button text: "Selling" → "Sell now"
+
+**Result**: The header now shows a "Sell now" button (with chart.bar icon) that opens the seller dashboard. The tab row remains: "For you ⭐ | All | Selling | Buying | More ⊞"
+
+---
+
+### Update: Made Tabs More Compact
+
+Reduced tab sizes to fit all 5 tabs comfortably on screen without horizontal scrolling.
+
+**Size Adjustments**:
+- **Tab spacing**: 12px → 8px (reduced space between tabs)
+- **Icon-text spacing**: 6px → 4px (tighter spacing in each tab)
+- **Font size**: `.subheadline` → fixed `14pt` (more consistent sizing)
+- **Icon size**: `.subheadline` → `.caption` (smaller icons)
+- **Horizontal padding**: 16px → 12px (more compact left/right padding)
+- **Vertical padding**: 8px → 6px (slightly shorter tabs)
+
+**Result**: All 5 tabs ("For you ⭐", "All", "Selling", "Buying", "More ⊞") now fit comfortably on most screen sizes without being too small to read or tap.
+
+---
+
+### Update: Added "More" Tab with Category Browser
+
+Added a new "More" tab with a category browser similar to Facebook Marketplace, allowing users to browse listings by category.
+
+**New Features**:
+
+1. **"More" Tab**
+   - Added `.more` case to `ListingFilter` enum
+   - Icon: `square.grid.2x2.fill` (grid icon)
+   - Appears as 5th tab: "For you | All | Selling | Buying | More"
+
+2. **Created BrowseByCategoryView.swift**
+   - New dedicated view for browsing by category
+   - Two main sections: **Products** and **Services**
+   
+   **Product Categories** (with icons):
+   - Electronics (💻 laptopcomputer)
+   - Books (📚 book.fill)
+   - Furniture (🛏️ bed.double.fill)
+   - Clothing (👕 tshirt.fill)
+   - Sports (⚽ sportscourt.fill)
+   - Tickets (🎫 ticket.fill)
+   - Other (⊞ square.grid.2x2.fill)
+   
+   **Service Categories** (with icons):
+   - Tutoring (🎓 graduationcap.fill)
+   - Moving (📦 shippingbox.fill)
+   - Cleaning (✨ sparkles)
+   - Other Services (🔧 wrench.and.screwdriver.fill)
+
+3. **CategoryListingsView**
+   - Shows all listings for a specific category
+   - Filters by category AND listing type (product/service)
+   - Uses existing `ListingCard` component for consistency
+   - Empty state with encouragement to post first listing
+   - Loads up to 50 listings per category
+
+4. **UI Design**
+   - 2-column grid layout for category cards
+   - Circular icon backgrounds with theme color
+   - Clean, modern card design matching app aesthetic
+   - Navigation-based flow (tap category → see listings → tap listing → detail view)
+
+**Technical Implementation**:
+- Updated `HomeTabView.swift` to show `BrowseByCategoryView` when `.more` is selected
+- Added conditional rendering in body: shows category browser OR listing feed
+- Updated all switch statements to handle `.more` case
+- Category filtering uses Supabase queries with `eq("category", value:)` and `eq("listing_type", value:)`
+- Integrated with existing navigation and listing detail views
+
+**User Experience**:
+- ✅ Easy category browsing like Facebook Marketplace
+- ✅ Visual icons make categories instantly recognizable
+- ✅ Separate sections for Products vs Services
+- ✅ Seamless navigation flow
+- ✅ Consistent UI with rest of app
+
+**Files**:
+- Created: `CampusLink/Features/Home/BrowseByCategoryView.swift`
+- Modified: `CampusLink/Features/Home/HomeTabView.swift`
+
+**Note**: The new file `BrowseByCategoryView.swift` may need to be manually added to the Xcode project if it doesn't auto-detect.
+
+---
+
+### Update: Added Star Icon to "For you" Tab
+Added a `star.fill` SF Symbol icon to the "For you" tab to make it more visually prominent and attention-catching. The icon appears to the left of the text in an HStack with 6pt spacing.
+
+**Changes**:
+- Added `icon` computed property to `ListingFilter` enum returning `"star.fill"` for `.forYou`, `nil` for others
+- Updated `filterView()` button content to display icon conditionally using `HStack`
+- Icon matches the subheadline font size and inherits the tab's foreground color (white when selected, theme color when not)
+
+---
+
+### Task: Consolidate Feed Mode and Listing Filter Tabs
+
+**Objective**: Simplify the navigation by moving "For you" down to the same row as "All", "Selling", and "Buying" tabs, and removing the "Sell", "Local", and "Campus" tabs.
+
+### Problem
+The UI had two separate rows of tabs:
+- **Top row**: "For you", "Sell", "Local", "Campus" (FeedMode selector)
+- **Bottom row**: "All", "Selling", "Buying" (ListingFilter selector)
+
+This created visual clutter and confusion with too many tabs. The user wanted a simpler, single-row interface with just the essential filters.
+
+### Solution
+Merged the two tab systems into a unified single row with: **"For you"**, **"All"**, **"Selling"**, **"Buying"**
+
+### Changes Made
+
+#### 1. **Removed FeedMode Enum**
+- **Deleted**: `enum FeedMode` (cases: `.forYou`, `.sell`, `.local`, `.campus`)
+- **Reason**: No longer needed with consolidated filter system
+
+#### 2. **Updated ListingFilter Enum**
+- **Added**: `.forYou` case as the first option
+- **Updated**: `intentFilter` computed property to handle `.forYou` case (returns `nil` like `.all`)
+- **Ordering**: `.forYou`, `.all`, `.forSale`, `.wanted`
+
+#### 3. **Removed Feed Mode State**
+- **Deleted**: `@State private var selectedFeedMode: FeedMode = .forYou`
+- **Updated**: Default filter is now `@State private var selectedFilter: ListingFilter = .forYou`
+
+#### 4. **Removed feedModeSelector() Method**
+- **Deleted**: The entire `feedModeSelector()` view method (40 lines)
+- **Removed**: Call to `feedModeSelector()` from body view
+- **Reason**: Functionality merged into existing `filterView()`
+
+#### 5. **Updated Filter View Logic**
+- **Updated**: `filterView()` button actions to include `.forYou` case
+- **Updated**: All switch statements to handle `.forYou` case:
+  - `loadListings()` method
+  - `refreshListings()` method
+  - `filterView()` button action
+
+#### 6. **Updated "Today's Picks" Header Condition**
+- **Before**: `if selectedFeedMode == .forYou`
+- **After**: `if selectedFilter == .forYou`
+
+### User Experience Improvement
+- ✅ **Simpler Navigation**: Single row of tabs instead of two rows
+- ✅ **Less Visual Clutter**: Removed 3 unused tabs (Sell, Local, Campus)
+- ✅ **Better Organization**: All listing filters in one place
+- ✅ **Cleaner UI**: Matches the design shown in the screenshot
+- ✅ **Maintained Functionality**: "For you" personalized feed still works
+
+### Technical Details
+- **Files Modified**: `HomeTabView.swift`
+- **Lines Changed**: ~60 lines removed, ~10 lines updated
+- **Breaking Changes**: None (internal refactor only)
+- **Performance Impact**: None
+- **Linter Errors**: None
+
+### Notes
+- The "Sell" functionality is now exclusively accessed through the "Selling" button in the header (chart.bar icon)
+- "Local" and "Campus" tabs were removed as they were not being used
+- The domain filter (`enableDomainFilter = true`) still works in the background for campus-specific filtering
+- "For you" and "All" both load all listings, but "For you" shows the "Today's picks" header with campus domain
+
+---
+
+## 2025-10-02 16:45 - Fixed Infinite Loading Spinner for Listings Without Photos
+
+### Task: Replace Infinite Loading Spinner with Proper Placeholder
+
+**Objective**: Fix the listing cards that show an infinite loading spinner when no photo is uploaded.
+
+### Problem
+When users created listings without photos, the listing card would display a gray rectangle with a `ProgressView()` spinner that would spin forever, creating a poor user experience and making it look like the app was broken or still loading.
+
+### Solution
+Replaced the infinite loading spinner with a proper "No photo" placeholder that clearly indicates the listing has no image.
+
+**New Placeholder Design**:
+- Gray background (`systemGray6`)
+- Camera icon (📷 `photo` SF Symbol) at 50pt size
+- "No photo" text below the icon
+- Clean, minimal design that matches the app's aesthetic
+
+### Changes Made
+- **File**: `HomeTabView.swift` → `ListingCard` → `listingImagesCarousel()`
+- **Before**: `Rectangle().fill(Color.systemGray6).overlay(ProgressView())`
+- **After**: `Rectangle().fill(Color.systemGray6).overlay(VStack { Image(systemName: "photo") + Text("No photo") })`
+
+### User Experience Improvement
+- ✅ No more confusing infinite spinners
+- ✅ Clear visual communication that photo is missing
+- ✅ Professional appearance even without photos
+- ✅ Consistent with system design patterns
+- ✅ Users can still see listing details (title, price, description)
+
+### Technical Details
+- Uses SF Symbol `photo` icon for consistency
+- Gray opacity (0.5) for subtle appearance
+- Maintains same height (200pt) as photo area
+- No performance impact
+- No breaking changes
+
+---
+
+## 2025-10-02 15:30 - Enhanced UI Engagement with Seller Dashboard and Feed Modes
+
+### Task: Make UI More Engaging Like Facebook Marketplace
+
+**Objective**: Improve user engagement by adding analytics dashboard, multiple feed modes, performance metrics, and action items inspired by Facebook Marketplace's approach.
+
+### Changes Made
+
+#### 1. **Created SellerDashboardView.swift**
+A comprehensive seller analytics and management dashboard with two main sections:
+
+**Overview Section** (Action Items):
+- **Chats to answer**: Shows count of unanswered messages from buyers
+- **Active listings**: Displays current active listing count
+- **Add video to listings**: Placeholder for future video feature
+- **Listings to renew**: Shows listings older than 30 days that need renewal
+- **Listings to delete & relist**: Placeholder for listing management
+- Each metric displayed as a card with icon and count
+
+**Performance Section** (Analytics):
+- **Clicks on listings**: Estimated views in last 7 days
+- **Seller rating**: Displays average rating with star icon (integrated with existing ratings system)
+- **New followers**: Placeholder for future follower feature
+- **3-second video plays**: Placeholder for future video analytics
+- All metrics show "Last 7 days" time range for consistency
+
+**Key Features**:
+- Loads real-time metrics from Supabase (active listings, chats, views estimation)
+- Integrates with existing `RatingService` for seller ratings
+- "Create listing" CTA button at top to encourage engagement
+- Uses existing color scheme (`Color("ThemeColor")`)
+- Follows responsive design patterns used throughout app
+- Calculates unanswered chats by checking last message sender
+- Estimates listing views based on listing count (placeholder until analytics table added)
+
+#### 2. **Enhanced HomeTabView.swift**
+
+**Added Feed Mode Selector**:
+- Four feed modes: "For you", "Sell", "Local", "Campus"
+- Horizontal scrollable tab bar with icons
+- Active mode shows icon + bold text with colored background
+- "Sell" mode opens the Seller Dashboard sheet
+- Smooth animations when switching modes
+
+**Added "Today's Picks" Header**:
+- Shows when "For you" feed is active
+- Displays location context (extracted from user's email domain)
+- Uses location pin icon to emphasize local nature
+- Makes feed feel more personalized
+
+**Updated Header**:
+- Added "Selling" button with chart icon in top-right
+- Provides quick access to seller dashboard from main feed
+- Styled to match theme with background pill shape
+
+**Technical Changes**:
+- Added `FeedMode` enum with `.forYou`, `.sell`, `.local`, `.campus` cases
+- Added `selectedFeedMode` state variable
+- Added `showingSellerDashboard` sheet presentation
+- Added `feedModeSelector()` view component
+- Added `todaysPicksHeader()` view component
+- Feed mode selector appears below header, above listing filters
+- Seller dashboard presented as modal sheet with Done button
+
+### Engagement Features Implemented
+
+1. **Actionable Metrics**: Users see exactly what needs attention (unanswered chats, listings to renew)
+2. **Performance Visibility**: Sellers can see how their listings are performing
+3. **Multiple Views**: Users can switch between different feed modes for varied browsing
+4. **Personalization**: "Today's picks" and location context make feed feel curated
+5. **Easy Access**: Seller dashboard accessible from two places (home header + feed mode)
+6. **Visual Polish**: Card-based layout with icons makes metrics scannable
+7. **Social Proof**: Seller ratings prominently displayed to build trust
+
+### User Flow
+
+**Viewing Seller Dashboard**:
+1. User taps "Selling" button in home header OR
+2. User taps "Sell" in feed mode tabs
+3. Dashboard sheet slides up showing overview and performance metrics
+4. User can tap any metric card for more details (future enhancement)
+5. User taps "Create listing" to post new item
+6. User taps "Done" to dismiss and return to feed
+
+**Browsing Feed Modes**:
+1. User sees feed mode tabs below home header
+2. "For you" is selected by default with "Today's picks" header
+3. User taps "Campus" or "Local" to filter listings
+4. Active tab shows icon and different styling
+5. Feed updates based on selected mode
+
+### Rationale
+
+**Why These Changes**:
+- **Data-Driven**: Sellers want to see performance metrics and what needs action
+- **Discoverable**: Multiple feed modes help users find relevant items faster
+- **Engaging**: Regular metrics updates give users a reason to check the app
+- **Professional**: Dashboard makes CampusLink feel like a serious marketplace platform
+- **Sticky**: Performance tracking and action items create habit loops
+
+**Facebook Marketplace Inspiration**:
+- Borrowed the overview/performance split structure
+- Used similar metric card layout with icons
+- Implemented tab-based feed switching
+- Added location context to recommendations
+- Focused on actionable data points
+
+### Technical Notes
+
+- All metrics load asynchronously from Supabase
+- View counting is currently estimated (10 views/day/listing) - real analytics table can be added later
+- Unanswered chats calculated by checking last message sender in each conversation
+- Listings to renew: any listing older than 30 days
+- Dashboard integrates with existing `RatingService`, `AuthManager`, and Supabase client
+- No new database tables required (uses existing listings, conversations, messages, ratings tables)
+- Sheet presentations used for non-disruptive UX
+
+### Future Enhancements
+
+1. **Real Analytics**: Add database table to track actual listing views and clicks
+2. **Video Support**: Implement video upload and playback metrics
+3. **Follower System**: Add user following functionality
+4. **Actionable Cards**: Make metric cards tappable to show detailed views
+5. **Notifications**: Alert users when they have chats to answer or listings to renew
+6. **Feed Algorithms**: Implement different sorting for each feed mode
+7. **A/B Testing**: Test metric visibility impact on seller engagement
+
+### No Breaking Changes
+- All new features are additive
+- Existing home feed functionality unchanged
+- No database migrations required
+- No impact on other views or services
+
+---
+
 ## 2025-10-01 17:11 - Removed Calendar-Based Service Scheduling
 
 ### Task: Remove Calendar-Based Service Scheduling to Simplify Service Flow

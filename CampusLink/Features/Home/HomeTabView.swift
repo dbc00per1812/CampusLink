@@ -13,8 +13,8 @@ struct HomeTabView: View {
     @State private var hasMorePages = true
     @State private var currentPage = 0
     
-    // Seek mode filter (Phase 2)
-    @State private var selectedFilter: ListingFilter = .all
+    // Unified filter selection
+    @State private var selectedFilter: ListingFilter = .forYou
     // Ratings trust filter (Phase 3)
     
     // Search functionality (Phase 1)
@@ -23,6 +23,9 @@ struct HomeTabView: View {
     @State private var showingSearchResults = false
     @State private var searchWorkItem: DispatchWorkItem?
     
+    // Seller dashboard
+    @State private var showingSellerDashboard = false
+    
     
     // Debug states for visual debugging
     
@@ -30,15 +33,27 @@ struct HomeTabView: View {
     private let enableDomainFilter = true  // Enabled for production - campus-specific filtering
     
     enum ListingFilter: String, CaseIterable {
+        case forYou = "For you"
         case all = "All"
         case forSale = "Selling"
         case wanted = "Buying"
+        case more = "More"
+        
+        var icon: String? {
+            switch self {
+            case .forYou: return "star.fill"
+            case .more: return "square.grid.2x2.fill"
+            default: return nil
+            }
+        }
         
         var intentFilter: ListingIntent? {
             switch self {
+            case .forYou: return nil
             case .all: return nil
             case .forSale: return .offer
             case .wanted: return .seek
+            case .more: return nil
             }
         }
     }
@@ -50,7 +65,18 @@ struct HomeTabView: View {
             if AppConfig.enableSeekMode {
                 filterView()
             }
-            contentView()
+            if selectedFilter == .forYou {
+                todaysPicksHeader()
+            }
+            
+            // Show category browser for "More" tab, otherwise show listing feed
+            if selectedFilter == .more {
+                NavigationView {
+                    BrowseByCategoryView()
+                }
+            } else {
+                contentView()
+            }
         }
         // keep this screen interactable even if a parent mistakenly disabled it
         .disabled(false)
@@ -76,6 +102,19 @@ struct HomeTabView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingSellerDashboard) {
+            NavigationView {
+                SellerDashboardView()
+                    .environmentObject(authManager)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showingSellerDashboard = false
+                            }
+                        }
+                    }
+            }
+        }
     }
 }
 
@@ -83,33 +122,67 @@ struct HomeTabView: View {
 
 extension HomeTabView {
     @ViewBuilder
+    private func todaysPicksHeader() -> some View {
+        HStack {
+            Text("Today's picks")
+                .responsiveFont(.title2, weight: .bold)
+            Spacer()
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill")
+                    .responsiveFont(.caption)
+                    .foregroundColor(Color("ThemeColor"))
+                if let userEmail = authManager.session?.user.email,
+                   let domain = getDomainFromEmail(userEmail) {
+                    Text(domain.capitalized)
+                        .responsiveFont(.subheadline)
+                        .foregroundColor(Color("ThemeColor"))
+                }
+            }
+        }
+        .responsiveHorizontalSpacing(16)
+        .responsiveSpacing(8)
+        .background(Color(UIColor.systemBackground))
+    }
+    
+    @ViewBuilder
     private func filterView() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            ResponsiveHStack(spacing: 12) {
+            ResponsiveHStack(spacing: 8) {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
                         selectedFilter = filter
-                        Task {
-                            switch filter {
-                            case .all:
-                                await loadAllListings()
-                            case .forSale:
-                                await loadOfferListings()
-                            case .wanted:
-                                await loadSeekListings()
+                        if filter != .more {
+                            Task {
+                                switch filter {
+                                case .forYou:
+                                    await loadAllListings()
+                                case .all:
+                                    await loadAllListings()
+                                case .forSale:
+                                    await loadOfferListings()
+                                case .wanted:
+                                    await loadSeekListings()
+                                case .more:
+                                    break // Category browser view shown in body
+                                }
                             }
                         }
                     }) {
-                        Text(filter.rawValue)
-                            .responsiveFont(.subheadline)
-                            .fontWeight(selectedFilter == filter ? .semibold : .regular)
-                            .foregroundColor(selectedFilter == filter ? .white : Color("ThemeColor"))
-                            .responsiveHorizontalSpacing(16)
-                            .responsiveSpacing(8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(selectedFilter == filter ? Color("ThemeColor") : Color("ThemeColor").opacity(0.1))
-                            )
+                        HStack(spacing: 4) {
+                            if let icon = filter.icon {
+                                Image(systemName: icon)
+                                    .font(.caption)
+                            }
+                            Text(filter.rawValue)
+                                .font(.system(size: 14, weight: selectedFilter == filter ? .semibold : .regular))
+                        }
+                        .foregroundColor(selectedFilter == filter ? .white : Color("ThemeColor"))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(selectedFilter == filter ? Color("ThemeColor") : Color("ThemeColor").opacity(0.1))
+                        )
                     }
                     .accessibleButton("Filter by \(filter.rawValue)")
                 }
@@ -128,6 +201,22 @@ extension HomeTabView {
                     .responsiveFontSize(40)
                     .foregroundColor(Color("ThemeColor"))
                 Spacer()
+                Button(action: {
+                    showingSellerDashboard = true
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chart.bar.fill")
+                            .responsiveFontSize(20)
+                        Text("Sell now")
+                            .responsiveFont(.subheadline, weight: .medium)
+                    }
+                    .foregroundColor(Color("ThemeColor"))
+                    .responsiveHorizontalSpacing(12)
+                    .responsiveSpacing(8)
+                    .background(Color("ThemeColor").opacity(0.1))
+                    .responsiveCornerRadius(20)
+                }
+                .accessibleButton("View seller dashboard")
             }
             
             // Search bar (Phase 1)
@@ -196,7 +285,7 @@ extension HomeTabView {
     @ViewBuilder
     private func listView() -> some View {
         ScrollView {
-            ResponsiveVStack(spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(listings) { listing in
                     NavigationLink(destination: ListingDetailView(listing: listing)) {
                         ListingCard(listing: listing)
@@ -209,23 +298,25 @@ extension HomeTabView {
                         }
                     }
                 }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+            
+            if isLoadingMore {
+                HStack { Spacer(); ProgressView().padding(16); Spacer() }
+            }
 
-                if isLoadingMore {
-                    HStack { Spacer(); ProgressView().responsivePadding(16); Spacer() }
-                }
-
-                if !hasMorePages && !listings.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text("You've reached the end")
-                            .responsiveFont(.caption)
-                            .foregroundColor(.secondary)
-                            .responsivePadding(16)
-                        Spacer()
-                    }
+            if !hasMorePages && !listings.isEmpty {
+                HStack {
+                    Spacer()
+                    Text("You've reached the end")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(16)
+                    Spacer()
                 }
             }
-            .responsivePadding(16)
         }
         .refreshable { await refreshListings() }
     }
@@ -292,12 +383,16 @@ extension HomeTabView {
     private func loadListings() async {
         // Load listings based on current filter
         switch selectedFilter {
+        case .forYou:
+            await loadAllListings()
         case .all:
             await loadAllListings()
         case .forSale:
             await loadOfferListings()
         case .wanted:
             await loadSeekListings()
+        case .more:
+            break // Category browser view shown in body
         }
     }
 
@@ -409,12 +504,16 @@ extension HomeTabView {
     private func refreshListings() async {
         // Refresh using current filter
         switch selectedFilter {
+        case .forYou:
+            await loadAllListings()
         case .all:
             await loadAllListings()
         case .forSale:
             await loadOfferListings()
         case .wanted:
             await loadSeekListings()
+        case .more:
+            break // Category browser view shown in body
         }
     }
 }
@@ -426,194 +525,173 @@ struct ListingCard: View {
     @State private var currentImageIndex: Int = 0
 
     var body: some View {
-        ResponsiveVStack(spacing: 12, alignment: .leading) {
-            // Single centered square with paging between photos
+        VStack(alignment: .leading, spacing: 0) {
+            // Square image at top
             listingImagesCarousel()
 
-            ResponsiveVStack(spacing: 8, alignment: .leading) {
-                HStack {
-                    Text(listing.title)
-                        .responsiveFont(.headline)
-                        .lineLimit(2)
-                    Spacer()
-                    if AppConfig.enableSeekMode && listing.intent == .seek {
-                        // Show budget for seek posts
-                        VStack(alignment: .trailing, spacing: 2) {
-                            if let min = listing.budgetMin, let max = listing.budgetMax {
-                                Text("$\(min, specifier: "%.0f")-$\(max, specifier: "%.0f")")
-                                    .responsiveFont(.title3, weight: .bold)
-                                    .foregroundColor(Color("ThemeColor"))
-                            } else if let max = listing.budgetMax {
-                                Text("Up to $\(max, specifier: "%.0f")")
-                                    .responsiveFont(.title3, weight: .bold)
-                                    .foregroundColor(Color("ThemeColor"))
-                            }
-                            Text("Budget")
-                                .responsiveFont(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        // Show price for offer posts
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("$\((listing.price ?? 0), specifier: "%.2f")")
-                                .responsiveFont(.title3, weight: .bold)
-                                .foregroundColor(Color("ThemeColor"))
-                            Text("$\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") total")
-                                .responsiveFont(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-
-                Text(listing.description)
-                    .responsiveFont(.body)
-                    .foregroundColor(.secondary)
-                    .lineLimit(3)
-
-                HStack {
-                    ResponsiveHStack(spacing: 6) {
-                        if AppConfig.enableSeekMode && listing.intent == .seek {
-                            Text("Buying")
-                                .responsiveFont(.caption, weight: .medium)
-                                .responsiveHorizontalSpacing(8)
-                                .responsiveSpacing(4)
-                                .background(Color.orange)
-                                .foregroundColor(.white)
-                                .responsiveCornerRadius(6)
-                        } else if AppConfig.enableSeekMode && listing.intent == .offer {
-                            Text("Selling")
-                                .responsiveFont(.caption, weight: .medium)
-                                .responsiveHorizontalSpacing(8)
-                                .responsiveSpacing(4)
-                                .background(Color("ThemeColor"))
-                                .foregroundColor(.white)
-                                .responsiveCornerRadius(6)
-                        }
-                        
-                        Text(listing.category)
-                            .responsiveFont(.caption)
-                            .responsiveHorizontalSpacing(8)
-                            .responsiveSpacing(4)
-                            .background(Color("ThemeColor").opacity(0.2))
+            VStack(alignment: .leading, spacing: 6) {
+                // Price first - large and bold
+                if AppConfig.enableSeekMode && listing.intent == .seek {
+                    if let min = listing.budgetMin, let max = listing.budgetMax {
+                        Text("$\(min, specifier: "%.0f")-$\(max, specifier: "%.0f")")
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundColor(Color("ThemeColor"))
-                            .responsiveCornerRadius(6)
+                    } else if let max = listing.budgetMax {
+                        Text("Up to $\(max, specifier: "%.0f")")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Color("ThemeColor"))
                     }
+                } else {
+                    Text("$\((listing.price ?? 0), specifier: "%.0f")")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Color("ThemeColor"))
+                }
+                
+                // Title - medium weight
+                Text(listing.title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                
+                // Author with profile picture and verified badge
+                HStack(spacing: 6) {
+                    // Profile picture placeholder
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        )
                     
-                    Spacer()
-                    
-                    ResponsiveHStack(spacing: 4) {
-                        Text("by \(listing.user.name ?? "Unknown")")
-                            .responsiveFont(.caption)
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(listing.user.name ?? "Unknown")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
                         
-                        if AppConfig.enableSeekMode && listing.intent == .seek,
-                           let expiresAt = listing.expiresAt {
-                            Text("• Expires \(expiresAt, style: .relative)")
-                                .responsiveFont(.caption)
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color("ThemeColor"))
+                            Text("Verified Student")
+                                .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
                     }
                 }
             }
-            .responsiveHorizontalSpacing(12)
-            .responsiveSpacing(12)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(UIColor.systemBackground))
-        .responsiveCornerRadius(16)
-        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
     }
     
     @ViewBuilder
     private func listingImagesCarousel() -> some View {
         let urls: [String] = !listing.photos.isEmpty ? listing.photos : (listing.photo != nil ? [listing.photo!] : [])
-        if urls.isEmpty {
-            Rectangle()
-                .fill(Color(UIColor.systemGray6))
-                .overlay(ProgressView())
-                .responsiveFrame(height: 200)
-                .responsiveCornerRadius(12)
-        } else if urls.count == 1 {
-            // Single image - no TabView to avoid scroll conflicts
-            if let url = URL(string: urls[0]) {
-                ResponsiveAsyncImage(
-                    url: url,
-                    maxWidth: .infinity,
-                    maxHeight: 250,
-                    aspectRatio: nil,
-                    contentMode: .fit,
-                    cornerRadius: 12
-                )
-                .clipped()
-            }
-        } else {
-            // Multiple images - use ScrollView instead of TabView to prevent scroll conflicts
-            VStack(spacing: 8) {
-                // Main image
-                if currentImageIndex < urls.count,
-                   let url = URL(string: urls[currentImageIndex]) {
-                    ResponsiveAsyncImage(
-                        url: url,
-                        maxWidth: .infinity,
-                        maxHeight: 250,
-                        aspectRatio: nil,
-                        contentMode: .fit,
-                        cornerRadius: 12
-                    )
-                    .clipped()
+        
+        GeometryReader { geometry in
+            let size = geometry.size.width
+            
+            if urls.isEmpty {
+                // No photo placeholder - square
+                Rectangle()
+                    .fill(Color(UIColor.systemGray6))
                     .overlay(
-                        // Image counter
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                Text("\(currentImageIndex + 1) / \(urls.count)")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.black.opacity(0.6))
-                                    .cornerRadius(12)
-                                    .padding(.trailing, 8)
-                                    .padding(.bottom, 8)
-                            }
+                        VStack(spacing: 6) {
+                            Image(systemName: "photo")
+                                .font(.system(size: 30))
+                                .foregroundColor(.gray.opacity(0.5))
+                            Text("No photo")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
                         }
                     )
-                }
-                
-                // Thumbnail navigation
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(urls.enumerated()), id: \.offset) { index, photoURL in
-                            if let url = URL(string: photoURL) {
-                                Button(action: {
-                                    currentImageIndex = index
-                                }) {
-                                    ResponsiveAsyncImage(
-                                        url: url,
-                                        width: 60,
-                                        height: 60,
-                                        aspectRatio: 1,
-                                        contentMode: .fill,
-                                        cornerRadius: 6
-                                    )
-                                    .clipped()
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color("ThemeColor"), lineWidth: index == currentImageIndex ? 2 : 0.5)
-                                            .opacity(index == currentImageIndex ? 1 : 0.3)
-                                    )
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
+                    .frame(width: size, height: size)
+            } else if urls.count == 1 {
+                // Single image - square
+                if let url = URL(string: urls[0]) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: size, height: size)
+                                .clipped()
+                        case .failure(_):
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray6))
+                                .frame(width: size, height: size)
+                        case .empty:
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray6))
+                                .frame(width: size, height: size)
+                                .overlay(ProgressView())
+                        @unknown default:
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray6))
+                                .frame(width: size, height: size)
                         }
                     }
-                    .padding(.horizontal, 8)
                 }
-                .frame(height: 68)
+            } else {
+                // Multiple images - show first with indicator
+                if let url = URL(string: urls[0]) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: size, height: size)
+                                .clipped()
+                                .overlay(
+                                    // Image counter in top-right
+                                    VStack {
+                                        HStack {
+                                            Spacer()
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "photo.stack")
+                                                    .font(.system(size: 9))
+                                                Text("\(urls.count)")
+                                                    .font(.system(size: 10, weight: .medium))
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
+                                            .background(Color.black.opacity(0.6))
+                                            .cornerRadius(8)
+                                            .padding(6)
+                                        }
+                                        Spacer()
+                                    }
+                                )
+                        case .failure(_):
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray6))
+                                .frame(width: size, height: size)
+                        case .empty:
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray6))
+                                .frame(width: size, height: size)
+                                .overlay(ProgressView())
+                        @unknown default:
+                            Rectangle()
+                                .fill(Color(UIColor.systemGray6))
+                                .frame(width: size, height: size)
+                        }
+                    }
+                }
             }
         }
+        .aspectRatio(1, contentMode: .fit)
+        .clipped()
     }
 
 }
