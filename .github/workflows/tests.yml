@@ -1,0 +1,149 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop, clean-main ]
+  pull_request:
+    branches: [ main, develop, clean-main ]
+
+env:
+  XCODE_VERSION: '15.0'
+  IOS_SIMULATOR: 'iPhone 15'
+  IOS_VERSION: '17.0'
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      
+    - name: Show available simulators
+      run: xcrun simctl list devices
+      
+    - name: Create and boot simulator
+      run: |
+        DEVICE_ID=$(xcrun simctl create "TestDevice" "com.apple.CoreSimulator.SimDeviceType.iPhone-15" "com.apple.CoreSimulator.SimRuntime.iOS-17-0")
+        xcrun simctl boot $DEVICE_ID
+        echo "DEVICE_ID=$DEVICE_ID" >> $GITHUB_ENV
+        
+    - name: Build for testing
+      run: |
+        xcodebuild build-for-testing \
+          -scheme CampusLink \
+          -destination "platform=iOS Simulator,id=${{ env.DEVICE_ID }}" \
+          -derivedDataPath DerivedData
+          
+    - name: Run unit tests
+      run: |
+        xcodebuild test-without-building \
+          -scheme CampusLink \
+          -destination "platform=iOS Simulator,id=${{ env.DEVICE_ID }}" \
+          -derivedDataPath DerivedData \
+          -only-testing:CampusLinkTests \
+          -resultBundlePath TestResults/unit-tests.xcresult
+          
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: unit-test-results
+        path: TestResults/unit-tests.xcresult
+        
+  ui-tests:
+    name: UI Tests
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      
+    - name: Create and boot simulator
+      run: |
+        DEVICE_ID=$(xcrun simctl create "UITestDevice" "com.apple.CoreSimulator.SimDeviceType.iPhone-15" "com.apple.CoreSimulator.SimRuntime.iOS-17-0")
+        xcrun simctl boot $DEVICE_ID
+        echo "DEVICE_ID=$DEVICE_ID" >> $GITHUB_ENV
+        
+    - name: Build for testing
+      run: |
+        xcodebuild build-for-testing \
+          -scheme CampusLink \
+          -destination "platform=iOS Simulator,id=${{ env.DEVICE_ID }}" \
+          -derivedDataPath DerivedData
+          
+    - name: Run UI tests
+      run: |
+        xcodebuild test-without-building \
+          -scheme CampusLink \
+          -destination "platform=iOS Simulator,id=${{ env.DEVICE_ID }}" \
+          -derivedDataPath DerivedData \
+          -only-testing:CampusLinkUITests \
+          -resultBundlePath TestResults/ui-tests.xcresult
+          
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ui-test-results
+        path: TestResults/ui-tests.xcresult
+        
+    - name: Upload screenshots on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ui-test-failure-screenshots
+        path: |
+          ~/Library/Logs/DiagnosticReports/
+          DerivedData/Logs/Test/
+          
+  code-coverage:
+    name: Code Coverage
+    runs-on: macos-14
+    needs: unit-tests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+      
+    - name: Create and boot simulator
+      run: |
+        DEVICE_ID=$(xcrun simctl create "CoverageDevice" "com.apple.CoreSimulator.SimDeviceType.iPhone-15" "com.apple.CoreSimulator.SimRuntime.iOS-17-0")
+        xcrun simctl boot $DEVICE_ID
+        echo "DEVICE_ID=$DEVICE_ID" >> $GITHUB_ENV
+        
+    - name: Run tests with coverage
+      run: |
+        xcodebuild test \
+          -scheme CampusLink \
+          -destination "platform=iOS Simulator,id=${{ env.DEVICE_ID }}" \
+          -enableCodeCoverage YES \
+          -resultBundlePath TestResults/coverage.xcresult \
+          -only-testing:CampusLinkTests
+          
+    - name: Generate coverage report
+      run: |
+        xcrun xccov view --report --json TestResults/coverage.xcresult > coverage.json
+        
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage.json
+        
+    - name: Display coverage summary
+      run: |
+        echo "## Code Coverage Summary" >> $GITHUB_STEP_SUMMARY
+        echo "| Target | Coverage |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+        xcrun xccov view --report TestResults/coverage.xcresult | grep -E "CampusLink\s+[0-9]+\.[0-9]+%" | awk '{print "| " $1 " | " $2 " |"}' >> $GITHUB_STEP_SUMMARY
