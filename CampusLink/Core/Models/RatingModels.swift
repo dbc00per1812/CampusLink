@@ -126,7 +126,8 @@ struct UserRatingsSummary: Codable {
         if hasRatings {
             return String(format: "%.1f", averageRating)
         } else {
-            return "New"
+            // New users start with a default 5.0 star rating
+            return "5.0"
         }
     }
 }

@@ -190,7 +190,7 @@ struct PurchaseConfirmationView: View {
             .background(Color.green.opacity(0.05))
             .cornerRadius(16)
             
-            // Price Card
+            // Price Card - Show buyer price (what they paid)
             VStack(spacing: 16) {
                 HStack {
                     Image(systemName: "dollarsign.circle.fill")
@@ -198,14 +198,14 @@ struct PurchaseConfirmationView: View {
                         .font(.title2)
                         .accessibilityHidden(true)
                     
-                    Text("Total Amount")
+                    Text("Total Amount Paid")
                         .font(.headline)
                         .fontWeight(.semibold)
                     
                     Spacer()
                 }
                 
-                Text("$\(order.formattedPrice)")
+                Text(order.formattedBuyerPrice)
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.green)
@@ -664,6 +664,8 @@ struct PurchaseConfirmationView_Previews: PreviewProvider {
             buyerId: UUID(),
             sellerId: UUID(),
             priceCents: 129999,
+            sellerPriceCents: 129999,
+            buyerPriceCents: 133000,
             paymentMethod: .wallet,
             paymentStatus: .succeeded,
             orderStatus: .placed,
@@ -673,12 +675,14 @@ struct PurchaseConfirmationView_Previews: PreviewProvider {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: Date(),
-            autoReleaseAt: Date().addingTimeInterval(7 * 24 * 60 * 60), // 7 days from now
             createdAt: Date(),
             stripeEscrowAccountId: "escrow_sample_123",
             marketplaceFeeCents: 0,
             stripePaymentIntentId: "pi_sample_123",
             timeSlotId: nil,
+            deliveryPhotoUrl: nil,
+            verificationPin: nil,
+            quantity: 1,
             listing: Listing.sampleListing
         )
     }

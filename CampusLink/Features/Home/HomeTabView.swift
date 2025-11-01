@@ -12,6 +12,7 @@ struct HomeTabView: View {
     @State private var isLoadingMore = false
     @State private var hasMorePages = true
     @State private var currentPage = 0
+    @State private var userCampus: String?
     
     // Unified filter selection
     @State private var selectedFilter: ListingFilter = .forYou
@@ -20,17 +21,24 @@ struct HomeTabView: View {
     // Search functionality (Phase 1)
     @State private var searchQuery = SearchQuery()
     @State private var isSearchActive = false
-    @State private var showingSearchResults = false
+    @State private var searchResults: [ListingWithUser] = []
     @State private var searchWorkItem: DispatchWorkItem?
+    
+    // Category filtering
+    @State private var selectedCategory: String?
+    @State private var selectedCategoryType: ListingType?
+    @State private var showingCategoryBrowser = false
     
     // Seller dashboard
     @State private var showingSellerDashboard = false
     
+    // Transaction guide
+    @State private var showingTransactionGuide = false
     
     // Debug states for visual debugging
     
     private let pageSize = 10
-    private let enableDomainFilter = true  // Enabled for production - campus-specific filtering
+    private let enableCampusFilter = true  // Enabled for production - campus-specific filtering
     
     enum ListingFilter: String, CaseIterable {
         case forYou = "For you"
@@ -69,14 +77,8 @@ struct HomeTabView: View {
                 todaysPicksHeader()
             }
             
-            // Show category browser for "More" tab, otherwise show listing feed
-            if selectedFilter == .more {
-                NavigationView {
-                    BrowseByCategoryView()
-                }
-            } else {
-                contentView()
-            }
+            // Always show content view
+            contentView()
         }
         // keep this screen interactable even if a parent mistakenly disabled it
         .disabled(false)
@@ -84,22 +86,9 @@ struct HomeTabView: View {
         .onAppear {
             PaymentService.shared.paymentResult = nil
             PaymentService.shared.paymentSheet  = nil
-            Task { await loadAllListings() }
-        }
-        .sheet(isPresented: $showingSearchResults) {
-            if AppConfig.enableSearch {
-                NavigationView {
-                    SearchResultsView(searchQuery: searchQuery)
-                    .navigationTitle("Search Results")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") {
-                                showingSearchResults = false
-                            }
-                        }
-                    }
-                }
+            Task {
+                await loadUserCampus()
+                await loadAllListings()
             }
         }
         .sheet(isPresented: $showingSellerDashboard) {
@@ -115,6 +104,33 @@ struct HomeTabView: View {
                     }
             }
         }
+        .sheet(isPresented: $showingCategoryBrowser) {
+            NavigationView {
+                BrowseByCategoryView(onCategorySelected: { category, type in
+                    // Close the sheet
+                    showingCategoryBrowser = false
+                    
+                    // Set the category filter
+                    selectedCategory = category
+                    selectedCategoryType = type
+                    
+                    // Load category listings
+                    Task {
+                        await loadCategoryListings(category: category, type: type)
+                    }
+                })
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            showingCategoryBrowser = false
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingTransactionGuide) {
+            TransactionGuideView()
+        }
     }
 }
 
@@ -128,15 +144,12 @@ extension HomeTabView {
                 .responsiveFont(.title2, weight: .bold)
             Spacer()
             HStack(spacing: 4) {
+                Text(userCampus != nil ? campusAbbreviation(userCampus!) : "Campus")
+                    .responsiveFont(.subheadline)
+                    .foregroundColor(Color("ThemeColor"))
                 Image(systemName: "location.fill")
                     .responsiveFont(.caption)
                     .foregroundColor(Color("ThemeColor"))
-                if let userEmail = authManager.session?.user.email,
-                   let domain = getDomainFromEmail(userEmail) {
-                    Text(domain.capitalized)
-                        .responsiveFont(.subheadline)
-                        .foregroundColor(Color("ThemeColor"))
-                }
             }
         }
         .responsiveHorizontalSpacing(16)
@@ -151,7 +164,19 @@ extension HomeTabView {
                 ForEach(ListingFilter.allCases, id: \.self) { filter in
                     Button(action: {
                         selectedFilter = filter
-                        if filter != .more {
+                        // Clear search when switching filters
+                        isSearchActive = false
+                        searchResults = []
+                        searchQuery = SearchQuery()
+                        
+                        if filter == .more {
+                            // Show category browser sheet
+                            showingCategoryBrowser = true
+                        } else {
+                            // Clear category filter when switching to other tabs
+                            selectedCategory = nil
+                            selectedCategoryType = nil
+                            
                             Task {
                                 switch filter {
                                 case .forYou:
@@ -163,7 +188,7 @@ extension HomeTabView {
                                 case .wanted:
                                     await loadSeekListings()
                                 case .more:
-                                    break // Category browser view shown in body
+                                    break // Handled above
                                 }
                             }
                         }
@@ -197,16 +222,31 @@ extension HomeTabView {
     private func headerView() -> some View {
         ResponsiveVStack(spacing: 12) {
             HStack {
-                Image(systemName: "graduationcap.circle.fill")
-                    .responsiveFontSize(40)
-                    .foregroundColor(Color("ThemeColor"))
+                Image("BrandIcon")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
                 Spacer()
+                Button(action: {
+                    showingTransactionGuide = true
+                }) {
+                    Image(systemName: "questionmark.circle.fill")
+                        .responsiveFontSize(16)
+                        .foregroundColor(Color("ThemeColor"))
+                        .responsiveHorizontalSpacing(10)
+                        .responsiveSpacing(8)
+                        .background(Color("ThemeColor").opacity(0.1))
+                        .responsiveCornerRadius(20)
+                }
+                .accessibleButton("View transaction guide")
+                
                 Button(action: {
                     showingSellerDashboard = true
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "chart.bar.fill")
-                            .responsiveFontSize(20)
+                        Image(systemName: "dollarsign.circle.fill")
+                            .responsiveFontSize(16)
                         Text("Sell now")
                             .responsiveFont(.subheadline, weight: .medium)
                     }
@@ -243,7 +283,11 @@ extension HomeTabView {
     private func contentView() -> some View {
         if isLoading {
             loadingView()
-        } else if listings.isEmpty {
+        } else if isSearchActive && searchResults.isEmpty {
+            searchEmptyStateView()
+        } else if selectedCategory != nil && listings.isEmpty {
+            categoryEmptyStateView()
+        } else if !isSearchActive && selectedCategory == nil && listings.isEmpty {
             emptyStateView()
         } else {
             listView()
@@ -281,19 +325,76 @@ extension HomeTabView {
         .padding(.horizontal)
         Spacer()
     }
+    
+    @ViewBuilder
+    private func searchEmptyStateView() -> some View {
+        Spacer()
+        VStack(spacing: 16) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 50))
+                .foregroundColor(.gray)
+            
+            Text("No results found")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            if !searchQuery.text.isEmpty {
+                Text("Try a different search term or adjust your filters")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Enter a search term to find listings")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.horizontal)
+        Spacer()
+    }
+    
+    @ViewBuilder
+    private func categoryEmptyStateView() -> some View {
+        Spacer()
+        VStack(spacing: 16) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 50))
+                .foregroundColor(.gray)
+            
+            if let category = selectedCategory {
+                Text("No \(category) listings yet")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Be the first to post in this category!")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("No listings found")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+            }
+        }
+        .padding(.horizontal)
+        Spacer()
+    }
 
     @ViewBuilder
     private func listView() -> some View {
+        let displayListings = isSearchActive ? searchResults : listings
+        
         ScrollView {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                ForEach(listings) { listing in
+                ForEach(displayListings) { listing in
                     NavigationLink(destination: ListingDetailView(listing: listing)) {
                         ListingCard(listing: listing)
                     }
                     .buttonStyle(.plain)
                     .id(listing.id) // Ensure stable identity
                     .onAppear {
-                        if listing.id == listings.suffix(3).first?.id {
+                        if !isSearchActive && listing.id == listings.suffix(3).first?.id {
                             Task { await loadMoreListings() }
                         }
                     }
@@ -307,7 +408,7 @@ extension HomeTabView {
                 HStack { Spacer(); ProgressView().padding(16); Spacer() }
             }
 
-            if !hasMorePages && !listings.isEmpty {
+            if !isSearchActive && !hasMorePages && !listings.isEmpty {
                 HStack {
                     Spacer()
                     Text("You've reached the end")
@@ -318,7 +419,13 @@ extension HomeTabView {
                 }
             }
         }
-        .refreshable { await refreshListings() }
+        .refreshable { 
+            if isSearchActive {
+                await performSearchInternal(searchQuery)
+            } else {
+                await refreshListings()
+            }
+        }
     }
 }
 
@@ -334,46 +441,86 @@ extension HomeTabView {
         return input
     }
     
-    // Helper function to extract domain from email
-    private func getDomainFromEmail(_ email: String) -> String? {
-        let components = email.components(separatedBy: "@")
-        return components.count == 2 ? components[1].lowercased() : nil
+    // Apply campus filtering to listings
+    private func applyCampusFilter(_ listings: [ListingWithUser]) async -> [ListingWithUser] {
+        guard enableCampusFilter else { return listings }
+        
+        // Get current user's campus from their profile
+        guard let currentUserId = authManager.session?.user.id.uuidString else {
+            print("🔍 Campus Filter: Could not get current user's ID")
+            return listings // Return all listings if we can't determine user
+        }
+        
+        // Fetch current user's campus
+        do {
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus, created_at")
+                .eq("id", value: currentUserId)
+                .single()
+                .execute()
+                .value
+            
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty else {
+                print("🔍 Campus Filter: Current user has no campus set")
+                return listings // Return all listings if user has no campus
+            }
+            
+            print("🔍 Campus Filter: Current user campus: \(currentCampus)")
+            
+            // Filter listings to only show those from users with the same campus
+            let filteredListings = listings.filter { listing in
+                guard let userCampus = listing.user.campus, !userCampus.isEmpty else {
+                    print("⚠️ Campus Filter: Excluding listing '\(listing.title)' - user has no campus set")
+                    return false // Exclude listings from users without campus
+                }
+                
+                let shouldInclude = userCampus == currentCampus
+                if !shouldInclude {
+                    print("🚫 Campus Filter: Excluding listing '\(listing.title)' - campus mismatch (user: \(userCampus) vs current: \(currentCampus))")
+                } else {
+                    print("✅ Campus Filter: Including listing '\(listing.title)' - campus match (both: \(currentCampus))")
+                }
+                
+                return shouldInclude
+            }
+            
+            print("🔍 Campus Filter: Filtered \(listings.count) listings to \(filteredListings.count) for campus \(currentCampus)")
+            
+            return filteredListings
+        } catch {
+            print("❌ Campus Filter: Error fetching user campus: \(error)")
+            return listings // Return unfiltered if error
+        }
     }
     
-    // Apply domain filtering to listings
-    private func applyDomainFilter(_ listings: [ListingWithUser]) async -> [ListingWithUser] {
-        guard enableDomainFilter else { return listings }
-        
-        // Get current user's email domain
-        guard let currentUserEmail = authManager.session?.user.email,
-              let currentDomain = getDomainFromEmail(currentUserEmail) else {
-            print("🔍 Domain Filter: Could not get current user's email domain")
-            return listings // Return all listings if we can't determine domain
-        }
-        
-        print("🔍 Domain Filter: Current user domain: \(currentDomain)")
-        
-        // Filter listings to only show those from users with the same domain
-        let filteredListings = listings.filter { listing in
-            guard let userEmail = listing.user.email,
-                  let userDomain = getDomainFromEmail(userEmail) else {
-                print("⚠️ Domain Filter: Excluding listing '\(listing.title)' - user has no email or invalid domain (email: \(listing.user.email ?? "nil"))")
-                return false // Exclude listings from users without valid email domains
+    /// Filter listings to exclude those from blocked users
+    private func applyBlockedUsersFilter(_ listings: [ListingWithUser], currentUserId: String) async -> [ListingWithUser] {
+        do {
+            let blockedIds = try await BlockedUsersService.getBlockedUserIds(currentUserId: currentUserId)
+            
+            guard !blockedIds.isEmpty else {
+                #if DEBUG
+                print("🔍 Blocked Users Filter: No blocked users")
+                #endif
+                return listings
             }
             
-            let shouldInclude = userDomain == currentDomain
-            if !shouldInclude {
-                print("🚫 Domain Filter: Excluding listing '\(listing.title)' - domain mismatch (user: \(userDomain) vs current: \(currentDomain))")
-            } else {
-                print("✅ Domain Filter: Including listing '\(listing.title)' - domain match (both: \(currentDomain))")
+            let filteredListings = listings.filter { listing in
+                !blockedIds.contains(listing.user.id)
             }
             
-            return shouldInclude
+            #if DEBUG
+            print("🔍 Blocked Users Filter: Filtered \(listings.count) listings to \(filteredListings.count) (removed \(listings.count - filteredListings.count) from blocked users)")
+            #endif
+            
+            return filteredListings
+        } catch {
+            #if DEBUG
+            print("❌ Blocked Users Filter: Error fetching blocked users: \(error)")
+            #endif
+            return listings // Return unfiltered on error
         }
-        
-        print("🔍 Domain Filter: Filtered \(listings.count) listings to \(filteredListings.count) for domain \(currentDomain)")
-        
-        return filteredListings
     }
 
     // If we filter client-side for trust, fetch extra rows so we can still fill a page visually.
@@ -420,8 +567,13 @@ extension HomeTabView {
             
             print("🔍 Loaded \(result.count) listings")
             
-            // Apply domain filtering
-            let filteredResult = await applyDomainFilter(result)
+            // Apply campus filtering
+            var filteredResult = await applyCampusFilter(result)
+            
+            // Apply blocked users filtering
+            if let currentUserId = authManager.currentUserId {
+                filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
+            }
             
             await MainActor.run {
                 listings = filteredResult
@@ -451,8 +603,13 @@ extension HomeTabView {
             
             print("🔍 Loaded \(result.count) offer listings")
             
-            // Apply domain filtering
-            let filteredResult = await applyDomainFilter(result)
+            // Apply campus filtering
+            var filteredResult = await applyCampusFilter(result)
+            
+            // Apply blocked users filtering
+            if let currentUserId = authManager.currentUserId {
+                filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
+            }
             
             await MainActor.run {
                 listings = filteredResult
@@ -485,8 +642,13 @@ extension HomeTabView {
                 print("   - \(listing.title) (intent: \(listing.intent.rawValue), archived: \(listing.archived ?? false))")
             }
             
-            // Apply domain filtering
-            let filteredResult = await applyDomainFilter(result)
+            // Apply campus filtering
+            var filteredResult = await applyCampusFilter(result)
+            
+            // Apply blocked users filtering
+            if let currentUserId = authManager.currentUserId {
+                filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
+            }
             
             await MainActor.run {
                 listings = filteredResult
@@ -494,6 +656,38 @@ extension HomeTabView {
             }
         } catch {
             print("❌ Error loading seek listings: \(error)")
+            await MainActor.run {
+                isLoading = false
+            }
+        }
+    }
+    
+    private func loadCategoryListings(category: String, type: ListingType) async {
+        do {
+            let result: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users(*)")
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("category", value: category)
+                .eq("listing_type", value: type.rawValue)
+                .order("created_at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+            
+            print("🔍 Category Filter: Found \(result.count) \(category) listings")
+            
+            // Apply campus filtering
+            let filteredResult = await applyCampusFilter(result)
+            
+            await MainActor.run {
+                listings = filteredResult
+                isLoading = false
+            }
+        } catch {
+            print("❌ Error loading category listings: \(error)")
             await MainActor.run {
                 isLoading = false
             }
@@ -516,6 +710,45 @@ extension HomeTabView {
             break // Category browser view shown in body
         }
     }
+    
+    private func loadUserCampus() async {
+        guard let userId = authManager.session?.user.id.uuidString else {
+            print("❌ No user ID found - cannot load campus")
+            return
+        }
+        
+        print("🔍 Loading campus for user: \(userId)")
+        
+        do {
+            let user: User = try await supabase
+                .from("users")
+                .select("id, campus, created_at")
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            
+            print("✅ Loaded user data - Campus: \(user.campus ?? "nil")")
+            
+            await MainActor.run {
+                self.userCampus = user.campus
+                print("✅ Set userCampus to: \(self.userCampus ?? "nil")")
+            }
+        } catch {
+            print("❌ Error loading user campus: \(error)")
+        }
+    }
+    
+    private func campusAbbreviation(_ campus: String) -> String {
+        switch campus {
+        case "Indiana University Bloomington":
+            return "IU"
+        case "Purdue University":
+            return "Purdue"
+        default:
+            return campus
+        }
+    }
 }
 
 // MARK: - Listing Card (unchanged except optional trust loading usage)
@@ -523,6 +756,16 @@ extension HomeTabView {
 struct ListingCard: View {
     let listing: ListingWithUser
     @State private var currentImageIndex: Int = 0
+    @EnvironmentObject var authManager: AuthManager
+    
+    private let feeService = FeeCalculationService.shared
+    private var currentUserId: String? {
+        authManager.session?.user.id.uuidString
+    }
+    private var isOwnListing: Bool {
+        guard let currentId = currentUserId else { return false }
+        return listing.user.id.lowercased() == currentId.lowercased()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -535,16 +778,29 @@ struct ListingCard: View {
                     if let min = listing.budgetMin, let max = listing.budgetMax {
                         Text("$\(min, specifier: "%.0f")-$\(max, specifier: "%.0f")")
                             .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(Color("ThemeColor"))
+                            .foregroundColor(isOwnListing ? .blue : .green)
                     } else if let max = listing.budgetMax {
                         Text("Up to $\(max, specifier: "%.0f")")
                             .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(Color("ThemeColor"))
+                            .foregroundColor(isOwnListing ? .blue : .green)
                     }
                 } else {
-                    Text("$\((listing.price ?? 0), specifier: "%.0f")")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(Color("ThemeColor"))
+                    // Show role-based pricing: seller sees their net price, buyers see total price
+                    let sellerPriceCents = Int((listing.price ?? 0) * 100)
+                    let buyerPriceCents = feeService.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
+                    
+                    if isOwnListing {
+                        // Seller viewing their own listing - show their net price
+                        Text("$\((listing.price ?? 0), specifier: "%.2f")")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.blue)
+                    } else {
+                        // Buyer viewing listing - show buyer price with fees
+                        let displayPrice = Double(buyerPriceCents) / 100.0
+                        Text("$\(displayPrice, specifier: "%.2f")")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.green)
+                    }
                 }
                 
                 // Title - medium weight
@@ -556,29 +812,25 @@ struct ListingCard: View {
                 
                 // Author with profile picture and verified badge
                 HStack(spacing: 6) {
-                    // Profile picture placeholder
-                    Circle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 24, height: 24)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.gray)
-                        )
+                    // User avatar (profile picture or initials)
+                    UserAvatarView(user: listing.user, size: 24)
                     
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(listing.user.name ?? "Unknown")
+                        Text((listing.user.name ?? "Unknown").formattedName)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.primary)
                             .lineLimit(1)
                         
-                        HStack(spacing: 3) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color("ThemeColor"))
-                            Text("Verified Student")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                        // Only show verified badge if user is verified
+                        if listing.user.isVerifiedStudent {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color("ThemeColor"))
+                                Text("Verified Student")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -586,9 +838,9 @@ struct ListingCard: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(UIColor.systemBackground))
+        .background(Color(UIColor.secondarySystemBackground))
         .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 2)
     }
     
     @ViewBuilder
@@ -599,16 +851,25 @@ struct ListingCard: View {
             let size = geometry.size.width
             
             if urls.isEmpty {
-                // No photo placeholder - square
+                // No photo placeholder - square with gradient
                 Rectangle()
-                    .fill(Color(UIColor.systemGray6))
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color("ThemeColor").opacity(0.15),
+                                Color("ThemeColor").opacity(0.05)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .overlay(
-                        VStack(spacing: 6) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 30))
-                                .foregroundColor(.gray.opacity(0.5))
+                        VStack(spacing: 8) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 36, weight: .light))
+                                .foregroundColor(Color("ThemeColor").opacity(0.6))
                             Text("No photo")
-                                .font(.system(size: 11))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
                         }
                     )
@@ -652,10 +913,21 @@ struct ListingCard: View {
                                 .frame(width: size, height: size)
                                 .clipped()
                                 .overlay(
-                                    // Image counter in top-right
                                     VStack {
                                         HStack {
+                                            // Quantity badge (top-left)
+                                            if let qty = listing.quantityAvailable, qty > 1 {
+                                                Text("\(qty) left")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 6)
+                                                    .padding(.vertical, 3)
+                                                    .background(Color.black.opacity(0.7))
+                                                    .cornerRadius(8)
+                                                    .padding(6)
+                                            }
                                             Spacer()
+                                            // Image counter (top-right)
                                             HStack(spacing: 3) {
                                                 Image(systemName: "photo.stack")
                                                     .font(.system(size: 9))
@@ -707,13 +979,20 @@ extension HomeTabView {
         // Cancel previous search work item
         searchWorkItem?.cancel()
         
+        // If query is empty, clear search and show normal listings
+        if !query.isActive {
+            isSearchActive = false
+            searchResults = []
+            return
+        }
+        
         // Create new search work item with debouncing
         let currentQuery = query
         let workItem = DispatchWorkItem {
             Task { @MainActor in
                 // Only trigger search if query is active (has text or filters)
                 if currentQuery.isActive {
-                    performSearch(currentQuery)
+                    await performSearchInternal(currentQuery)
                 }
             }
         }
@@ -728,11 +1007,44 @@ extension HomeTabView {
         guard AppConfig.enableSearch && query.isActive else { return }
         
         searchQuery = query
-        showingSearchResults = true
         
-        // Save search query for analytics (Phase 3)
+        // Perform search internally instead of showing sheet
         Task {
-            await SearchService.shared.saveRecentSearch(query, resultCount: 0)
+            await performSearchInternal(query)
+        }
+    }
+    
+    private func performSearchInternal(_ query: SearchQuery) async {
+        guard AppConfig.enableSearch else { return }
+        
+        await MainActor.run {
+            isLoading = true
+            isSearchActive = true
+        }
+        
+        do {
+            let results = try await SearchService.shared.searchListings(
+                query: query,
+                limit: 20,
+                offset: 0
+            )
+            
+            // Convert SearchListing to ListingWithUser
+            let listingsWithUser = results.listings.map { $0.toListingWithUser() }
+            
+            await MainActor.run {
+                searchResults = listingsWithUser
+                isLoading = false
+            }
+            
+            // Save search query for analytics (Phase 3)
+            await SearchService.shared.saveRecentSearch(query, resultCount: results.totalCount)
+        } catch {
+            print("❌ Search error: \(error)")
+            await MainActor.run {
+                searchResults = []
+                isLoading = false
+            }
         }
     }
     

@@ -45,9 +45,21 @@ class ConversationListViewModel: ObservableObject {
                 .execute()
                 .value
             
+            // Get blocked user IDs to filter conversations
+            let blockedIds = (try? await BlockedUsersService.getBlockedUserIds(currentUserId: userId)) ?? []
+            
             // Fetch last message for each conversation
             var updatedConversations: [Conversation] = []
             for var conversation in response {
+                // Filter out conversations with blocked users
+                if let otherUser = conversation.otherParticipant(currentUserId: userId),
+                   blockedIds.contains(otherUser.id) {
+                    #if DEBUG
+                    print("🚫 Filtering out conversation with blocked user: \(otherUser.id)")
+                    #endif
+                    continue
+                }
+                
                 do {
                     // Get the last message for this conversation
                     let messages: [Message] = try await supabase
@@ -100,9 +112,21 @@ class ConversationListViewModel: ObservableObject {
                 .execute()
                 .value
             
+            // Get blocked user IDs to filter conversations
+            let blockedIds = (try? await BlockedUsersService.getBlockedUserIds(currentUserId: userId)) ?? []
+            
             // Fetch last message for each conversation
             var updatedConversations: [Conversation] = []
             for var conversation in response {
+                // Filter out conversations with blocked users
+                if let otherUser = conversation.otherParticipant(currentUserId: userId),
+                   blockedIds.contains(otherUser.id) {
+                    #if DEBUG
+                    print("🚫 Filtering out conversation with blocked user: \(otherUser.id)")
+                    #endif
+                    continue
+                }
+                
                 do {
                     // Get the last message for this conversation
                     let messages: [Message] = try await supabase

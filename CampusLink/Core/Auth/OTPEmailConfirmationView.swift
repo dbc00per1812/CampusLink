@@ -3,6 +3,7 @@ import SwiftUI
 struct OTPEmailConfirmationView: View {
     let email: String
     let name: String
+    let campus: String
     
     @State private var otpCode = ""
     @State private var isConfirming = false
@@ -43,6 +44,20 @@ struct OTPEmailConfirmationView: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                     }
+                    
+                    // Spam folder tip
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        Text("Didn't receive it? Check your spam/junk folder")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
                     
                     // OTP Code input
                     VStack(alignment: .leading, spacing: 8) {
@@ -155,7 +170,8 @@ struct OTPEmailConfirmationView: View {
         let result = await authManager.signUpWithEmailConfirmation(
             email: email,
             password: "", // We don't have the password here, but might not need to resend
-            name: name
+            name: name,
+            campus: campus
         )
         
         await MainActor.run {
@@ -177,6 +193,6 @@ struct OTPEmailConfirmationView: View {
 }
 
 #Preview {
-    OTPEmailConfirmationView(email: "test@iu.edu", name: "Test User")
+    OTPEmailConfirmationView(email: "test@iu.edu", name: "Test User", campus: "Indiana University Bloomington")
         .environmentObject(AuthManager())
 }

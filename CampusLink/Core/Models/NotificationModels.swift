@@ -75,14 +75,14 @@ enum NotificationType: String, Codable, CaseIterable {
         case .orderConfirmed: return .green
         case .orderInProgress: return .orange
         case .orderCompleted: return .green
-        case .orderCancelled: return .red
+        case .orderCancelled: return .facebookBlue
         case .paymentSucceeded: return .green
-        case .paymentFailed: return .red
+        case .paymentFailed: return .facebookBlue
         case .newMessage: return .blue
         case .ratingReceived: return .yellow
         case .ratingReminder: return .orange
         case .payoutCompleted: return .green
-        case .listingInterest: return .pink
+        case .listingInterest: return .facebookBlue
         case .marketplaceActivity: return .purple
         }
     }

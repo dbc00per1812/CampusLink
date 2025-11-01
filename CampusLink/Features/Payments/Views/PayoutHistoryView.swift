@@ -373,10 +373,10 @@ struct PayoutRow: View {
                     }
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(.red)
+                    .foregroundColor(.facebookBlue)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.red.opacity(0.1))
+                    .background(Color.facebookBlue.opacity(0.1))
                     .cornerRadius(8)
                     .onTapGesture {
                         onCancel()

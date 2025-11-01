@@ -33,11 +33,7 @@ struct PostView: View {
     @State private var serviceDuration = ""
     @State private var selectedServiceLocation = ServiceLocation.onCampus
     @State private var serviceAvailability = ""
-    @State private var selectedImage: PhotosPickerItem?
-    @State private var selectedImages: [PhotosPickerItem] = []
-    @State private var listingImage: UIImage?
     @State private var listingImages: [UIImage] = []
-    @State private var showPhotoPicker = false
     @State private var isLoading = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
@@ -52,6 +48,12 @@ struct PostView: View {
     @State private var budgetMin = ""
     @State private var budgetMax = ""
     @State private var expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60) // 7 days default
+    
+    // Delivery method
+    @State private var selectedDeliveryMethod: DeliveryMethod = .pickup
+    
+    // Quantity for products
+    @State private var quantity: Int = 1
     
     // Add focus state for keyboard dismissal
     @FocusState private var isTextFieldFocused: Bool
@@ -93,24 +95,9 @@ struct PostView: View {
     
     var body: some View {
         NavigationView {
-            if isLoadingProfile {
-                VStack {
-                    ProgressView()
-                        .scaleEffect(1.2)
-                    Text("Checking account status...")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 8)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if shouldShowPayoutSetup {
-                payoutRequiredView
-            } else {
-                postingFormView
-            }
-        }
-        .onAppear {
-            Task { await checkStripeConnectStatus() }
+            // Always show posting form - no onboarding required upfront!
+            // Sellers will be prompted to complete onboarding when they make their first sale
+            postingFormView
         }
     }
     
@@ -203,113 +190,24 @@ struct PostView: View {
                 
                 // Intent Picker (Phase 0 - hidden by default)
                 if AppConfig.enableSeekMode {
-                    Picker("Intent", selection: $selectedIntent) {
-                        ForEach(ListingIntent.allCases, id: \.self) { intent in
-                            Text(intent.displayName).tag(intent)
+                    VStack(spacing: 8) {
+                        Picker("Intent", selection: $selectedIntent) {
+                            ForEach(ListingIntent.allCases, id: \.self) { intent in
+                                Text(intent.displayName).tag(intent)
+                            }
                         }
+                        .pickerStyle(SegmentedPickerStyle())
+                        
+                        // Descriptive text below tabs
+                        Text(selectedIntent == .offer ? "I want to sell something" : "I want to buy something")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .pickerStyle(SegmentedPickerStyle())
                     .padding(.horizontal)
                 }
                 
-                    // Multiple Photos Section
-                    VStack(spacing: 12) {
-                        if !listingImages.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(Array(listingImages.enumerated()), id: \.offset) { index, image in
-                                        ZStack(alignment: .topTrailing) {
-                                            Image(uiImage: image)
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .clipped()
-                                                .cornerRadius(12)
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .stroke(Color("ThemeColor"), lineWidth: 2)
-                                                )
-                                            
-                                            Button(action: {
-                                                listingImages.remove(at: index)
-                                            }) {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .foregroundColor(.red)
-                                                    .background(Color.white)
-                                                    .clipShape(Circle())
-                                            }
-                                            .offset(x: 8, y: -8)
-                                        }
-                                    }
-                                    
-                                    // Add more photos button
-                                    if listingImages.count < 10 {
-                                        Button(action: { showPhotoPicker = true }) {
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(Color(UIColor.systemGray6))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    VStack {
-                                                        Image(systemName: "plus")
-                                                            .font(.system(size: 30))
-                                                            .foregroundColor(.gray)
-                                                        Text("Add More")
-                                                            .font(.caption)
-                                                            .foregroundColor(.gray)
-                                                    }
-                                                )
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .stroke(Color("ThemeColor"), lineWidth: 2)
-                                                )
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                            }
-                        } else {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(height: 200)
-                                .overlay(
-                                    VStack {
-                                        Image(systemName: "photo")
-                                            .font(.system(size: 40))
-                                            .foregroundColor(.gray)
-                                        Text("Add Photos")
-                                            .font(.headline)
-                                            .foregroundColor(.gray)
-                                        Text("Tap to select multiple photos")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                    }
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color("ThemeColor"), lineWidth: 2)
-                                )
-                                .contentShape(Rectangle())
-                                .onTapGesture { showPhotoPicker = true }
-                        }
-                        
-                        PhotosPicker(
-                            selection: $selectedImages,
-                            maxSelectionCount: 10,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
-                            Text(listingImages.isEmpty ? "Choose Photos" : "Add More Photos")
-                                .font(.subheadline)
-                                .foregroundColor(Color("ThemeColor"))
-                        }
-                    }
-                    // Make the entire photo box tappable to open the picker
-                    .photosPicker(isPresented: $showPhotoPicker,
-                                   selection: $selectedImages,
-                                   maxSelectionCount: 10,
-                                   matching: .images,
-                                   photoLibrary: .shared())
-                    
                     // Form Fields
                     VStack(spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -333,6 +231,80 @@ struct PostView: View {
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
+                        }
+                        
+                        // Photo Section
+                        VStack(spacing: 12) {
+                            if !listingImages.isEmpty {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(Array(listingImages.enumerated()), id: \.offset) { index, image in
+                                            ZStack(alignment: .topTrailing) {
+                                                Image(uiImage: image)
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                                    .frame(width: 120, height: 120)
+                                                    .clipped()
+                                                    .cornerRadius(12)
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 12)
+                                                            .stroke(Color("ThemeColor"), lineWidth: 2)
+                                                    )
+                                                
+                                                Button(action: {
+                                                    listingImages.remove(at: index)
+                                                }) {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .foregroundColor(.facebookBlue)
+                                                        .background(Color.white)
+                                                        .clipShape(Circle())
+                                                }
+                                                .offset(x: 8, y: -8)
+                                            }
+                                        }
+                                        
+                                        // Add more photos button
+                                        if listingImages.count < 10 {
+                                            ZStack {
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(Color(UIColor.systemGray6))
+                                                    .frame(width: 120, height: 120)
+                                                    .overlay(
+                                                        VStack {
+                                                            Image(systemName: "plus")
+                                                                .font(.system(size: 30))
+                                                                .foregroundColor(.gray)
+                                                            Text("Add More")
+                                                                .font(.caption)
+                                                                .foregroundColor(.gray)
+                                                        }
+                                                    )
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 12)
+                                                            .stroke(Color("ThemeColor"), lineWidth: 2)
+                                                    )
+                                                
+                                                MultiImagePickerButton(
+                                                    selectedImages: $listingImages,
+                                                    maxSelectionCount: 10,
+                                                    label: "",
+                                                    icon: "",
+                                                    style: .text
+                                                )
+                                                .opacity(0.01)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            MultiImagePickerButton(
+                                selectedImages: $listingImages,
+                                maxSelectionCount: 10,
+                                label: listingImages.isEmpty ? "Add Photo" : "Add More Photos",
+                                icon: "photo",
+                                style: .filled
+                            )
                         }
                         
                         // Listing Type Selection
@@ -387,6 +359,10 @@ struct PostView: View {
                                     .background(Color(UIColor.systemGray6))
                                     .cornerRadius(12)
                             }
+                            
+                            // Service Verification Info for sellers creating services
+                            ServiceVerificationInfoView(isForSeller: true)
+                                .padding(.top, 4)
                         }
                         
                         // Price for Offer or Budget for Seek
@@ -408,6 +384,11 @@ struct PostView: View {
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
                                 .cornerRadius(12)
+                                
+                                // Helper text for seller net pricing
+                                Text("Amount you'll receive")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                             
                             VStack(alignment: .leading, spacing: 8) {
@@ -436,6 +417,81 @@ struct PostView: View {
                                         .textFieldStyle(RoundedBorderTextFieldStyle())
                                         .padding(.top, 8)
                                 }
+                                }
+                            }
+                            
+                            // Show ticket guarantee info when Tickets category is selected
+                            if selectedCategory == "Tickets" {
+                                TicketGuaranteeInfoView(isOwnListing: true)
+                            }
+                            
+                            // Show product verification info for products
+                            if selectedListingType == .product {
+                                ProductVerificationInfoView(isForSeller: true)
+                            }
+                            
+                            // Delivery Method Picker (for products only)
+                            if selectedListingType == .product {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Delivery Method")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    Picker("Delivery Method", selection: $selectedDeliveryMethod) {
+                                        ForEach(DeliveryMethod.allCases, id: \.self) { method in
+                                            Text(method.displayName).tag(method)
+                                        }
+                                    }
+                                    .pickerStyle(SegmentedPickerStyle())
+                                    
+                                    // Description text
+                                    Text(selectedDeliveryMethod.description)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                }
+                            }
+                            
+                            // Quantity selector (for products only)
+                            if selectedListingType == .product {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Quantity Available")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    HStack {
+                                        Button(action: {
+                                            if quantity > 1 {
+                                                quantity -= 1
+                                            }
+                                        }) {
+                                            Image(systemName: "minus.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(quantity > 1 ? Color("ThemeColor") : .gray)
+                                        }
+                                        .disabled(quantity <= 1)
+                                        
+                                        Text("\(quantity)")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .frame(minWidth: 50)
+                                        
+                                        Button(action: {
+                                            if quantity < 999 {
+                                                quantity += 1
+                                            }
+                                        }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(Color("ThemeColor"))
+                                        }
+                                    }
+                                    .padding()
+                                    .background(Color(UIColor.systemGray6))
+                                    .cornerRadius(12)
+                                    
+                                    Text("How many units are you selling?")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
                             }
                         } else {
@@ -477,6 +533,26 @@ struct PostView: View {
                                     }
                                 }
                                 
+                                // Fee notice for seek posts
+                                HStack(spacing: 8) {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Stripe processing fees apply when accepting offers")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("You'll see the exact fee breakdown before payment")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color.blue.opacity(0.05))
+                                .cornerRadius(8)
+                                
                                 HStack(spacing: 16) {
                                     VStack(alignment: .leading, spacing: 8) {
                                         Text("Category")
@@ -504,6 +580,16 @@ struct PostView: View {
                                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                                 .padding(.top, 8)
                                         }
+                                        
+                                        // Show ticket guarantee info when Tickets category is selected
+                                        if selectedCategory == "Tickets" {
+                                            TicketGuaranteeInfoView(isOwnListing: false)
+                                        }
+                                        
+                                        // Show product verification info for products
+                                        if selectedListingType == .product {
+                                            ProductVerificationInfoView(isForSeller: false)
+                                        }
                                     }
                                     
                                     VStack(alignment: .leading, spacing: 8) {
@@ -515,6 +601,27 @@ struct PostView: View {
                                             .padding()
                                             .background(Color(UIColor.systemGray6))
                                             .cornerRadius(12)
+                                    }
+                                }
+                                
+                                // Delivery Method Picker for Seek mode (for products only)
+                                if selectedListingType == .product {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Delivery Method")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        Picker("Delivery Method", selection: $selectedDeliveryMethod) {
+                                            ForEach(DeliveryMethod.allCases, id: \.self) { method in
+                                                Text(method.displayName).tag(method)
+                                            }
+                                        }
+                                        .pickerStyle(SegmentedPickerStyle())
+                                        
+                                        // Description text
+                                        Text(selectedDeliveryMethod.description)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.primary)
                                     }
                                 }
                             }
@@ -558,19 +665,7 @@ struct PostView: View {
             // Dismiss keyboard when tapping outside text fields
             isTextFieldFocused = false
         }
-        .onChange(of: selectedImage) { oldValue, newValue in
-                Task {
-                    if let newValue = newValue {
-                        await loadImage(from: newValue)
-                    }
-                }
-            }
-        .onChange(of: selectedImages) { oldValue, newValue in
-                Task {
-                    await loadImages(from: newValue)
-                }
-            }
-            .alert(isPresented: $showingAlert) {
+        .alert(isPresented: $showingAlert) {
             Alert(
                 title: Text(alertMessage.contains("successfully") ? "Success" : "Error"), 
                 message: Text(alertMessage), 
@@ -623,12 +718,18 @@ struct PostView: View {
                     bio: nil,
                     profilePic: nil,
                     email: nil,
+                    campus: nil,
                     createdAt: Date(),
                     campusEmailVerified: false,
                     trustScore: nil,
                     stripeConnectId: nil,
                     stripePayoutsEnabled: false,
-                    stripeDetailsSubmitted: false
+                    stripeDetailsSubmitted: false,
+                    verificationStatus: nil,
+                    studentIdImageUrl: nil,
+                    verificationSubmittedAt: nil,
+                    verificationReviewedAt: nil,
+                    verificationNotes: nil
                 )
             }
         }
@@ -668,8 +769,8 @@ struct PostView: View {
             
             // Call connect_onboarding to check status
             struct OnboardingReq: Encodable { 
-                let return_url: String = "campuslink://wallet/onboarding-complete"
-                let refresh_url: String = "campuslink://wallet/onboarding-refresh"
+                let return_url: String = "https://stripe-redirect.netlify.app/stripe-return.html"
+                let refresh_url: String = "https://stripe-redirect.netlify.app/stripe-refresh.html"
             }
             struct OnboardingRes: Decodable { 
                 let onboarding_url: String?
@@ -751,31 +852,6 @@ struct PostView: View {
         }
     }
     
-    
-    
-    private func loadImage(from item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else { return }
-        
-        await MainActor.run {
-            self.listingImage = image
-        }
-    }
-    
-    private func loadImages(from items: [PhotosPickerItem]) async {
-        var newImages: [UIImage] = []
-        
-        for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else { continue }
-            newImages.append(image)
-        }
-        
-        await MainActor.run {
-            self.listingImages = newImages
-        }
-    }
-    
     private func createListing() async {
         guard let userId = authManager.session?.user.id.uuidString else { return }
         
@@ -825,31 +901,8 @@ struct PostView: View {
                     return
                 }
             }
-        } else if let listingImage = listingImage,
-                  let imageData = listingImage.resizedForUpload() {
-            // Fallback to single photo for backward compatibility
-            do {
-                let fileName = "\(UUID())_listing.jpg"
-                try await supabase.storage
-                    .from("listings")
-                    .upload(fileName, data: imageData)
-                
-                photoURL = try supabase.storage
-                    .from("listings")
-                    .getPublicURL(path: fileName)
-                    .absoluteString
-                
-                photoURLs = [photoURL!]
-                
-            } catch {
-                await MainActor.run {
-                    alertMessage = "Failed to upload image: \(error.localizedDescription)"
-                    showingAlert = true
-                    isLoading = false
-                }
-                return
-            }
         }
+        // No photos case - photoURL and photoURLs remain nil/empty
         
         // Create listing in database
         do {
@@ -870,7 +923,9 @@ struct PostView: View {
                 intent: selectedIntent,
                 budgetMin: selectedIntent == .seek ? (budgetMin.isEmpty ? nil : Double(budgetMin)) : nil,
                 budgetMax: selectedIntent == .seek ? (budgetMax.isEmpty ? nil : Double(budgetMax)) : nil,
-                expiresAt: selectedIntent == .seek ? expiresDate : nil
+                expiresAt: selectedIntent == .seek ? expiresDate : nil,
+                deliveryMethod: selectedListingType == .product ? selectedDeliveryMethod : nil,
+                quantityAvailable: selectedListingType == .product ? quantity : nil
             )
             
             try await supabase
@@ -913,13 +968,16 @@ struct PostView: View {
         serviceDuration = ""
         selectedServiceLocation = .onCampus
         serviceAvailability = ""
-        listingImage = nil
-        selectedImage = nil
+        listingImages = []
         // Seek fields (Phase 0)
         selectedIntent = .offer
         budgetMin = ""
         budgetMax = ""
         expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60)
+        // Delivery method
+        selectedDeliveryMethod = .pickup
+        // Reset quantity
+        quantity = 1
     }
     
     // MARK: - Stripe Note
@@ -1091,7 +1149,10 @@ struct PaymentsView: View {
                         intent: listing.intent,
                         budgetMin: listing.budgetMin,
                         budgetMax: listing.budgetMax,
-                        expiresAt: listing.expiresAt
+                        expiresAt: listing.expiresAt,
+                        deliveryMethod: listing.deliveryMethod,
+                        quantityAvailable: listing.quantityAvailable,
+                        quantitySold: listing.quantitySold
                     )
                 }
             }
@@ -1167,14 +1228,11 @@ struct MyListingCard: View {
                             .font(.headline)
                             .lineLimit(2)
                         VStack(alignment: .leading, spacing: 2) {
+                            // Seller viewing their own listing - show only their net price
                             Text("$\((listing.price ?? 0), specifier: "%.2f")")
                                 .font(.title3)
                                 .fontWeight(.bold)
-                                .foregroundColor(Color("ThemeColor"))
-                            
-                            Text("$\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") total")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.green)
                         }
                     }
                     Spacer()
@@ -1224,7 +1282,7 @@ struct MyListingCard: View {
                             .fontWeight(.medium)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color.red)
+                            .background(Color.facebookBlue)
                             .foregroundColor(.white)
                             .cornerRadius(8)
                     }

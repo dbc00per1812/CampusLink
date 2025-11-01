@@ -8,40 +8,92 @@ final class SearchService: ObservableObject {
     private let preferencesManager = SearchPreferencesManager.shared
     private init() {}
     
-    // MARK: - Domain Filtering Helpers
+    // MARK: - Campus Filtering Helpers
     
-    /// Helper function to extract domain from email
-    private func getDomainFromEmail(_ email: String) -> String? {
-        let components = email.components(separatedBy: "@")
-        return components.count == 2 ? components[1].lowercased() : nil
+    /// Apply campus filtering to search listings
+    private func applyCampusFilter(_ listings: [SearchListing]) async -> [SearchListing] {
+        guard AppConfig.enableCampusFilter else { return listings }
+        
+        // Get current user's campus from their profile
+        guard let session = try? await supabase.auth.session else {
+            print("🔍 Search Campus Filter: Could not get current user's ID")
+            return listings // Return all listings if we can't determine user
+        }
+        
+        let currentUserId = session.user.id.uuidString
+        
+        // Fetch current user's campus
+        do {
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus")
+                .eq("id", value: currentUserId)
+                .single()
+                .execute()
+                .value
+            
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty else {
+                print("🔍 Search Campus Filter: Current user has no campus set")
+                return listings // Return all listings if user has no campus
+            }
+            
+            print("🔍 Search Campus Filter: Current user campus: \(currentCampus)")
+            
+            // Filter listings to only show those from users with the same campus
+            let filteredListings = listings.filter { listing in
+                guard let userCampus = listing.user_campus, !userCampus.isEmpty else {
+                    return false // Exclude listings from users without campus
+                }
+                return userCampus == currentCampus
+            }
+            
+            print("🔍 Search Campus Filter: Filtered \(listings.count) search results to \(filteredListings.count) for campus \(currentCampus)")
+            
+            return filteredListings
+        } catch {
+            print("❌ Search Campus Filter: Error fetching user campus: \(error)")
+            return listings // Return unfiltered if error
+        }
     }
     
-    /// Apply domain filtering to search listings
-    private func applyDomainFilter(_ listings: [SearchListing]) async -> [SearchListing] {
-        guard AppConfig.enableDomainFilter else { return listings }
-        
-        // Get current user's email domain
-        guard let session = try? await supabase.auth.session,
-              let currentUserEmail = session.user.email,
-              let currentDomain = getDomainFromEmail(currentUserEmail) else {
-            print("🔍 Search Domain Filter: Could not get current user's email domain")
-            return listings // Return all listings if we can't determine domain
+    /// Apply blocked users filtering to search listings
+    private func applyBlockedUsersFilter(_ listings: [SearchListing]) async -> [SearchListing] {
+        // Get current user's ID
+        guard let session = try? await supabase.auth.session else {
+            #if DEBUG
+            print("🔍 Search Blocked Users Filter: No authenticated user, skipping filter")
+            #endif
+            return listings
         }
         
-        print("🔍 Search Domain Filter: Current user domain: \(currentDomain)")
+        let currentUserId = session.user.id.uuidString
         
-        // Filter listings to only show those from users with the same domain
-        let filteredListings = listings.filter { listing in
-            guard let userEmail = listing.user_email,
-                  let userDomain = getDomainFromEmail(userEmail) else {
-                return false // Exclude listings from users without valid email domains
+        do {
+            let blockedIds = try await BlockedUsersService.getBlockedUserIds(currentUserId: currentUserId)
+            
+            guard !blockedIds.isEmpty else {
+                #if DEBUG
+                print("🔍 Search Blocked Users Filter: No blocked users")
+                #endif
+                return listings
             }
-            return userDomain == currentDomain
+            
+            // Filter out listings from blocked users
+            let filteredListings = listings.filter { listing in
+                !blockedIds.contains(listing.user_id.uuidString)
+            }
+            
+            #if DEBUG
+            print("🔍 Search Blocked Users Filter: Filtered \(listings.count) listings to \(filteredListings.count) (removed \(listings.count - filteredListings.count) from blocked users)")
+            #endif
+            
+            return filteredListings
+        } catch {
+            #if DEBUG
+            print("❌ Search Blocked Users Filter: Error fetching blocked users: \(error)")
+            #endif
+            return listings // Return unfiltered on error
         }
-        
-        print("🔍 Search Domain Filter: Filtered \(listings.count) search results to \(filteredListings.count) for domain \(currentDomain)")
-        
-        return filteredListings
     }
     
     // MARK: - Search Operations
@@ -99,14 +151,20 @@ final class SearchService: ObservableObject {
             
             #if DEBUG
             print("📱 SearchService: Received \(searchResponse.count) results from database")
-            if !searchResponse.isEmpty {
-                print("📱 SearchService: First result title: \(searchResponse.first?.title ?? "nil")")
-                print("📱 SearchService: First result ID: \(searchResponse.first?.id ?? UUID())")
+            if let first = searchResponse.first {
+                print("📱 SearchService: First result title: \(first.title)")
+                print("📱 SearchService: First result ID: \(first.id)")
+                print("📱 SearchService: First result photo: \(first.photo ?? "nil")")
+                print("📱 SearchService: First result photos: \(first.photos?.count ?? 0) photos")
+                print("📱 SearchService: First result images: \(first.images?.count ?? 0) images")
             }
             #endif
             
-            // Apply domain filtering to search results
-            let filteredListings = await applyDomainFilter(searchResponse)
+            // Apply campus filtering to search results
+            var filteredListings = await applyCampusFilter(searchResponse)
+            
+            // Apply blocked users filtering
+            filteredListings = await applyBlockedUsersFilter(filteredListings)
             
             // Parse the response
             let listings = filteredListings

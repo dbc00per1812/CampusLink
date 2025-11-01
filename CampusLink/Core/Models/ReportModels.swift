@@ -79,12 +79,14 @@ enum ReportStatus: String, Codable {
 
 // MARK: - Report Creation
 struct ReportCreate: Codable {
+    let reporterId: String
     let reportedUserId: String?
     let reportedListingId: String?
     let reportType: String
     let description: String
     
     enum CodingKeys: String, CodingKey {
+        case reporterId = "reporter_id"
         case reportedUserId = "reported_user_id"
         case reportedListingId = "reported_listing_id"
         case reportType = "report_type"

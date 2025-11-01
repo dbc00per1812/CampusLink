@@ -27,7 +27,13 @@ struct ListingDetailView: View {
     @State private var isImageViewerPresented = false
     @State private var showingOfferCompose = false
     @State private var showingOffersList = false
+    @State private var purchaseQuantity: Int = 1
+    @State private var isUserBlocked = false
 
+    private var isAuthenticated: Bool {
+        authManager.session != nil
+    }
+    
     private var isOwnListing: Bool {
         guard let currentUserId = authManager.session?.user.id.uuidString else { 
             print("🔍 No current user ID")
@@ -50,6 +56,11 @@ struct ListingDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // Guest info banner
+                if !isAuthenticated {
+                    guestInfoBanner
+                }
+                
                 photoGallerySection
                 titleAndPriceSection
                 serviceDetailsSection
@@ -71,20 +82,41 @@ struct ListingDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 16) {
-                    if !isOwnListing {
-                        Button {
-                            activeSheet = .report(
-                                userId: listing.user.id,
-                                userName: listing.user.name ?? "Unknown User",
-                                listingId: listing.id.uuidString,
-                                listingTitle: listing.title
-                            )
+                    if !isOwnListing && isAuthenticated {
+                        Menu {
+                            Button {
+                                activeSheet = .report(
+                                    userId: listing.user.id,
+                                    userName: (listing.user.name ?? "Unknown User").formattedName,
+                                    listingId: listing.id.uuidString,
+                                    listingTitle: listing.title
+                                )
+                            } label: {
+                                Label("Report", systemImage: "flag")
+                            }
+                            
+                            Button(role: .destructive) {
+                                activeSheet = .blockUser(
+                                    userId: listing.user.id,
+                                    userName: (listing.user.name ?? "Unknown User").formattedName
+                                )
+                            } label: {
+                                Label(isUserBlocked ? "Unblock User" : "Block User", systemImage: "hand.raised.fill")
+                            }
                         } label: {
-                            Image(systemName: "flag").foregroundColor(.red)
+                            Image(systemName: "ellipsis.circle")
+                                .foregroundColor(.facebookBlue)
                         }
                     }
 
                     Button("Done") { dismiss() }
+                }
+            }
+        }
+        .onAppear {
+            Task {
+                if !isOwnListing, let currentUserId = authManager.currentUserId {
+                    isUserBlocked = (try? await BlockedUsersService.isUserBlocked(listing.user.id, currentUserId: currentUserId)) ?? false
                 }
             }
         }
@@ -141,6 +173,27 @@ struct ListingDetailView: View {
                     // On updated, simply dismiss this detail view to refresh upstream
                     dismiss()
                 }
+                .environmentObject(authManager)
+            case .guestPrompt:
+                GuestPromptView(
+                    icon: "person.circle.fill",
+                    title: "Sign in required",
+                    message: "Create an account or sign in to contact sellers and make purchases"
+                )
+                .environmentObject(authManager)
+            
+            case let .blockUser(userId, userName):
+                BlockUserView(
+                    userId: userId,
+                    userName: userName,
+                    onBlockComplete: {
+                        Task {
+                            if let currentUserId = authManager.currentUserId {
+                                isUserBlocked = (try? await BlockedUsersService.isUserBlocked(userId, currentUserId: currentUserId)) ?? false
+                            }
+                        }
+                    }
+                )
                 .environmentObject(authManager)
             }
         }
@@ -461,13 +514,19 @@ struct ListingDetailView: View {
             throw PaymentError.orderCreationFailed
         }
         
+        let sellerPriceCents = Int((listing.price ?? 0) * 100) * purchaseQuantity
+        let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
+        
         let orderCreate = OrderCreate(
             listingId: listing.id,
             buyerId: currentUserId,
             sellerId: sellerId,
-            priceCents: priceCents,
+            priceCents: sellerPriceCents,
+            sellerPriceCents: sellerPriceCents,
+            buyerPriceCents: buyerPriceCents,
             paymentMethod: .wallet,
-            timeSlotId: nil
+            timeSlotId: nil,
+            quantity: purchaseQuantity
         )
         
         print("🔍 ListingDetailView: About to call orderService.createOrder")
@@ -507,14 +566,22 @@ struct ListingDetailView: View {
                let rootVC = windowScene.windows.first?.rootViewController {
                 
                 // Present the payment sheet
+                #if DEBUG
+                print("🔍 ListingDetailView: Presenting payment sheet from \(type(of: rootVC))")
+                #endif
+                
                 paymentService.presentPaymentSheet(from: rootVC)
                 
                 // Set up a timer to check for payment result
                 Task { @MainActor in
                     // Wait for payment result with timeout
                     var attempts = 0
-                    while attempts < 60 { // 30 second timeout
+                    while attempts < 600 { // 5 minute timeout
                         if let paymentResult = paymentService.paymentResult {
+                            #if DEBUG
+                            print("🔍 ListingDetailView: Payment result received: \(paymentResult)")
+                            #endif
+                            
                             switch paymentResult {
                             case .completed:
                                 // Create order after successful payment
@@ -523,9 +590,10 @@ struct ListingDetailView: View {
                                         throw PaymentError.userNotAuthenticated
                                     }
                                     
-                                    // Calculate Stripe processing fees
-                                    let basePriceCents = Int((listing.price ?? 0) * 100)
-                                    let processingFeeCents = paymentService.calculateProcessingFee(amountCents: basePriceCents)
+                                    // Calculate pricing using new model
+                                    let sellerPriceCents = Int((listing.price ?? 0) * 100)
+                                    let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
+                                    let processingFeeCents = FeeCalculationService.shared.calculateStripeProcessingFee(amountCents: sellerPriceCents)
                                     
                                     // Update UI with processing fee
                                     await MainActor.run {
@@ -540,9 +608,12 @@ struct ListingDetailView: View {
                                         listingId: listing.id,
                                         buyerId: currentUserId,
                                         sellerId: sellerId,
-                                        priceCents: basePriceCents,
+                                        priceCents: sellerPriceCents,  // Legacy field
+                                        sellerPriceCents: sellerPriceCents,
+                                        buyerPriceCents: buyerPriceCents,
                                         paymentMethod: .card,
-                                        timeSlotId: nil
+                                        timeSlotId: nil,
+                                        quantity: purchaseQuantity
                                     )
                                     
                                     let order = try await orderService.createOrder(orderCreate)
@@ -576,17 +647,27 @@ struct ListingDetailView: View {
                                 }
                             case .canceled:
                                 #if DEBUG
-                                print("⚠️ Payment canceled by user")
+                                print("⚠️ Payment canceled by user or Stripe")
                                 #endif
+                                
+                                // Show feedback to user about cancellation
+                                await MainActor.run {
+                                    isPrimaryActionLoading = false
+                                    purchaseError = "Payment was canceled. If you didn't cancel, there may be an issue with your payment method or card details."
+                                    showErrorAlert = true
+                                }
                                 return
                             case .failed(let error):
+                                #if DEBUG
+                                print("❌ Payment failed with error: \(error)")
+                                print("❌ Error localized description: \(error.localizedDescription)")
+                                #endif
+                                
                                 await MainActor.run {
+                                    isPrimaryActionLoading = false
                                     purchaseError = "Payment failed: \(error.localizedDescription)"
                                     showErrorAlert = true
                                 }
-                                #if DEBUG
-                                print("❌ Payment failed: \(error)")
-                                #endif
                                 return
                             }
                         }
@@ -596,7 +677,12 @@ struct ListingDetailView: View {
                     }
                     
                     // Timeout - payment didn't complete
+                    #if DEBUG
+                    print("⚠️ Payment polling timed out after 5 minutes")
+                    #endif
+                    
                     await MainActor.run {
+                        isPrimaryActionLoading = false
                         purchaseError = "Payment timed out. Please try again."
                         showErrorAlert = true
                     }
@@ -643,26 +729,42 @@ struct ListingDetailView: View {
                         if let min = listing.budgetMin, let max = listing.budgetMax {
                             Text("$\(min, specifier: "%.0f") - $\(max, specifier: "%.0f")")
                                 .responsiveFont(.title, weight: .bold)
-                                .foregroundColor(Color("ThemeColor"))
+                                .foregroundColor(.green)
                         } else if let max = listing.budgetMax {
                             Text("Up to $\(max, specifier: "%.0f")")
                                 .responsiveFont(.title, weight: .bold)
-                                .foregroundColor(Color("ThemeColor"))
+                                .foregroundColor(.green)
                         }
                         Text("Budget")
                             .responsiveFont(.subheadline)
                             .foregroundColor(.secondary)
                     } else {
-                        // Show price for offer posts
-                        Text("$\((listing.price ?? 0), specifier: "%.2f")")
-                            .responsiveFont(.title, weight: .bold)
-                            .foregroundColor(Color("ThemeColor"))
+                        // Show prices based on user role
+                        let isOwnListingLocal = authManager.session?.user.id.uuidString.lowercased() == listing.user.id.lowercased()
+                        let sellerPriceCents = Int((listing.price ?? 0) * 100)
+                        let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
+                        let buyerPrice = Double(buyerPriceCents) / 100.0
                         
-                        // Always show estimated processing fee
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Est. total $\(((listing.price ?? 0) + ((listing.price ?? 0) * 0.029 + 0.30)), specifier: "%.2f")")
-                                .responsiveFont(.caption)
-                                .foregroundColor(.secondary)
+                        if isOwnListingLocal {
+                            // Seller viewing their own listing - show only their net price
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("$\((listing.price ?? 0), specifier: "%.2f")")
+                                    .responsiveFont(.title, weight: .bold)
+                                    .foregroundColor(.green)
+                                Text("Your price")
+                                    .responsiveFont(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            // Buyer viewing listing - show buyer price
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("$\(buyerPrice, specifier: "%.2f")")
+                                    .responsiveFont(.title, weight: .bold)
+                                    .foregroundColor(.green)
+                                Text("Total price")
+                                    .responsiveFont(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -690,6 +792,12 @@ struct ListingDetailView: View {
                         ServiceDetailRow(title: "Availability", value: availability, icon: "calendar")
                     }
                 }
+                
+                // Service Verification Info for buyers
+                if !isOwnListing {
+                    ServiceVerificationInfoView(isForSeller: false)
+                        .padding(.top, 8)
+                }
             }
             .responsiveSpacing(12)
             .responsiveHorizontalSpacing(12)
@@ -709,6 +817,18 @@ struct ListingDetailView: View {
                 .responsiveFont(.body)
                 .foregroundColor(.secondary)
                 .lineSpacing(4)
+            
+            // Show ticket guarantee info when Tickets category is selected
+            if listing.category == "Tickets" {
+                TicketGuaranteeInfoView(isOwnListing: isOwnListing)
+                    .padding(.top, 8)
+            }
+            
+            // Show product verification info for products
+            if listing.listingType == .product {
+                ProductVerificationInfoView(isForSeller: isOwnListing)
+                    .padding(.top, 8)
+            }
         }
     }
     
@@ -731,7 +851,7 @@ struct ListingDetailView: View {
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(listing.user.name ?? "Unknown Seller")
+                    Text((listing.user.name ?? "Unknown Seller").formattedName)
                         .responsiveFont(.headline)
                         .foregroundColor(.primary)
 
@@ -778,7 +898,10 @@ struct ListingDetailView: View {
     
     @ViewBuilder
     private var actionsSection: some View {
-        if AppConfig.enableSeekMode && listing.intent == .seek && !isOwnListing {
+        // Guest users see sign-in prompt
+        if !isAuthenticated && !isOwnListing {
+            guestActionButtons
+        } else if AppConfig.enableSeekMode && listing.intent == .seek && !isOwnListing {
             // Seek post actions for non-owners
             VStack(spacing: 12) {
                 Button(action: handleOfferMyItem) {
@@ -845,13 +968,13 @@ struct ListingDetailView: View {
                     Button(action: handleDeleteListing) {
                         Text("Delete")
                             .responsiveFont(.headline)
-                            .foregroundColor(.red)
+                            .foregroundColor(.facebookBlue)
                             .frame(maxWidth: .infinity)
                             .responsiveSpacing(12)
                             .responsiveHorizontalSpacing(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.red, lineWidth: 2)
+                                    .stroke(Color.facebookBlue, lineWidth: 2)
                             )
                     }
                 }
@@ -868,6 +991,72 @@ struct ListingDetailView: View {
                 onEditListing: isOwnListing ? { handleEditListing() } : nil,
                 onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
             )
+        }
+    }
+    
+    // MARK: - Guest UI Components
+    
+    @ViewBuilder
+    private var guestInfoBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "info.circle.fill")
+                .foregroundColor(Color("ThemeColor"))
+                .font(.title3)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Browsing as Guest")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("Sign in to contact sellers and make purchases")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+        }
+        .responsiveSpacing(12)
+        .responsiveHorizontalSpacing(16)
+        .background(Color("ThemeColor").opacity(0.1))
+        .responsiveCornerRadius(12)
+    }
+    
+    @ViewBuilder
+    private var guestActionButtons: some View {
+        VStack(spacing: 12) {
+            Button(action: {
+                activeSheet = .guestPrompt
+            }) {
+                HStack {
+                    Image(systemName: "person.circle")
+                    Text("Sign In to Contact Seller")
+                }
+                .responsiveFont(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .responsiveSpacing(12)
+                .responsiveHorizontalSpacing(12)
+                .background(Color("ThemeColor"))
+                .responsiveCornerRadius(12)
+            }
+            
+            Button(action: {
+                activeSheet = .guestPrompt
+            }) {
+                HStack {
+                    Image(systemName: "person.circle")
+                    Text("Sign In to Purchase")
+                }
+                .responsiveFont(.headline)
+                .foregroundColor(Color("ThemeColor"))
+                .frame(maxWidth: .infinity)
+                .responsiveSpacing(12)
+                .responsiveHorizontalSpacing(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color("ThemeColor"), lineWidth: 2)
+                )
+            }
         }
     }
 
@@ -1216,6 +1405,8 @@ enum ActiveSheet: Identifiable {
     case purchaseConfirmation
     case chat(Conversation)
     case editListing
+    case guestPrompt
+    case blockUser(userId: String, userName: String)
 
     var id: String {
         switch self {
@@ -1223,6 +1414,8 @@ enum ActiveSheet: Identifiable {
         case .purchaseConfirmation: return "purchaseConfirmation"
         case let .chat(conversation): return "chat:\(conversation.id)"
         case .editListing: return "editListing"
+        case .guestPrompt: return "guestPrompt"
+        case let .blockUser(userId, _): return "blockUser:\(userId)"
         }
     }
 }

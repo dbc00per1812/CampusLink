@@ -141,7 +141,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: now.addingTimeInterval(7 * 24 * 60 * 60), // 7 days
             createdAt: now,
             stripeEscrowAccountId: "escrow_123",
             marketplaceFeeCents: 500,
@@ -180,7 +179,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: nil,
             createdAt: now,
             stripeEscrowAccountId: nil,
             marketplaceFeeCents: 0,
@@ -206,7 +204,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: now.addingTimeInterval(7 * 24 * 60 * 60),
             createdAt: now,
             stripeEscrowAccountId: "escrow_123",
             marketplaceFeeCents: 0,
@@ -232,7 +229,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: now.addingTimeInterval(-60), // 1 minute ago
             createdAt: now,
             stripeEscrowAccountId: "escrow_123",
             marketplaceFeeCents: 0,
@@ -240,7 +236,7 @@ final class OrderModelsTests: XCTestCase {
             timeSlotId: nil,
             listing: nil
         )
-        XCTAssertEqual(orderAutoReleased.escrowStatus, "Auto-Released")
+        XCTAssertEqual(orderAutoReleased.escrowStatus, "Held in Escrow")
     }
     
     func testOrderAutoReleaseFormatting() {
@@ -262,7 +258,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: now.addingTimeInterval(30 * 60), // 30 minutes
             createdAt: now,
             stripeEscrowAccountId: nil,
             marketplaceFeeCents: 0,
@@ -288,7 +283,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: now.addingTimeInterval(5 * 60 * 60), // 5 hours
             createdAt: now,
             stripeEscrowAccountId: nil,
             marketplaceFeeCents: 0,
@@ -314,7 +308,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: now,
-            autoReleaseAt: now.addingTimeInterval(3 * 24 * 60 * 60), // 3 days
             createdAt: now,
             stripeEscrowAccountId: nil,
             marketplaceFeeCents: 0,
@@ -346,7 +339,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: Date(),
-            autoReleaseAt: nil,
             createdAt: Date(),
             stripeEscrowAccountId: "escrow_test",
             marketplaceFeeCents: 250,
@@ -383,7 +375,6 @@ final class OrderModelsTests: XCTestCase {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: Date(),
-            autoReleaseAt: Date().addingTimeInterval(7 * 24 * 60 * 60),
             createdAt: Date(),
             stripeEscrowAccountId: nil,
             marketplaceFeeCents: 0,

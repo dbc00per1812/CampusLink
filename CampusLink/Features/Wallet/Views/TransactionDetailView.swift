@@ -288,7 +288,7 @@ extension PaymentStatus {
         case .released:
             return .green
         case .failed:
-            return .red
+            return .facebookBlue
         case .refunded:
             return .purple
         }

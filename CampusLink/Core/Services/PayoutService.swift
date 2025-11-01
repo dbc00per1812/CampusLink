@@ -154,6 +154,43 @@ final class PayoutService: ObservableObject {
                 .execute()
                 .value
             
+            // CRITICAL: Actually process the payout with Stripe
+            print("🔄 Calling process_payout Edge Function for payout: \(payout.id)")
+            
+            struct ProcessPayoutRequest: Encodable {
+                let payout_id: String
+            }
+            
+            struct ProcessPayoutResponse: Decodable {
+                let success: Bool?
+                let payout_id: String?
+                let stripe_payout_id: String?
+                let status: String?
+                let error: String?
+            }
+            
+            do {
+                let response: ProcessPayoutResponse = try await supabase.functions.invoke(
+                    "process-payout",
+                    options: FunctionInvokeOptions(
+                        method: .post,
+                        body: ProcessPayoutRequest(payout_id: payout.id.uuidString)
+                    )
+                )
+                
+                if let error = response.error {
+                    print("❌ Payout processing failed: \(error)")
+                    throw PayoutServiceError.processingFailed(error)
+                }
+                
+                print("✅ Payout processing initiated. Stripe Payout ID: \(response.stripe_payout_id ?? "unknown")")
+                
+            } catch {
+                print("⚠️ Failed to process payout with Stripe: \(error.localizedDescription)")
+                // Note: Payout record is created but not processed. User should contact support.
+                throw PayoutServiceError.processingFailed("Failed to initiate payout with Stripe. Please contact support.")
+            }
+            
             return payout
             
         } catch {
@@ -301,6 +338,7 @@ enum PayoutServiceError: LocalizedError {
     case requestCancelled
     case authenticationRequired
     case cancellationFailed(String)
+    case processingFailed(String)
     
         var errorDescription: String? {
         switch self {
@@ -320,6 +358,8 @@ enum PayoutServiceError: LocalizedError {
             return "Authentication required to request payout"
         case .cancellationFailed(let message):
             return "Failed to cancel payout: \(message)"
+        case .processingFailed(let message):
+            return "Failed to process payout: \(message)"
         }
     }
 }

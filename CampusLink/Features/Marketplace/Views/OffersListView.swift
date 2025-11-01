@@ -305,13 +305,19 @@ struct OffersListView: View {
         
         // Create order with wallet payment using existing flow
         // When accepting an offer: seeker (current user) pays, offer maker provides the service/product
+        let sellerPriceCents = priceCents
+        let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
+        
         let orderCreate = OrderCreate(
             listingId: offer.seekListingId, // Use seek listing as reference
             buyerId: currentUserId, // Seeker pays when accepting the offer
             sellerId: UUID(uuidString: offer.sellerId) ?? UUID(), // Offer maker provides service/product
-            priceCents: priceCents,
+            priceCents: sellerPriceCents,
+            sellerPriceCents: sellerPriceCents,
+            buyerPriceCents: buyerPriceCents,
             paymentMethod: .wallet,
-            timeSlotId: nil
+            timeSlotId: nil,
+            quantity: 1  // Offers are always for single unit
         )
         
         let order = try await orderService.createOrder(orderCreate)
@@ -521,13 +527,19 @@ struct OffersListView: View {
             guard let currentUserId = authManager.session?.user.id else { return }
             
             do {
+                let sellerPriceCents = offer.priceCents ?? 0
+                let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
+                
                 let orderCreate = OrderCreate(
                     listingId: offer.seekListingId,
                     buyerId: currentUserId,
                     sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
-                    priceCents: offer.priceCents ?? 0,
+                    priceCents: sellerPriceCents,
+                    sellerPriceCents: sellerPriceCents,
+                    buyerPriceCents: buyerPriceCents,
                     paymentMethod: .card,
-                    timeSlotId: nil
+                    timeSlotId: nil,
+                    quantity: 1  // Offers are always for single unit
                 )
                 
                 let order = try await orderService.createOrder(orderCreate)
@@ -606,12 +618,18 @@ struct OffersListView: View {
             bio: nil,
             profilePic: nil,
             email: nil,
+            campus: nil,
             createdAt: Date(),
             campusEmailVerified: nil,
             trustScore: nil,
             stripeConnectId: nil,
             stripePayoutsEnabled: nil,
-            stripeDetailsSubmitted: nil
+            stripeDetailsSubmitted: nil,
+            verificationStatus: nil,
+            studentIdImageUrl: nil,
+            verificationSubmittedAt: nil,
+            verificationReviewedAt: nil,
+            verificationNotes: nil
         )
         
         return ListingWithUser(
@@ -633,7 +651,10 @@ struct OffersListView: View {
             intent: .offer, // Change to offer for payment flow compatibility
             budgetMin: nil,
             budgetMax: nil,
-            expiresAt: nil
+            expiresAt: nil,
+            deliveryMethod: seekListing.deliveryMethod,
+            quantityAvailable: 1,
+            quantitySold: 0
         )
     }
 }
@@ -719,12 +740,18 @@ struct PaymentMethodSheetWrapper: View {
             bio: nil,
             profilePic: nil,
             email: nil,
+            campus: nil,
             createdAt: Date(),
             campusEmailVerified: nil,
             trustScore: nil,
             stripeConnectId: nil,
             stripePayoutsEnabled: nil,
-            stripeDetailsSubmitted: nil
+            stripeDetailsSubmitted: nil,
+            verificationStatus: nil,
+            studentIdImageUrl: nil,
+            verificationSubmittedAt: nil,
+            verificationReviewedAt: nil,
+            verificationNotes: nil
         )
         
         return ListingWithUser(
@@ -746,7 +773,10 @@ struct PaymentMethodSheetWrapper: View {
             intent: .offer,
             budgetMin: nil,
             budgetMax: nil,
-            expiresAt: nil
+            expiresAt: nil,
+            deliveryMethod: nil,
+            quantityAvailable: 1,
+            quantitySold: 0
         )
     }
 }
@@ -756,10 +786,16 @@ struct OfferRowView: View {
     let onAction: (OfferAction) -> Void
     
     @State private var sellerName: String = "Loading..."
+    @StateObject private var feeService = FeeCalculationService.shared
     
     private var isClickableAcceptedOffer: Bool {
         offer.status == "accepted" && offer.orderId != nil
     }
+    
+    // Calculate fees for pending offers
+    private var offerPriceCents: Int { offer.priceCents ?? 0 }
+    private var stripeFee: Int { feeService.calculateStripeProcessingFee(amountCents: offerPriceCents) }
+    private var totalYouPay: Int { feeService.calculateBuyerPrice(sellerPriceCents: offerPriceCents) }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -827,6 +863,64 @@ struct OfferRowView: View {
             }
             }
             
+            // Fee breakdown for pending offers - Show buyer what they'll pay
+            if offer.status == "pending" || offer.status == "paid_pending_acceptance" {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        Text("Payment Breakdown")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fontWeight(.medium)
+                    }
+                    
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("Offer Amount")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(feeService.formatTotal(totalCents: offerPriceCents))
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        
+                        HStack {
+                            Text("Stripe Processing Fee")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(feeService.formatFee(feeCents: stripeFee))
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.orange)
+                        }
+                        
+                        Divider()
+                        
+                        HStack {
+                            Text("Total You Pay")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            Spacer()
+                            Text(feeService.formatTotal(totalCents: totalYouPay))
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color("ThemeColor"))
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.blue.opacity(0.05))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                    )
+                }
+            }
+            
             // Action buttons for pending offers (including paid pending)
             if offer.status == "pending" || offer.status == "paid_pending_acceptance" {
                 HStack(spacing: 12) {
@@ -851,7 +945,7 @@ struct OfferRowView: View {
                         }
                         .font(.subheadline)
                         .fontWeight(.medium)
-                        .foregroundColor(.red)
+                        .foregroundColor(.facebookBlue)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .background(Color(.systemGray6))
@@ -917,7 +1011,7 @@ struct OfferRowView: View {
                 .value
             
             await MainActor.run {
-                sellerName = seller.name ?? "Unknown Seller"
+                sellerName = (seller.name ?? "Unknown Seller").formattedName
             }
         } catch {
             await MainActor.run {
@@ -934,7 +1028,7 @@ extension Offer {
         case "pending": return .orange
         case "paid_pending_acceptance": return .blue
         case "accepted": return .green
-        case "declined": return .red
+        case "declined": return .facebookBlue
         case "withdrawn": return .gray
         case "expired": return .gray
         default: return .gray

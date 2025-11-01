@@ -162,7 +162,7 @@ struct RatingCardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 if showRater && !rating.isAnonymous {
-                    Text(rating.rater?.name ?? "Anonymous")
+                    Text((rating.rater?.name ?? "Anonymous").formattedName)
                         .font(.headline)
                         .lineLimit(1)
                 } else {

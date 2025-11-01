@@ -16,6 +16,7 @@ struct ReportUserView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var reportSubmitted = false
+    @State private var alsoBlockUser = false
     
     init(userId: String? = nil, userName: String? = nil, listingId: String? = nil, listingTitle: String? = nil) {
         self.reportedUserId = userId
@@ -112,6 +113,25 @@ struct ReportUserView: View {
                 } footer: {
                     Text("The more details you provide, the better we can investigate this report")
                         .font(.caption)
+                }
+                
+                // Block User Option (only show if reporting a user)
+                if reportedUserId != nil {
+                    Section {
+                        Toggle(isOn: $alsoBlockUser) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Also block this user")
+                                    .font(.subheadline)
+                                Text("You won't see each other's content or be able to message")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .tint(Color.red)
+                    } footer: {
+                        Text("Blocking is mutual and prevents all interactions")
+                            .font(.caption)
+                    }
                 }
                 
                 // Community Guidelines
@@ -217,8 +237,13 @@ struct ReportUserView: View {
         isSubmitting = true
         
         do {
+            guard let currentUserId = authManager.session?.user.id.uuidString else {
+                throw NSError(domain: "ReportUserView", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+            }
+            
             // Create the report in Supabase
             let report = ReportCreate(
+                reporterId: currentUserId,
                 reportedUserId: reportedUserId,
                 reportedListingId: reportedListingId,
                 reportType: selectedReportType.rawValue,
@@ -230,9 +255,28 @@ struct ReportUserView: View {
                 .insert(report)
                 .execute()
             
+            // If user also wants to block, do that now
+            if alsoBlockUser, let reportedId = reportedUserId {
+                do {
+                    try await BlockedUsersService.blockUser(reportedId, currentUserId: currentUserId)
+                    #if DEBUG
+                    print("✅ Also blocked user \(reportedId) after report")
+                    #endif
+                } catch {
+                    #if DEBUG
+                    print("❌ Failed to block user after report: \(error)")
+                    #endif
+                    // Don't fail the whole operation if blocking fails
+                }
+            }
+            
             // Success
             reportSubmitted = true
-            alertMessage = "Thank you for your report. We will review it within 24-48 hours and take appropriate action."
+            if alsoBlockUser && reportedUserId != nil {
+                alertMessage = "Thank you for your report. We will review it within 24-48 hours. The user has also been blocked."
+            } else {
+                alertMessage = "Thank you for your report. We will review it within 24-48 hours and take appropriate action."
+            }
             showingAlert = true
             
             // Haptic feedback

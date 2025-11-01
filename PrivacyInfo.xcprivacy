@@ -69,24 +69,19 @@
   <key>NSPrivacyAccessedAPITypes</key>
   <array>
     <dict>
-      <key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPITypeCamera</string>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPITypeUserDefaults</string>
       <key>NSPrivacyAccessedAPITypeReasons</key>
       <array>
-        <string>NSPrivacyAccessedAPITypeReasonCameraPhotoCapture</string>
+        <string>CA92.1</string>
       </array>
     </dict>
     <dict>
-      <key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPITypePhotoLibrary</string>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPITypeFileTimestamp</string>
       <key>NSPrivacyAccessedAPITypeReasons</key>
       <array>
-        <string>NSPrivacyAccessedAPITypeReasonPhotoLibraryUserSelection</string>
-      </array>
-    </dict>
-    <dict>
-      <key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPITypeUserNotifications</string>
-      <key>NSPrivacyAccessedAPITypeReasons</key>
-      <array>
-        <string>NSPrivacyAccessedAPITypeReasonUserNotifications</string>
+        <string>C617.1</string>
       </array>
     </dict>
   </array>

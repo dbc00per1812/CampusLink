@@ -40,6 +40,20 @@ struct OTPPasswordResetView: View {
                             .fontWeight(.medium)
                     }
                     
+                    // Spam folder tip
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        Text("Didn't receive it? Check your spam/junk folder")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                    
                     // OTP Code input
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Verification Code")

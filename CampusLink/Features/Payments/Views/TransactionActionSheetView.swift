@@ -69,10 +69,10 @@ struct TransactionActionSheetView: View {
                     Button(action: onReport) {
                         Text("Report Problem")
                             .font(.headline)
-                            .foregroundColor(.red)
+                            .foregroundColor(.facebookBlue)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.red.opacity(0.08))
+                            .background(Color.facebookBlue.opacity(0.08))
                             .cornerRadius(14)
                     }
                 }

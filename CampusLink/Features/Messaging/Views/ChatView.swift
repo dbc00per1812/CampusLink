@@ -11,6 +11,8 @@ struct ChatView: View {
     @State private var selectedOffer: Offer?
     @State private var isProcessingOffer = false
     @State private var offerError: String?
+    @State private var showingOrderDetail = false
+    @State private var conversationOrder: Order?
     
     init(conversation: Conversation) {
         print("CHATVIEW INIT CALLED") // Simple print
@@ -68,7 +70,7 @@ struct ChatView: View {
                         }
                     }
                     Button(action: { showingReportSheet = true }) {
-                        Image(systemName: "flag").foregroundColor(.red)
+                        Image(systemName: "flag").foregroundColor(.facebookBlue)
                     }
                 }
             }
@@ -86,7 +88,7 @@ struct ChatView: View {
             if let otherParticipant = conversation.otherParticipant(currentUserId: currentUserId) {
                 ReportUserView(
                     userId: otherParticipant.id,
-                    userName: otherParticipant.name ?? "Unknown User",
+                    userName: (otherParticipant.name ?? "Unknown User").formattedName,
                     listingId: conversation.listing?.id.uuidString,
                     listingTitle: conversation.listing?.title
                 )
@@ -105,6 +107,14 @@ struct ChatView: View {
                 )
             }
         }
+        .sheet(isPresented: $showingOrderDetail) {
+            if let order = conversationOrder {
+                NavigationView {
+                    OrderDetailView(order: order)
+                        .environmentObject(authManager)
+                }
+            }
+        }
         .hideKeyboardOnTap()
         .onAppear {
             print("CHATVIEW ONAPPEAR CALLED") // Simple print
@@ -117,6 +127,8 @@ struct ChatView: View {
             }
             // Best-effort mark as read when view appears
             Task { await viewModel.markMessagesAsRead() }
+            // Load order for this conversation
+            Task { await loadConversationOrder() }
         }
     }
     
@@ -137,9 +149,18 @@ struct ChatView: View {
                 Text("$\((listing.price ?? 0), specifier: "%.2f")").font(.caption2).foregroundColor(.secondary)
             }
             Spacer()
+            
+            // Tap to view order indicator
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
         .padding(8)
         .background(Color(UIColor.secondarySystemBackground))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showingOrderDetail = true
+        }
     }
     
     private var messagesList: some View {
@@ -299,6 +320,41 @@ struct ChatView: View {
                     offerError = error.localizedDescription
                 }
             }
+        }
+    }
+    
+    private func loadConversationOrder() async {
+        guard let listingId = conversation.listingId else {
+            print("No listing ID for conversation")
+            return
+        }
+        
+        do {
+            // Query for order with this listing and buyer/seller
+            let orders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("listing_id", value: listingId.uuidString)
+                .or("buyer_id.eq.\(conversation.buyerId),buyer_id.eq.\(conversation.sellerId)")
+                .or("seller_id.eq.\(conversation.buyerId),seller_id.eq.\(conversation.sellerId)")
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            if let order = orders.first {
+                await MainActor.run {
+                    conversationOrder = order
+                }
+                print("✅ Loaded order for conversation: \(order.id)")
+            } else {
+                print("No order found for this conversation")
+            }
+        } catch {
+            print("❌ Failed to load conversation order: \(error)")
         }
     }
 }

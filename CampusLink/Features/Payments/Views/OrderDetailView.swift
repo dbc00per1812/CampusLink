@@ -19,6 +19,9 @@ struct OrderDetailView: View {
     @State private var canRateBuyer = false
     @State private var hasRatedSeller = false
     @State private var hasRatedBuyer = false
+    @State private var showDeliveryPhotoSheet = false
+    @State private var showPINEntrySheet = false
+    @State private var showCancelAlert = false
     @Environment(\.dismiss) private var dismiss
     
     init(order: Order) {
@@ -42,6 +45,10 @@ struct OrderDetailView: View {
         isSeller && (currentOrder.orderStatus == .placed || currentOrder.orderStatus == .inProgress)
     }
     
+    private var canCancelOrder: Bool {
+        isBuyer && currentOrder.orderStatus == .placed
+    }
+    
     var body: some View {
         ZStack {
             ScrollView {
@@ -54,6 +61,11 @@ struct OrderDetailView: View {
                     
                     // Payment Details
                     paymentDetailsSection
+                    
+                    // Delivery Photo (if available)
+                    if currentOrder.hasDeliveryPhoto {
+                        deliveryPhotoSection
+                    }
                     
                     // Escrow Status (if applicable)
                     if currentOrder.hasEscrowAccount {
@@ -96,6 +108,14 @@ struct OrderDetailView: View {
         } message: {
             Text("This will release the payment to the seller and complete the transaction.")
         }
+        .alert("Cancel Order?", isPresented: $showCancelAlert) {
+            Button("No", role: .cancel) { }
+            Button("Yes, Cancel", role: .destructive) {
+                Task { await cancelOrder() }
+            }
+        } message: {
+            Text("This will cancel the order and refund the full amount to your wallet. This action cannot be undone.")
+        }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") {
                 errorMessage = nil
@@ -124,6 +144,16 @@ struct OrderDetailView: View {
                             // Refresh rating status when sheet closes
                             Task { await checkRatingStatus() }
                         }
+                }
+            }
+            .sheet(isPresented: $showDeliveryPhotoSheet) {
+                DeliveryPhotoUploadView(orderId: currentOrder.id) { photoURL in
+                    Task { await markDelivered(with: photoURL) }
+                }
+            }
+            .sheet(isPresented: $showPINEntrySheet) {
+                PINEntryView(orderId: currentOrder.id) {
+                    Task { await loadOrderData() }
                 }
             }
         .onAppear {
@@ -260,14 +290,19 @@ struct OrderDetailView: View {
                 .fontWeight(.semibold)
             
             VStack(spacing: 12) {
-                paymentDetailRow(title: "Amount", value: currentOrder.formattedPrice)
+                // Show role-based pricing
+                if isBuyer {
+                    paymentDetailRow(title: "Amount Paid", value: currentOrder.formattedBuyerPrice)
+                } else if isSeller {
+                    paymentDetailRow(title: "Amount Received", value: currentOrder.formattedSellerPrice)
+                    // NEVER show buyer price to seller - prevents off-platform deals
+                } else {
+                    paymentDetailRow(title: "Amount", value: currentOrder.formattedPrice)
+                }
+                
                 paymentDetailRow(title: "Payment Method", value: currentOrder.paymentMethod.displayName)
                 paymentDetailRow(title: "Payment Status", value: currentOrder.paymentStatus.displayName)
                 paymentDetailRow(title: "Escrow Protection", value: "Active until completion")
-                
-                if let autoReleaseAt = currentOrder.autoReleaseAt {
-                    paymentDetailRow(title: "Auto-Release", value: autoReleaseAt.formatted(date: .abbreviated, time: .shortened))
-                }
             }
         }
         .padding()
@@ -286,6 +321,53 @@ struct OrderDetailView: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
         }
+    }
+    
+    // MARK: - Delivery Photo Section
+    private var deliveryPhotoSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Delivery Proof")
+                .font(.headline)
+                .fontWeight(.semibold)
+            
+            if let photoURL = currentOrder.deliveryPhotoUrl {
+                AsyncImage(url: URL(string: photoURL)) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 200)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .cornerRadius(8)
+                    case .failure:
+                        VStack(spacing: 8) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.largeTitle)
+                                .foregroundColor(.gray)
+                            Text("Failed to load image")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 200)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                
+                Text("Photo uploaded by seller as proof of delivery")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
     
     // MARK: - Escrow Status Section
@@ -314,6 +396,14 @@ struct OrderDetailView: View {
                 .fontWeight(.semibold)
             
             VStack(spacing: 12) {
+                // Show PIN for buyers with service orders in 'placed' status
+                if isBuyer && currentOrder.orderStatus == .placed && currentOrder.listing?.listingType == .service {
+                    if let pin = currentOrder.verificationPin {
+                        PINDisplayView(pin: pin)
+                            .padding(.vertical, 8)
+                    }
+                }
+                
                 if canConfirmReceived {
                     Button(action: { showConfirmAlert = true }) {
                         HStack(spacing: 8) {
@@ -331,8 +421,30 @@ struct OrderDetailView: View {
                     }
                 }
                 
-                if canMarkDelivered {
-                    Button(action: { Task { await markDelivered() } }) {
+                // Show PIN entry button for sellers with service orders
+                if isSeller && currentOrder.listing?.listingType == .service && 
+                   (currentOrder.orderStatus == .placed || currentOrder.orderStatus == .inProgress) &&
+                   currentOrder.verificationPin != nil {
+                    
+                    Button(action: { showPINEntrySheet = true }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "key.fill")
+                                .font(.headline)
+                            Text("Enter Service PIN")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                    }
+                }
+                
+                // Show photo upload for product orders only
+                if canMarkDelivered && currentOrder.listing?.listingType == .product {
+                    Button(action: { showDeliveryPhotoSheet = true }) {
                         HStack(spacing: 8) {
                             Image(systemName: "shippingbox.fill")
                                 .font(.headline)
@@ -344,6 +456,24 @@ struct OrderDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(Color.blue)
+                        .cornerRadius(12)
+                    }
+                }
+                
+                // Cancel order button (only for buyers when seller hasn't confirmed)
+                if canCancelOrder {
+                    Button(action: { showCancelAlert = true }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.headline)
+                            Text("Cancel Order")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.facebookBlue)
                         .cornerRadius(12)
                     }
                 }
@@ -388,6 +518,25 @@ struct OrderDetailView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
                     .background(Color.green.opacity(0.1))
+                    .cornerRadius(12)
+                } else if !canConfirmReceived && !canMarkDelivered && currentOrder.orderStatus == .placed {
+                    // Show coordination message for placed orders
+                    VStack(spacing: 8) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                        Text(isBuyer ? "Coordinate with Seller" : "Coordinate with Buyer")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.blue)
+                        Text(isBuyer ? "Coordinate with seller to complete transaction" : "Coordinate with buyer to complete transaction")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .background(Color.blue.opacity(0.1))
                     .cornerRadius(12)
                 } else if !canConfirmReceived && !canMarkDelivered {
                     VStack(spacing: 8) {
@@ -559,7 +708,7 @@ struct OrderDetailView: View {
                                     .fontWeight(.medium)
                                 Spacer()
                                 Text(isSeller ? "Yes" : "No")
-                                    .foregroundColor(isSeller ? .green : .red)
+                                    .foregroundColor(isSeller ? .green : .facebookBlue)
                             }
                             
                             HStack {
@@ -567,7 +716,7 @@ struct OrderDetailView: View {
                                     .fontWeight(.medium)
                                 Spacer()
                                 Text(isBuyer ? "Yes" : "No")
-                                    .foregroundColor(isBuyer ? .green : .red)
+                                    .foregroundColor(isBuyer ? .green : .facebookBlue)
                             }
                             
                             HStack {
@@ -575,7 +724,7 @@ struct OrderDetailView: View {
                                     .fontWeight(.medium)
                                 Spacer()
                                 Text(canMarkDelivered ? "Yes" : "No")
-                                    .foregroundColor(canMarkDelivered ? .green : .red)
+                                    .foregroundColor(canMarkDelivered ? .green : .facebookBlue)
                             }
                             
                             HStack {
@@ -583,7 +732,7 @@ struct OrderDetailView: View {
                                     .fontWeight(.medium)
                                 Spacer()
                                 Text(canConfirmReceived ? "Yes" : "No")
-                                    .foregroundColor(canConfirmReceived ? .green : .red)
+                                    .foregroundColor(canConfirmReceived ? .green : .facebookBlue)
                             }
                         }
                         .font(.caption)
@@ -682,15 +831,46 @@ struct OrderDetailView: View {
         }
     }
     
-    private func markDelivered() async {
+    private func cancelOrder() async {
+        print("🔵 cancelOrder: Starting cancellation for order \(currentOrder.id)")
+        isLoading = true
+        do {
+            print("🔵 cancelOrder: Calling OrderService.cancelOrder...")
+            let updatedOrder = try await OrderService.shared.cancelOrder(currentOrder.id)
+            
+            print("✅ cancelOrder: Order cancelled successfully, new status: \(updatedOrder.orderStatus.displayName)")
+            
+            await MainActor.run {
+                // Update the current order
+                self.currentOrder = updatedOrder
+                
+                // Show success view
+                self.successMessage = "Order has been cancelled. The full amount has been refunded to your wallet."
+                self.showSuccessView = true
+                
+                print("✅ Order cancelled - buyer refunded")
+            }
+        } catch {
+            print("❌ cancelOrder: Failed to cancel order: \(error)")
+            await MainActor.run {
+                errorMessage = "Failed to cancel order: \(error.localizedDescription)"
+            }
+        }
+        await MainActor.run {
+            isLoading = false
+        }
+    }
+    
+    private func markDelivered(with photoURL: String) async {
         print("🔵 Button clicked! markDelivered() called")
         isLoading = true
         print("🔵 markDelivered() called for order: \(currentOrder.id)")
         print("🔵 Current order status: \(currentOrder.orderStatus.displayName)")
         print("🔵 Current user is seller: \(isSeller)")
+        print("🔵 Delivery photo URL: \(photoURL)")
         do {
             print("🔵 Calling OrderService.markDelivered...")
-            let updatedOrder = try await OrderService.shared.markDelivered(currentOrder.id)
+            let updatedOrder = try await OrderService.shared.markDelivered(currentOrder.id, deliveryPhotoUrl: photoURL)
             print("✅ markDelivered succeeded: \(updatedOrder.orderStatus.displayName)")
             
             await MainActor.run {

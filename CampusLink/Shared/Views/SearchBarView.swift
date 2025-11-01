@@ -71,63 +71,21 @@ struct SearchBarView: View {
 
 struct SearchBarWithFiltersView: View {
     @Binding var searchQuery: SearchQuery
-    @State private var showingFilters = false
     
     var onSearchChanged: ((SearchQuery) -> Void)?
     var onSearchSubmitted: ((SearchQuery) -> Void)?
     
     var body: some View {
-        ResponsiveVStack(spacing: 8) {
-            HStack {
-                SearchBarView(
-                    searchText: $searchQuery.text,
-                    onSearchChanged: { newText in
-                        searchQuery.text = newText
-                        onSearchChanged?(searchQuery)
-                    },
-                    onSearchSubmitted: { _ in
-                        onSearchSubmitted?(searchQuery)
-                    }
-                )
-                
-                Button(action: {
-                    showingFilters = true
-                }) {
-                    ResponsiveHStack(spacing: 4) {
-                        Image(systemName: "slider.horizontal.3")
-                        if searchQuery.filters.hasActiveFilters {
-                            Text("\(searchQuery.filters.activeFilterCount)")
-                                .responsiveFont(.caption)
-                                .foregroundColor(.white)
-                                .responsiveHorizontalSpacing(6)
-                                .responsiveSpacing(2)
-                                .background(Color.red)
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
-                .foregroundColor(.primary)
-                .responsiveHorizontalSpacing(12)
-                .responsiveSpacing(8)
-                .background(Color(.systemGray6))
-                .responsiveCornerRadius(10)
-                .accessibleButton("Open filters")
+        SearchBarView(
+            searchText: $searchQuery.text,
+            onSearchChanged: { newText in
+                searchQuery.text = newText
+                onSearchChanged?(searchQuery)
+            },
+            onSearchSubmitted: { _ in
+                onSearchSubmitted?(searchQuery)
             }
-            
-            if searchQuery.filters.hasActiveFilters {
-                ActiveFiltersView(filters: $searchQuery.filters) {
-                    onSearchChanged?(searchQuery)
-                }
-            }
-        }
-        .sheet(isPresented: $showingFilters) {
-            SearchFiltersSheet(filters: $searchQuery.filters)
-                .onDisappear {
-                    // Save filters when sheet is dismissed
-                    SearchService.shared.saveFilters(searchQuery.filters)
-                    onSearchChanged?(searchQuery)
-                }
-        }
+        )
     }
 }
 
@@ -189,10 +147,10 @@ struct ActiveFiltersView: View {
                         onFiltersChanged?()
                     }
                     .responsiveFont(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(.facebookBlue)
                     .responsiveHorizontalSpacing(8)
                     .responsiveSpacing(4)
-                    .background(Color.red.opacity(0.1))
+                    .background(Color.facebookBlue.opacity(0.1))
                     .responsiveCornerRadius(6)
                 }
             }

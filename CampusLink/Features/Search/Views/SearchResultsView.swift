@@ -179,7 +179,7 @@ struct SearchResultCard: View {
                 // Price
                 Text("$\(Int(listing.price ?? 0))")
                     .responsiveFont(.headline, weight: .semibold)
-                    .foregroundColor(.primary)
+                    .foregroundColor(.green)
             }
             
             // Description
@@ -207,7 +207,7 @@ struct SearchResultCard: View {
                 
                 HStack(spacing: 4) {
                     if let userName = listing.user.name {
-                        Text(userName)
+                        Text(userName.formattedName)
                             .responsiveFont(.caption)
                             .foregroundColor(.secondary)
                     }

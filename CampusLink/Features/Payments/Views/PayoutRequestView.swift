@@ -15,6 +15,7 @@ struct PayoutRequestView: View {
     @State private var isProcessing = false
     @State private var errorMessage: String?
     @State private var showingError = false
+    @State private var hasDebitCard: Bool = false
     
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -57,6 +58,9 @@ struct PayoutRequestView: View {
             Button("OK") { }
         } message: {
             Text(errorMessage ?? "An error occurred")
+        }
+        .task {
+            await checkDebitCardStatus()
         }
     }
     
@@ -155,6 +159,18 @@ struct PayoutRequestView: View {
                     .background(amountCents == amount * 100 ? Color("ThemeColor") : Color(.systemGray5))
                     .cornerRadius(20)
                 }
+                
+                // "All" button to select full available balance
+                Button("All") {
+                    amountCents = availableBalance
+                }
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(amountCents == availableBalance ? .white : .primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(amountCents == availableBalance ? Color("ThemeColor") : Color(.systemGray5))
+                .cornerRadius(20)
             }
         }
         .padding(20)
@@ -172,20 +188,68 @@ struct PayoutRequestView: View {
             
             VStack(spacing: 12) {
                 ForEach(PayoutService.PayoutType.allCases, id: \.self) { payoutType in
-                    PayoutTypeOption(
-                        payoutType: payoutType,
-                        isSelected: selectedPayoutType == payoutType,
-                        onTap: {
-                            selectedPayoutType = payoutType
-                            // Auto-select appropriate method
-                            if payoutType == .instant {
-                                selectedPayoutMethod = .debitCard
-                            } else {
-                                selectedPayoutMethod = .bankAccount
+                    if payoutType == .standard || (payoutType == .instant && hasDebitCard) {
+                        PayoutTypeOption(
+                            payoutType: payoutType,
+                            isSelected: selectedPayoutType == payoutType,
+                            onTap: {
+                                selectedPayoutType = payoutType
+                                // Auto-select appropriate method
+                                if payoutType == .instant {
+                                    selectedPayoutMethod = .debitCard
+                                } else {
+                                    selectedPayoutMethod = .bankAccount
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
+                
+                // Show info about instant payouts if no debit card
+                if !hasDebitCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.orange)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Instant Payouts Unavailable")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            
+                            Text("Complete Stripe Connect onboarding with a debit card to enable instant payouts (1.5% fee)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(16)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(12)
+                }
+                
+                // Info about holding period for new accounts
+                HStack(spacing: 12) {
+                    Image(systemName: "clock.fill")
+                        .font(.title3)
+                        .foregroundColor(.blue)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("First Payout Timing")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        Text("New accounts: First payout may take 2-7 days. After that, standard payouts are 2-3 days and instant payouts are immediate.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(16)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
             }
         }
         .padding(20)
@@ -273,25 +337,35 @@ struct PayoutRequestView: View {
     // MARK: - Request Button
     
     private var requestButton: some View {
-        Button(action: requestPayout) {
-            HStack {
-                if isProcessing {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.8)
-                } else {
-                    Text("Request Payout")
-                        .font(.headline)
-                        .fontWeight(.semibold)
+        VStack(spacing: 8) {
+            Button(action: requestPayout) {
+                HStack {
+                    if isProcessing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                    } else {
+                        Text("Request Payout")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                    }
                 }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(canRequestPayout ? Color("ThemeColor") : Color(.systemGray4))
+                .cornerRadius(12)
             }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(canRequestPayout ? Color("ThemeColor") : Color(.systemGray4))
-            .cornerRadius(12)
+            .disabled(!canRequestPayout || isProcessing)
+            
+            // Validation message
+            if let message = validationMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
-        .disabled(!canRequestPayout || isProcessing)
         .padding(.bottom, 20)
     }
     
@@ -300,7 +374,18 @@ struct PayoutRequestView: View {
     private var canRequestPayout: Bool {
         amountCents > 0 && 
         amountCents <= availableBalance &&
-        amountCents >= 100 // Minimum $1.00
+        amountCents >= 50 // Minimum $0.50
+    }
+    
+    private var validationMessage: String? {
+        if amountCents == 0 {
+            return "Enter an amount to request payout"
+        } else if amountCents < 50 {
+            return "Minimum payout amount is $0.50"
+        } else if amountCents > availableBalance {
+            return "Amount exceeds available balance"
+        }
+        return nil
     }
     
     // MARK: - Helper Methods
@@ -310,9 +395,40 @@ struct PayoutRequestView: View {
         case (.standard, .bankAccount):
             return true
         case (.instant, .debitCard):
-            return true
+            return hasDebitCard // Only enable if user has added a debit card
         default:
             return false
+        }
+    }
+    
+    private func checkDebitCardStatus() async {
+        // Check if user has a debit card on file
+        struct GetCardsResponse: Decodable {
+            let cards: [DebitCard]?
+            let count: Int?
+            let error: String?
+        }
+        
+        struct DebitCard: Decodable {
+            let id: String
+            let last4: String
+            let brand: String
+        }
+        
+        do {
+            let response: GetCardsResponse = try await supabase.functions.invoke(
+                "super-handler"
+            )
+            
+            await MainActor.run {
+                hasDebitCard = (response.count ?? 0) > 0
+            }
+        } catch {
+            print("Error checking debit card status: \(error)")
+            // Default to false if error
+            await MainActor.run {
+                hasDebitCard = false
+            }
         }
     }
     

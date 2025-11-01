@@ -29,6 +29,15 @@ final class OfferService: ObservableObject {
             throw OfferError.userNotAuthenticated
         }
         
+        // Get offer details before accepting (for notification)
+        let offer: Offer = try await supabase
+            .from("offers")
+            .select("*")
+            .eq("id", value: offerId.uuidString)
+            .single()
+            .execute()
+            .value
+        
         let params = AcceptOfferParams(
             p_offer_id: offerId.uuidString,
             p_user_id: userId.uuidString
@@ -44,6 +53,22 @@ final class OfferService: ObservableObject {
            let success = json["success"] as? Bool {
             
             if success {
+                // Notify offer maker that their offer was accepted
+                let priceFormatted = String(format: "%.2f", Double(offer.priceCents ?? 0) / 100.0)
+                await NotificationService.shared.createNotification(
+                    NotificationCreate(
+                        userId: offer.sellerId,
+                        type: .marketplaceActivity,
+                        title: "Offer Accepted!",
+                        body: "Your offer of $\(priceFormatted) was accepted. Complete payment to proceed.",
+                        data: ["offer_id": AnyCodable(offerId.uuidString)],
+                        scheduledFor: nil,
+                        orderId: nil,
+                        messageId: nil,
+                        listingId: offer.seekListingId,
+                        relatedUserId: offer.seekerId
+                    )
+                )
                 return true
             } else {
                 let error = json["error"] as? String ?? "Unknown error"
@@ -59,6 +84,15 @@ final class OfferService: ObservableObject {
         guard let userId = try? await supabase.auth.session.user.id else {
             throw OfferError.userNotAuthenticated
         }
+        
+        // Get offer details before declining (for notification)
+        let offer: Offer = try await supabase
+            .from("offers")
+            .select("*")
+            .eq("id", value: offerId.uuidString)
+            .single()
+            .execute()
+            .value
         
         let params = DeclineOfferParams(
             p_offer_id: offerId.uuidString,
@@ -78,6 +112,24 @@ final class OfferService: ObservableObject {
             let error = json["error"] as? String ?? "Failed to decline offer"
             throw OfferError.serverError(error)
         }
+        
+        // Notify offer maker that their offer was declined
+        let priceFormatted = String(format: "%.2f", Double(offer.priceCents ?? 0) / 100.0)
+        let bodyText = reason != nil ? "Your offer of $\(priceFormatted) was declined. Reason: \(reason!)" : "Your offer of $\(priceFormatted) was declined."
+        await NotificationService.shared.createNotification(
+            NotificationCreate(
+                userId: offer.sellerId,
+                type: .marketplaceActivity,
+                title: "Offer Declined",
+                body: bodyText,
+                data: ["offer_id": AnyCodable(offerId.uuidString)],
+                scheduledFor: nil,
+                orderId: nil,
+                messageId: nil,
+                listingId: offer.seekListingId,
+                relatedUserId: offer.seekerId
+            )
+        )
     }
     
     // MARK: - Get User Offers

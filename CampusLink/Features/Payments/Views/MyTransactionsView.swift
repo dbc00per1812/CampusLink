@@ -64,7 +64,7 @@ struct MyTransactionsView: View {
                 // Ensure no lingering modals cause dimming when leaving this tab
                 errorMessage = nil
                 showConfirmAlert = false
-                showDeliveredAlert = false
+                showDeliveryPhotoSheet = false
                 activeOrder = nil
                 activeConversation = nil
             }
@@ -89,13 +89,13 @@ struct MyTransactionsView: View {
                     pendingCaptureOrder = nil
                 }
             } message: { Text("This will release funds to the seller.") }
-            .alert("Mark as Delivered?", isPresented: $showDeliveredAlert) {
-                Button("Cancel", role: .cancel) { pendingDeliveredOrder = nil }
-                Button("Mark Delivered") {
-                    if let order = pendingDeliveredOrder { Task { await markDelivered(order) } }
-                    pendingDeliveredOrder = nil
+            .sheet(isPresented: $showDeliveryPhotoSheet) {
+                if let order = pendingDeliveredOrder {
+                    DeliveryPhotoUploadView(orderId: order.id) { photoURL in
+                        Task { await markDelivered(order, with: photoURL) }
+                    }
                 }
-            } message: { Text("This notifies the buyer and enables capture.") }
+            }
             .sheet(item: $disputeDraft) { draft in
                 ReportDisputeView(order: draft.order) {
                     Task { await loadData() }
@@ -238,7 +238,7 @@ struct MyTransactionsView: View {
                         isBuyer: selection == .purchases,
                         onConfirmReceived: { pendingCaptureOrder = order; showConfirmAlert = true },
                         onReportProblem: { reportProblem(order: order) },
-                        onMarkDelivered: { pendingDeliveredOrder = order; showDeliveredAlert = true }
+                        onMarkDelivered: { pendingDeliveredOrder = order; showDeliveryPhotoSheet = true }
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -395,7 +395,7 @@ struct MyTransactionsView: View {
         }
     }
 
-    private func markDelivered(_ order: Order) async {
+    private func markDelivered(_ order: Order, with photoURL: String) async {
         // Verify current user is seller
         guard let currentUserId = authManager.session?.user.id,
               order.sellerId == currentUserId else {
@@ -403,12 +403,13 @@ struct MyTransactionsView: View {
             return
         }
         do {
-            try await OrderService.shared.updateOrderStatus(order.id, status: .inProgress)
+            try await OrderService.shared.markDelivered(order.id, deliveryPhotoUrl: photoURL)
             await MainActor.run {
                 successToastMessage = order.listing?.listingType == .service
                     ? "Service marked as delivered! ✅"
                     : "Product marked as delivered! ✅"
                 showSuccessToast = true
+                pendingDeliveredOrder = nil
                 
                 // Hide toast after 3 seconds
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -427,6 +428,7 @@ struct MyTransactionsView: View {
     @State private var pendingDeliveredOrder: Order?
     @State private var showConfirmAlert = false
     @State private var showDeliveredAlert = false
+    @State private var showDeliveryPhotoSheet = false
     @State private var activeOrder: Order?
     @State private var activeConversation: Conversation?
 
@@ -556,9 +558,16 @@ struct FilterSheet: View {
                     Text(order.listing?.title ?? "Listing")
                         .font(.headline)
                         .lineLimit(2)
-                    Text(order.formattedPrice)
-                        .font(.subheadline)
-                        .foregroundColor(Color("ThemeColor"))
+                    // Show role-based pricing
+                    if isBuyer {
+                        Text(order.formattedBuyerPrice)
+                            .font(.subheadline)
+                            .foregroundColor(Color("ThemeColor"))
+                    } else {
+                        Text(order.formattedSellerPrice)
+                            .font(.subheadline)
+                            .foregroundColor(Color("ThemeColor"))
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
@@ -639,8 +648,8 @@ struct FilterSheet: View {
                             .fontWeight(.semibold)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(Color.red.opacity(0.1))
-                            .foregroundColor(.red)
+                            .background(Color.facebookBlue.opacity(0.1))
+                            .foregroundColor(.facebookBlue)
                             .cornerRadius(8)
                     }
                 }

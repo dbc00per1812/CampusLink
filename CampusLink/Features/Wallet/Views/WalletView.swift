@@ -184,69 +184,49 @@ struct WalletView: View {
             .responsivePadding(16)
             .background(Color(UIColor.secondarySystemBackground))
         }
-        .background(Color(UIColor.systemBackground))
+        .background(Color(UIColor.secondarySystemBackground))
         .responsiveCornerRadius(16)
-        .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
     }
     
     // MARK: - Action Buttons
     private var actionButtons: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                // Request Payout Button
-                Button(action: {
-                    if viewModel.hasStripeConnectAccount {
-                        viewModel.showPayoutRequestSheet = true
-                    } else {
-                        Task {
-                            await viewModel.startStripeOnboarding()
-                        }
+        HStack(spacing: 12) {
+            // Request Payout Button
+            Button(action: {
+                if viewModel.hasStripeConnectAccount {
+                    viewModel.showPayoutRequestSheet = true
+                } else {
+                    Task {
+                        await viewModel.startStripeOnboarding()
                     }
+                }
+            }) {
+                HStack {
+                    Image(systemName: viewModel.hasStripeConnectAccount ? "banknote" : "link")
+                    Text(viewModel.hasStripeConnectAccount ? "Request Payout" : "Complete Payout Setup")
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color("ThemeColor"))
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+            
+            // Payout History Button (only show if Stripe Connect is set up)
+            if viewModel.hasStripeConnectAccount {
+                Button(action: {
+                    viewModel.showPayoutHistorySheet = true
                 }) {
                     HStack {
-                        Image(systemName: viewModel.hasStripeConnectAccount ? "banknote" : "link")
-                        Text(viewModel.hasStripeConnectAccount ? "Request Payout" : "Complete Payout Setup")
+                        Image(systemName: "clock.arrow.circlepath")
+                        Text("History")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color("ThemeColor"))
-                    .foregroundColor(.white)
+                    .background(Color(.secondarySystemBackground))
+                    .foregroundColor(.primary)
                     .cornerRadius(12)
-                }
-                .disabled(viewModel.wallet?.availableCents ?? 0 <= 0 && viewModel.hasStripeConnectAccount)
-                
-                // Payout History Button
-                if viewModel.hasStripeConnectAccount {
-                    Button(action: {
-                        viewModel.showPayoutHistorySheet = true
-                    }) {
-                        HStack {
-                            Image(systemName: "clock.arrow.circlepath")
-                            Text("History")
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .foregroundColor(.primary)
-                        .cornerRadius(12)
-                    }
-                } else {
-                    // Add Funds Button (placeholder for future)
-                    Button(action: {
-                        // Future: Add funds functionality
-                    }) {
-                        HStack {
-                            Image(systemName: "plus.circle")
-                            Text("Add Funds")
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .foregroundColor(.primary)
-                        .cornerRadius(12)
-                    }
-                    .disabled(true) // Not implemented yet
-                    .opacity(0.5)
                 }
             }
         }
@@ -384,17 +364,11 @@ struct WalletView: View {
                     .background(Color(UIColor.secondarySystemBackground))
                     .cornerRadius(12)
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: 12) {
                     ForEach(viewModel.transactions.prefix(5)) { transaction in
                         transactionRow(transaction)
-                        if transaction.id != viewModel.transactions.prefix(5).last?.id {
-                            Divider()
-                        }
                     }
                 }
-                .background(Color(UIColor.systemBackground))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
             }
         }
     }
@@ -439,6 +413,15 @@ struct WalletView: View {
 
                 // Summary badges row
                 HStack(spacing: 8) {
+                    // Sale/Purchase badge - show first for clarity
+                    if let currentUserId = authManager.currentUserId {
+                        if transaction.sellerId == currentUserId {
+                            badge(text: "Sale", color: .blue)
+                        } else if transaction.buyerId == currentUserId {
+                            badge(text: "Purchase", color: .purple)
+                        }
+                    }
+                    
                     if transaction.isDisputed {
                         badge(text: "Disputed", color: .orange)
                     }
@@ -473,9 +456,9 @@ struct WalletView: View {
                 }
             }
             .padding()
-            .background(Color(UIColor.systemBackground))
+            .background(Color(UIColor.secondarySystemBackground))
             .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
         .sheet(item: $selectedOrder) { order in

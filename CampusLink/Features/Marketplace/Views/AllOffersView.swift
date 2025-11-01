@@ -139,7 +139,7 @@ struct AllOffersView: View {
                             Label("Decline", systemImage: "xmark.circle")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
-                                .foregroundColor(.red)
+                                .foregroundColor(.facebookBlue)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
                                 .background(Color(.systemGray6))
@@ -257,7 +257,7 @@ struct AllOffersView: View {
         case "accepted":
             return .green
         case "declined":
-            return .red
+            return .facebookBlue
         default:
             return .gray
         }

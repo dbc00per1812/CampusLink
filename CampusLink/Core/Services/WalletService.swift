@@ -129,7 +129,10 @@ final class WalletService: ObservableObject {
             
             let transactions: [PaymentTransaction] = try await supabase
                 .from("payments")
-                .select()
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
                 .or("buyer_id.eq.\(userIdString),seller_id.eq.\(userIdString)")
                 .neq("status", value: "failed")
                 .neq("status", value: "cancelled")

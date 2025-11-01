@@ -342,6 +342,23 @@ struct OfferComposeView: View {
             
             print("✅ Offer inserted successfully")
             
+            // Notify seeker that they received an offer
+            let priceFormatted = String(format: "%.2f", Double(priceCents) / 100.0)
+            await NotificationService.shared.createNotification(
+                NotificationCreate(
+                    userId: seekerId,
+                    type: .listingInterest,
+                    title: "New Offer!",
+                    body: "Someone offered $\(priceFormatted) for your post",
+                    data: ["price_cents": AnyCodable(priceCents)],
+                    scheduledFor: nil,
+                    orderId: nil,
+                    messageId: nil,
+                    listingId: seekListingId,
+                    relatedUserId: sellerId
+                )
+            )
+            
             // Send a message with the offer details
             await createOfferMessage(
                 seekListingId: seekListingId,
@@ -650,7 +667,7 @@ struct ListingSelectionRow: View {
                 
                 Text("$\((listing.price ?? 0), specifier: "%.2f")")
                     .font(.subheadline)
-                    .foregroundColor(Color("ThemeColor"))
+                    .foregroundColor(.green)
                     .fontWeight(.semibold)
                 
                 Text(listing.category)

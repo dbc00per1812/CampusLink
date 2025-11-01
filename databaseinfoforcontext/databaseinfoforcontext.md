@@ -1,6 +1,15 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.blocked_users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  blocker_id uuid NOT NULL,
+  blocked_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT blocked_users_pkey PRIMARY KEY (id),
+  CONSTRAINT blocked_users_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES public.users(id),
+  CONSTRAINT blocked_users_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.conversations (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   listing_id uuid,
@@ -52,6 +61,9 @@ CREATE TABLE public.listings (
   expires_at timestamp with time zone,
   tsv tsvector DEFAULT to_tsvector('simple'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(description, ''::text))),
   photos ARRAY DEFAULT '{}'::text[] CHECK (photos IS NOT NULL),
+  delivery_method text CHECK (delivery_method IS NULL OR (delivery_method = ANY (ARRAY['pickup'::text, 'delivery'::text]))),
+  quantity_available integer DEFAULT 1 CHECK (quantity_available >= 0),
+  quantity_sold integer DEFAULT 0,
   CONSTRAINT listings_pkey PRIMARY KEY (id),
   CONSTRAINT listings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
@@ -85,6 +97,7 @@ CREATE TABLE public.notifications (
   message_id uuid,
   listing_id uuid,
   related_user_id uuid,
+  updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT notifications_pkey PRIMARY KEY (id),
   CONSTRAINT notifications_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT notifications_related_user_id_fkey FOREIGN KEY (related_user_id) REFERENCES public.users(id),
@@ -119,7 +132,6 @@ CREATE TABLE public.orders (
   payment_method text NOT NULL,
   payment_status text NOT NULL,
   order_status text NOT NULL,
-  auto_release_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   stripe_escrow_account_id text,
@@ -132,6 +144,13 @@ CREATE TABLE public.orders (
   refunded_at timestamp with time zone,
   buyer_confirmed_at timestamp with time zone,
   time_slot_id uuid,
+  delivery_photo_url text,
+  verification_pin text,
+  pin_verified_at timestamp with time zone,
+  pin_attempts integer DEFAULT 0,
+  seller_price_cents integer,
+  buyer_price_cents integer,
+  quantity integer DEFAULT 1,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
   CONSTRAINT orders_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
@@ -318,6 +337,13 @@ CREATE TABLE public.users (
   stripe_connect_id text,
   stripe_payouts_enabled boolean DEFAULT false,
   stripe_details_submitted boolean DEFAULT false,
+  campus text CHECK (campus IS NULL OR (campus = ANY (ARRAY['Indiana University Bloomington'::text, 'Purdue University'::text]))),
+  verification_status text DEFAULT 'unverified'::text CHECK (verification_status = ANY (ARRAY['unverified'::text, 'pending'::text, 'verified'::text, 'rejected'::text])),
+  student_id_image_url text,
+  verification_submitted_at timestamp with time zone,
+  verification_reviewed_at timestamp with time zone,
+  verification_notes text,
+  has_debit_card boolean DEFAULT false,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

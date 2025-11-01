@@ -13,6 +13,8 @@ private struct ListingUpdate: Codable {
     let serviceDuration: String?
     let serviceLocation: ServiceLocation?
     let serviceAvailability: String?
+    let deliveryMethod: DeliveryMethod?
+    let quantityAvailable: Int?
 
     enum CodingKeys: String, CodingKey {
         case title, description, price, category, photo, photos
@@ -20,6 +22,8 @@ private struct ListingUpdate: Codable {
         case serviceDuration = "service_duration"
         case serviceLocation = "service_location"
         case serviceAvailability = "service_availability"
+        case deliveryMethod = "delivery_method"
+        case quantityAvailable = "quantity_available"
     }
 }
 
@@ -37,15 +41,14 @@ struct EditListingView: View {
     @State private var serviceDuration: String
     @State private var serviceLocation: ServiceLocation
     @State private var serviceAvailability: String
-    @State private var selectedImage: PhotosPickerItem?
-    @State private var selectedImages: [PhotosPickerItem] = []
-    @State private var imageData: Data?
-    @State private var imageDatas: [Data] = []
+    @State private var deliveryMethod: DeliveryMethod
+    @State private var newImages: [UIImage] = []
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingImageCropper = false
     @State private var imageToCrop: UIImage?
     @State private var cropperIndex: Int = 0
+    @State private var quantity: Int
 
     // Product categories
     private let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
@@ -69,6 +72,8 @@ struct EditListingView: View {
         _serviceDuration = State(initialValue: listing.serviceDuration ?? "")
         _serviceLocation = State(initialValue: listing.serviceLocation ?? .onCampus)
         _serviceAvailability = State(initialValue: listing.serviceAvailability ?? "")
+        _deliveryMethod = State(initialValue: listing.deliveryMethod ?? .pickup)
+        _quantity = State(initialValue: listing.quantityAvailable ?? 1)
     }
 
     var body: some View {
@@ -77,68 +82,55 @@ struct EditListingView: View {
                 VStack(spacing: 16) {
                     // Multiple Images picker
                     VStack(spacing: 12) {
-                        if !imageDatas.isEmpty {
+                        if !newImages.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     Spacer(minLength: 0)
-                                    ForEach(Array(imageDatas.enumerated()), id: \.offset) { index, data in
-                                        if let ui = UIImage(data: data) {
-                                            ZStack(alignment: .topTrailing) {
-                                                Image(uiImage: ui)
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fill)
-                                                    .frame(width: 120, height: 120)
-                                                    .clipped()
-                                                    .cornerRadius(12)
-                                                
-                                                HStack {
-                                                    Button(action: {
-                                                        cropperIndex = index
-                                                        imageToCrop = ui
-                                                        showingImageCropper = true
-                                                    }) {
-                                                        Image(systemName: "crop")
-                                                            .foregroundColor(.blue)
-                                                            .background(Color.white)
-                                                            .clipShape(Circle())
-                                                    }
-                                                    .offset(x: -16, y: -8)
-                                                    
-                                                    Button(action: {
-                                                        imageDatas.remove(at: index)
-                                                    }) {
-                                                        Image(systemName: "xmark.circle.fill")
-                                                            .foregroundColor(.red)
-                                                            .background(Color.white)
-                                                            .clipShape(Circle())
-                                                    }
-                                                    .offset(x: 8, y: -8)
+                                    ForEach(Array(newImages.enumerated()), id: \.offset) { index, image in
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 120, height: 120)
+                                                .clipped()
+                                                .cornerRadius(12)
+                                            
+                                            HStack {
+                                                Button(action: {
+                                                    cropperIndex = index
+                                                    imageToCrop = image
+                                                    showingImageCropper = true
+                                                }) {
+                                                    Image(systemName: "crop")
+                                                        .foregroundColor(.blue)
+                                                        .background(Color.white)
+                                                        .clipShape(Circle())
                                                 }
+                                                .offset(x: -16, y: -8)
+                                                
+                                                Button(action: {
+                                                    newImages.remove(at: index)
+                                                }) {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .foregroundColor(.facebookBlue)
+                                                        .background(Color.white)
+                                                        .clipShape(Circle())
+                                                }
+                                                .offset(x: 8, y: -8)
                                             }
                                         }
                                     }
                                     
                                     // Add more photos button
-                                    if imageDatas.count < 10 {
-                                        PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(Color(UIColor.systemGray6))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    VStack {
-                                                        Image(systemName: "plus")
-                                                            .font(.system(size: 30))
-                                                            .foregroundColor(.gray)
-                                                        Text("Add More")
-                                                            .font(.caption)
-                                                            .foregroundColor(.gray)
-                                                    }
-                                                )
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .stroke(Color("ThemeColor"), lineWidth: 2)
-                                                )
-                                        }
+                                    if newImages.count < 10 {
+                                        MultiImagePickerButton(
+                                            selectedImages: $newImages,
+                                            maxSelectionCount: 10,
+                                            label: "",
+                                            icon: "plus",
+                                            style: .outlined
+                                        )
+                                        .frame(width: 120, height: 120)
                                     }
                                     Spacer(minLength: 0)
                                 }
@@ -166,25 +158,14 @@ struct EditListingView: View {
                                     }
                                     
                                     // Add photos button
-                                    PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color(UIColor.systemGray6))
-                                            .frame(width: 120, height: 120)
-                                            .overlay(
-                                                VStack {
-                                                    Image(systemName: "plus")
-                                                        .font(.system(size: 30))
-                                                        .foregroundColor(.gray)
-                                                    Text("Add Photos")
-                                                        .font(.caption)
-                                                        .foregroundColor(.gray)
-                                                }
-                                            )
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(Color("ThemeColor"), lineWidth: 2)
-                                            )
-                                    }
+                                    MultiImagePickerButton(
+                                        selectedImages: $newImages,
+                                        maxSelectionCount: 10,
+                                        label: "",
+                                        icon: "plus",
+                                        style: .outlined
+                                    )
+                                    .frame(width: 120, height: 120)
                                     Spacer(minLength: 0)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -205,48 +186,33 @@ struct EditListingView: View {
                                 .clipped()
                                 .cornerRadius(12)
                                 
-                                PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
-                                    Text("Add Photos")
-                                        .font(.subheadline)
-                                        .foregroundColor(Color("ThemeColor"))
-                                }
+                                MultiImagePickerButton(
+                                    selectedImages: $newImages,
+                                    maxSelectionCount: 10,
+                                    label: "Add Photos",
+                                    icon: "camera",
+                                    style: .text
+                                )
                             }
                         } else {
                             // No photos - show add photos button
-                            PhotosPicker(selection: $selectedImages, maxSelectionCount: 10, matching: .images) {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(UIColor.systemGray6))
-                                    .frame(height: 200)
-                                    .overlay(
-                                        VStack {
-                                            Image(systemName: "photo")
-                                                .font(.system(size: 40))
-                                                .foregroundColor(.gray)
-                                            Text("Add Photos")
-                                                .font(.headline)
-                                                .foregroundColor(.gray)
-                                            Text("Tap to select multiple photos")
-                                                .font(.caption)
-                                                .foregroundColor(.gray)
-                                        }
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color("ThemeColor"), lineWidth: 2)
-                                    )
-                            }
-                        }
-
-                        PhotosPicker(selection: $selectedImage, matching: .images) {
-                            Text("Change Single Photo")
-                                .font(.subheadline)
-                                .foregroundColor(Color("ThemeColor"))
-                        }
-                        .onChange(of: selectedImage) { _, newValue in
-                            Task { await loadImage(from: newValue) }
-                        }
-                        .onChange(of: selectedImages) { _, newValue in
-                            Task { await loadImages(from: newValue) }
+                            ImagePlaceholderView(
+                                title: "Add Photos",
+                                subtitle: "Take photos or choose from library",
+                                icon: "photo",
+                                onTap: {}
+                            )
+                            .frame(height: 200)
+                            .overlay(
+                                MultiImagePickerButton(
+                                    selectedImages: $newImages,
+                                    maxSelectionCount: 10,
+                                    label: "",
+                                    icon: "",
+                                    style: .text
+                                )
+                                .opacity(0)
+                            )
                         }
                     }
 
@@ -268,15 +234,22 @@ struct EditListingView: View {
                         }
 
                         LabeledField(title: "Price") {
-                            HStack {
-                                Text("$")
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("$")
+                                        .foregroundColor(.secondary)
+                                    TextField("0.00", text: $priceText)
+                                        .keyboardType(.decimalPad)
+                                }
+                                .padding()
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(10)
+                                
+                                Text("Amount you'll receive")
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
-                                TextField("0.00", text: $priceText)
-                                    .keyboardType(.decimalPad)
+                                    .padding(.horizontal, 4)
                             }
-                            .padding()
-                            .background(Color(UIColor.systemGray6))
-                            .cornerRadius(10)
                         }
 
                         LabeledField(title: "Category") {
@@ -287,6 +260,16 @@ struct EditListingView: View {
                             .padding()
                             .background(Color(UIColor.systemGray6))
                             .cornerRadius(10)
+                        }
+                        
+                        // Show ticket guarantee info when Tickets category is selected
+                        if category == "Tickets" {
+                            TicketGuaranteeInfoView(isOwnListing: true)
+                        }
+                        
+                        // Show product verification info for products
+                        if listingType == .product {
+                            ProductVerificationInfoView(isForSeller: true)
                         }
 
                         LabeledField(title: "Type") {
@@ -321,6 +304,70 @@ struct EditListingView: View {
                                     .background(Color(UIColor.systemGray6))
                                     .cornerRadius(10)
                             }
+                            
+                            // Service Verification Info for sellers
+                            ServiceVerificationInfoView(isForSeller: true)
+                                .padding(.top, 4)
+                        }
+                        
+                        // Delivery Method Picker (for products only)
+                        if listingType == .product {
+                            LabeledField(title: "Delivery Method") {
+                                VStack(spacing: 8) {
+                                    Picker("Delivery Method", selection: $deliveryMethod) {
+                                        ForEach(DeliveryMethod.allCases, id: \.self) { method in
+                                            Text(method.displayName).tag(method)
+                                        }
+                                    }
+                                    .pickerStyle(SegmentedPickerStyle())
+                                    
+                                    Text(deliveryMethod.description)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        
+                        // Quantity selector (for products only)
+                        if listingType == .product {
+                            LabeledField(title: "Quantity Available") {
+                                VStack(spacing: 8) {
+                                    HStack {
+                                        Button(action: {
+                                            if quantity > 1 {
+                                                quantity -= 1
+                                            }
+                                        }) {
+                                            Image(systemName: "minus.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(quantity > 1 ? Color("ThemeColor") : .gray)
+                                        }
+                                        .disabled(quantity <= 1)
+                                        
+                                        Text("\(quantity)")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .frame(minWidth: 50)
+                                        
+                                        Button(action: {
+                                            if quantity < 999 {
+                                                quantity += 1
+                                            }
+                                        }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(Color("ThemeColor"))
+                                        }
+                                    }
+                                    .padding()
+                                    .background(Color(UIColor.systemGray6))
+                                    .cornerRadius(10)
+                                    
+                                    Text("How many units are available?")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
                     }
 
@@ -352,10 +399,8 @@ struct EditListingView: View {
                 EnhancedImageCropperView(
                     originalImage: imageToCrop,
                     onCropCompleted: { croppedImage in
-                        // Replace the image data at the cropper index
-                        if let croppedData = croppedImage.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) {
-                            imageDatas[cropperIndex] = croppedData
-                        }
+                        // Replace the image at the cropper index
+                        newImages[cropperIndex] = croppedImage
                         showingImageCropper = false
                         self.imageToCrop = nil
                     },
@@ -372,39 +417,6 @@ struct EditListingView: View {
         )) { Button("OK") { errorMessage = nil } } message: { Text(errorMessage ?? "") }
     }
 
-    private func loadImage(from item: PhotosPickerItem?) async {
-        guard let item = item, 
-              let data = try? await item.loadTransferable(type: Data.self),
-              let uiImage = UIImage(data: data) else { return }
-        
-        // Apply size constraints immediately
-        let resizedData = uiImage.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) ?? data
-        
-        await MainActor.run { 
-            imageData = resizedData 
-        }
-    }
-    
-    private func loadImages(from items: [PhotosPickerItem]) async {
-        var newImageDatas: [Data] = []
-        
-        for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            
-            // Apply size constraints to each image
-            if let uiImage = UIImage(data: data) {
-                let resizedData = uiImage.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) ?? data
-                newImageDatas.append(resizedData)
-            } else {
-                newImageDatas.append(data)
-            }
-        }
-        
-        await MainActor.run {
-            self.imageDatas = newImageDatas
-        }
-    }
-
     private func save() {
         Task {
             guard let userId = authManager.session?.user.id.uuidString else { return }
@@ -419,8 +431,16 @@ struct EditListingView: View {
             var photoURLs: [String] = listing.photos
             
             // Upload multiple photos if selected
-            if !imageDatas.isEmpty {
-                for (index, data) in imageDatas.enumerated() {
+            if !newImages.isEmpty {
+                for (index, image) in newImages.enumerated() {
+                    guard let data = image.resizedForUpload(maxDimension: 1080, compressionQuality: 0.8) else {
+                        await MainActor.run {
+                            errorMessage = "Failed to process image \(index + 1)"
+                            isSaving = false
+                        }
+                        return
+                    }
+                    
                     do {
                         let fileName = "\(listing.id.uuidString)_\(UUID().uuidString)_\(index).jpg"
                         try await supabase.storage.from("listings").upload(fileName, data: data)
@@ -439,21 +459,8 @@ struct EditListingView: View {
                         return
                     }
                 }
-            } else if let data = imageData {
-                // Fallback to single photo for backward compatibility
-                do {
-                    let fileName = "\(listing.id.uuidString)_\(UUID().uuidString).jpg"
-                    try await supabase.storage.from("listings").upload(fileName, data: data)
-                    photoURL = try supabase.storage.from("listings").getPublicURL(path: fileName).absoluteString
-                    photoURLs = [photoURL!]
-                } catch {
-                    await MainActor.run {
-                        errorMessage = "Failed to upload image: \(error.localizedDescription)"
-                        isSaving = false
-                    }
-                    return
-                }
             }
+            // If no new images, keep existing photos
 
             let update = ListingUpdate(
                 title: title,
@@ -465,7 +472,9 @@ struct EditListingView: View {
                 listingType: listingType,
                 serviceDuration: listingType == .service ? (serviceDuration.isEmpty ? nil : serviceDuration) : nil,
                 serviceLocation: listingType == .service ? serviceLocation : nil,
-                serviceAvailability: listingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil
+                serviceAvailability: listingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil,
+                deliveryMethod: listingType == .product ? deliveryMethod : nil,
+                quantityAvailable: listingType == .product ? quantity : nil
             )
 
             do {

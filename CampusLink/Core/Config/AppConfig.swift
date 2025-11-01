@@ -19,10 +19,14 @@ struct AppConfig {
     /// Phase 0: Enabled after database setup is complete
     static let enableNotifications = true
     
-    // MARK: - Campus Domain Filter
+    /// Controls whether Distance feature is enabled in the app
+    /// Shows distance between buyers and sellers on listing cards
+    static let enableDistanceFeature = false
     
-    /// Controls whether listings are filtered by campus domain
-    static let enableDomainFilter = true
+    // MARK: - Campus Filter
+    
+    /// Controls whether listings are filtered by campus
+    static let enableCampusFilter = true
     
     // MARK: - Other Settings
     

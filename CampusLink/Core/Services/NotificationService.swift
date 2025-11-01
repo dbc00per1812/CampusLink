@@ -152,22 +152,33 @@ class NotificationService: ObservableObject {
     
     /// Create a new notification
     func createNotification(_ notificationCreate: NotificationCreate) async -> Bool {
-        guard isEnabled else { return false }
+        guard isEnabled else {
+            print("⚠️ Notifications disabled in AppConfig")
+            return false
+        }
         
         do {
+            print("📬 Creating notification: \(notificationCreate.type.rawValue) for user \(notificationCreate.userId)")
+            
             try await supabase
                 .from("notifications")
                 .insert(notificationCreate)
                 .execute()
+            
+            print("✅ Notification created successfully")
             
             // Refresh notifications to include the new one
             await fetchNotifications()
             return true
             
         } catch {
-            #if DEBUG
-            print("Failed to create notification: \(error)")
-            #endif
+            print("❌ Failed to create notification: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            if let nsError = error as NSError? {
+                print("❌ Error domain: \(nsError.domain)")
+                print("❌ Error code: \(nsError.code)")
+                print("❌ Error userInfo: \(nsError.userInfo)")
+            }
             return false
         }
     }
@@ -378,7 +389,16 @@ class NotificationService: ObservableObject {
         listingTitle: String,
         status: OrderStatus
     ) async {
-        guard isEnabled else { return }
+        guard isEnabled else {
+            print("⚠️ createOrderNotification: Notifications disabled")
+            return
+        }
+        
+        print("📬 createOrderNotification called:")
+        print("   - User ID: \(userId)")
+        print("   - Order ID: \(orderId)")
+        print("   - Listing: \(listingTitle)")
+        print("   - Status: \(status.rawValue)")
         
         let (type, title, body) = getOrderNotificationContent(status: status, listingTitle: listingTitle)
         
@@ -395,7 +415,12 @@ class NotificationService: ObservableObject {
             relatedUserId: nil
         )
         
-        await createNotification(notification)
+        let success = await createNotification(notification)
+        if success {
+            print("✅ Order notification created successfully")
+        } else {
+            print("❌ Order notification creation failed")
+        }
     }
     
     /// Create a message notification

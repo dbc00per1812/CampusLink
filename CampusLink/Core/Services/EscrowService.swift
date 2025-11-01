@@ -12,6 +12,7 @@ final class EscrowService: ObservableObject {
     /// Creates or retrieves an escrow account for a seller
     /// - Parameter sellerId: The seller's user ID
     /// - Returns: Stripe Connect escrow account ID
+    /// - Note: Now allows orders even if seller hasn't completed onboarding (funds held until verification)
     func getOrCreateEscrowAccount(for sellerId: UUID) async throws -> String {
         do {
             // First check if seller already has a Stripe Connect account
@@ -22,11 +23,6 @@ final class EscrowService: ObservableObject {
                 .single()
                 .execute()
                 .value
-            
-            // If seller doesn't have Stripe Connect, throw error
-            guard let stripeConnectId = user.stripeConnectId else {
-                throw EscrowServiceError.sellerNotOnboarded
-            }
             
             // Check if escrow account already exists in orders
             let existingOrder: Order? = try? await supabase
@@ -43,9 +39,17 @@ final class EscrowService: ObservableObject {
                 return escrowAccountId
             }
             
-            // Create new escrow account ID (this would typically come from Stripe)
-            // For now, we'll use a placeholder that gets updated when payment is processed
-            let escrowAccountId = "escrow_\(stripeConnectId)_\(UUID().uuidString.prefix(8))"
+            // Create escrow account ID
+            // If seller has Stripe Connect, use their connect ID
+            // Otherwise, use placeholder - funds will be held until they complete onboarding
+            let escrowAccountId: String
+            if let stripeConnectId = user.stripeConnectId {
+                escrowAccountId = "escrow_\(stripeConnectId)_\(UUID().uuidString.prefix(8))"
+            } else {
+                // Seller hasn't completed onboarding yet - use pending escrow ID
+                escrowAccountId = "escrow_pending_\(sellerId.uuidString.prefix(8))_\(UUID().uuidString.prefix(8))"
+                print("⚠️ Seller \(sellerId) hasn't completed Stripe onboarding - using pending escrow")
+            }
             
             return escrowAccountId
             
@@ -66,7 +70,6 @@ final class EscrowService: ObservableObject {
                 .update([
                     "stripe_escrow_account_id": escrowAccountId,
                     "stripe_payment_intent_id": paymentIntentId,
-                    "auto_release_at": ISO8601DateFormatter().string(from: Date().addingTimeInterval(3 * 24 * 60 * 60)), // 3 days
                     "updated_at": ISO8601DateFormatter().string(from: Date())
                 ])
                 .eq("id", value: orderId.uuidString)
@@ -97,7 +100,6 @@ final class EscrowService: ObservableObject {
                 orderId: orderId,
                 escrowAccountId: order.stripeEscrowAccountId,
                 paymentIntentId: order.stripePaymentIntentId,
-                autoReleaseAt: order.autoReleaseAt,
                 orderStatus: order.orderStatus,
                 paymentStatus: order.paymentStatus
             )
@@ -107,15 +109,14 @@ final class EscrowService: ObservableObject {
         }
     }
     
-    /// Checks if escrow can be released (delivery confirmed or auto-release time reached)
+    /// Checks if escrow can be released (only when delivery is manually confirmed)
     /// - Parameter orderId: The order ID
     /// - Returns: True if escrow can be released
     func canReleaseEscrow(for orderId: UUID) async throws -> Bool {
         let status = try await getEscrowStatus(for: orderId)
         
-        // Can release if delivery confirmed or auto-release time reached
-        return status.orderStatus == .completed || 
-               (status.autoReleaseAt != nil && status.autoReleaseAt! <= Date())
+        // Can only release when delivery is manually confirmed
+        return status.orderStatus == .completed
     }
     
     /// Releases funds from escrow to seller's Campus Wallet
@@ -182,17 +183,6 @@ final class EscrowService: ObservableObject {
         }
     }
     
-    /// Gets time remaining until automatic escrow release
-    /// - Parameter orderId: The order ID
-    /// - Returns: Time interval until auto-release, or nil if not applicable
-    func getTimeUntilAutoRelease(for orderId: UUID) async throws -> TimeInterval? {
-        let status = try await getEscrowStatus(for: orderId)
-        
-        guard let autoReleaseAt = status.autoReleaseAt else { return nil }
-        
-        let timeRemaining = autoReleaseAt.timeIntervalSinceNow
-        return timeRemaining > 0 ? timeRemaining : nil
-    }
     
     // MARK: - Helper Methods
     
@@ -217,7 +207,6 @@ struct EscrowStatus {
     let orderId: UUID
     let escrowAccountId: String?
     let paymentIntentId: String?
-    let autoReleaseAt: Date?
     let orderStatus: OrderStatus
     let paymentStatus: PaymentStatus
     
@@ -228,34 +217,10 @@ struct EscrowStatus {
     }
     
     var canBeReleased: Bool {
-        // Don't show release button for completed orders (funds should already be released)
-        // Only show for orders that are still active and past auto-release time
-        return orderStatus != .completed && 
-               autoReleaseAt != nil && 
-               autoReleaseAt! <= Date()
+        // Only show release button for completed orders (funds should already be released)
+        return orderStatus == .completed
     }
     
-    var timeUntilAutoRelease: TimeInterval? {
-        guard let autoReleaseAt = autoReleaseAt else { return nil }
-        let timeRemaining = autoReleaseAt.timeIntervalSinceNow
-        return timeRemaining > 0 ? timeRemaining : nil
-    }
-    
-    var autoReleaseFormatted: String? {
-        guard let timeInterval = timeUntilAutoRelease, timeInterval > 0 else { return nil }
-        
-        let hours = Int(timeInterval) / 3600
-        let minutes = Int(timeInterval) % 3600 / 60
-        
-        if hours > 24 {
-            let days = hours / 24
-            return "\(days) day\(days == 1 ? "" : "s")"
-        } else if hours > 0 {
-            return "\(hours) hour\(hours == 1 ? "" : "s")"
-        } else {
-            return "\(minutes) minute\(minutes == 1 ? "" : "s")"
-        }
-    }
 }
 
 // MARK: - Errors

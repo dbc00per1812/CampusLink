@@ -1,0 +1,55 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme CampusLink -sdk iphonesimulator -destination "platform=iOS Simulator,name=iPhone 15,OS=latest" clean build
+
+User defaults from command line:
+    IDEPackageSupportUseBuiltinSCM = YES
+
+Build settings from command line:
+    SDKROOT = iphonesimulator18.2
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  swift-asn1: https://github.com/apple/swift-asn1.git @ 1.4.0
+  Supabase: https://github.com/supabase/supabase-swift @ 2.30.2
+  swift-clocks: https://github.com/pointfreeco/swift-clocks @ 1.0.6
+  swift-http-types: https://github.com/apple/swift-http-types.git @ 1.4.0
+  Stripe: https://github.com/stripe/stripe-ios @ 24.19.0
+  OneSignalXCFramework: https://github.com/OneSignal/OneSignal-XCFramework @ 5.2.14
+  xctest-dynamic-overlay: https://github.com/pointfreeco/xctest-dynamic-overlay @ 1.6.0
+  swift-crypto: https://github.com/apple/swift-crypto.git @ 3.13.2
+  swift-concurrency-extras: https://github.com/pointfreeco/swift-concurrency-extras @ 1.3.1
+
+2025-10-13 07:24:20.772 xcodebuild[37105:5584541] Writing error result bundle to /var/folders/t8/f83dq7w17gsc14wlk2szyj5m0000gn/T/ResultBundle_2025-13-10_07-24-0020.xcresult
+xcodebuild: error: Unable to find a device matching the provided destination specifier:
+		{ platform:iOS Simulator, OS:latest, name:iPhone 15 }
+
+	The requested device could not be found because no available devices matched the request.
+
+	Available destinations for the "CampusLink" scheme:
+		{ platform:iOS, arch:arm64, id:00008140-001C15002E0B001C, name:iPhone }
+		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+		{ platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
+		{ platform:iOS Simulator, id:16A851DB-5D7F-4AC6-B51F-4341BF2A8720, OS:18.2, name:iPad (10th generation) }
+		{ platform:iOS Simulator, id:16A851DB-5D7F-4AC6-B51F-4341BF2A8720, OS:18.2, name:iPad (10th generation) }
+		{ platform:iOS Simulator, id:6F9E3791-41F8-432B-8F11-0BBC314C5E3E, OS:18.2, name:iPad Air 11-inch (M2) }
+		{ platform:iOS Simulator, id:6F9E3791-41F8-432B-8F11-0BBC314C5E3E, OS:18.2, name:iPad Air 11-inch (M2) }
+		{ platform:iOS Simulator, id:F2CDB2B6-8442-449D-B9D3-7EE00ACB2882, OS:18.2, name:iPad Air 13-inch (M2) }
+		{ platform:iOS Simulator, id:F2CDB2B6-8442-449D-B9D3-7EE00ACB2882, OS:18.2, name:iPad Air 13-inch (M2) }
+		{ platform:iOS Simulator, id:25803CD1-B936-4116-A9E7-9C5B0EF0BEDD, OS:18.2, name:iPad Pro 11-inch (M4) }
+		{ platform:iOS Simulator, id:25803CD1-B936-4116-A9E7-9C5B0EF0BEDD, OS:18.2, name:iPad Pro 11-inch (M4) }
+		{ platform:iOS Simulator, id:475DD7B1-1875-4C84-80A9-0B491FB8E5B0, OS:18.2, name:iPad Pro 13-inch (M4) }
+		{ platform:iOS Simulator, id:475DD7B1-1875-4C84-80A9-0B491FB8E5B0, OS:18.2, name:iPad Pro 13-inch (M4) }
+		{ platform:iOS Simulator, id:9531D36C-6A24-4A3F-8880-7CCC28E19B72, OS:18.2, name:iPad mini (A17 Pro) }
+		{ platform:iOS Simulator, id:9531D36C-6A24-4A3F-8880-7CCC28E19B72, OS:18.2, name:iPad mini (A17 Pro) }
+		{ platform:iOS Simulator, id:CF9938C5-4092-47B2-A7C3-5926655C78D7, OS:18.2, name:iPhone 16 }
+		{ platform:iOS Simulator, id:CF9938C5-4092-47B2-A7C3-5926655C78D7, OS:18.2, name:iPhone 16 }
+		{ platform:iOS Simulator, id:B02C2CAE-DE01-4618-A9D6-04650096DFAC, OS:18.2, name:iPhone 16 Plus }
+		{ platform:iOS Simulator, id:B02C2CAE-DE01-4618-A9D6-04650096DFAC, OS:18.2, name:iPhone 16 Plus }
+		{ platform:iOS Simulator, id:6D07196A-6778-405B-95A7-15DF58B7A093, OS:18.2, name:iPhone 16 Pro }
+		{ platform:iOS Simulator, id:6D07196A-6778-405B-95A7-15DF58B7A093, OS:18.2, name:iPhone 16 Pro }
+		{ platform:iOS Simulator, id:9656B67C-A7F1-42E4-BF0E-4CD66F128F76, OS:18.2, name:iPhone 16 Pro Max }
+		{ platform:iOS Simulator, id:9656B67C-A7F1-42E4-BF0E-4CD66F128F76, OS:18.2, name:iPhone 16 Pro Max }
+		{ platform:iOS Simulator, id:30B52965-270C-4F16-A2A2-91A5F9189BFC, OS:18.2, name:iPhone SE (3rd generation) }
+		{ platform:iOS Simulator, id:30B52965-270C-4F16-A2A2-91A5F9189BFC, OS:18.2, name:iPhone SE (3rd generation) }

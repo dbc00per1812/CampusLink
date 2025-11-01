@@ -233,13 +233,18 @@ extension ProfileTabView {
                                 .foregroundColor(.secondary)
                         }
                     } else {
-                        // Show price for offer posts
-                        HStack(spacing: 4) {
-                            Text(String(format: "$%.2f", listing.price ?? 0))
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.red)
-                            Text("($\(((listing.price ?? 0) * 1.029 + 0.30), specifier: "%.2f") w/ fee)")
+                        // Show price for offer posts - seller sees only their net price
+                        Text(String(format: "$%.2f", listing.price ?? 0))
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.green)
+                        
+                        // Show quantity info for products with multiple units
+                        if listing.listingType == .product,
+                           let qtyAvailable = listing.quantityAvailable,
+                           let qtySold = listing.quantitySold,
+                           (qtyAvailable + qtySold) > 1 {
+                            Text("\(qtySold) sold • \(qtyAvailable) left")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -296,7 +301,7 @@ extension ProfileTabView {
                             .foregroundColor(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color.red)
+                            .background(Color.facebookBlue)
                             .cornerRadius(6)
                     }
                     .onTapGesture {
@@ -307,13 +312,9 @@ extension ProfileTabView {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(UIColor.systemBackground))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(UIColor.separator), lineWidth: 0.5)
-            )
-            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .background(Color(UIColor.secondarySystemBackground))
             .cornerRadius(8)
+            .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
@@ -374,6 +375,7 @@ extension ProfileTabView {
                 .select("*, user:users(*)")
                 .eq("user_id", value: userId)
                 .eq("status", value: "active")
+                .neq("archived", value: true)  // Filter out archived listings
                 .order("created_at", ascending: false)
                 .limit(20)
                 .execute()
@@ -422,7 +424,6 @@ struct EditProfileView: View {
     
     @State private var name = ""
     @State private var bio = ""
-    @State private var selectedImage: PhotosPickerItem?
     @State private var profileImage: UIImage?
     @State private var isLoading = false
     @State private var showingAlert = false
@@ -451,15 +452,12 @@ struct EditProfileView: View {
                                 )
                         }
                         
-                        PhotosPicker(
-                            selection: $selectedImage,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
-                            Text("Change Photo")
-                                .font(.subheadline)
-                                .foregroundColor(Color("ThemeColor"))
-                        }
+                        ImagePickerButton(
+                            selectedImage: $profileImage,
+                            label: "Change Photo",
+                            icon: "camera",
+                            style: .text
+                        )
                     }
                     
                     // Form Fields
@@ -529,13 +527,6 @@ struct EditProfileView: View {
                 await loadCurrentProfile()
             }
         }
-        .onChange(of: selectedImage) { oldValue, newValue in
-            Task {
-                if let newValue = newValue {
-                    await loadImage(from: newValue)
-                }
-            }
-        }
         .alert(isPresented: $showingAlert) {
             Alert(title: Text("Profile Update"), message: Text(alertMessage), dismissButton: .default(Text("OK")) {
                 if alertMessage.contains("successfully") {
@@ -586,15 +577,6 @@ struct EditProfileView: View {
             }
         } catch {
             print("Failed to load profile image: \(error)")
-        }
-    }
-    
-    private func loadImage(from item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else { return }
-        
-        await MainActor.run {
-            self.profileImage = image
         }
     }
     

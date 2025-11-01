@@ -45,6 +45,29 @@ enum ServiceLocation: String, Codable, CaseIterable {
     }
 }
 
+enum DeliveryMethod: String, Codable, CaseIterable {
+    case pickup = "pickup"
+    case delivery = "delivery"
+    
+    var displayName: String {
+        switch self {
+        case .pickup:
+            return "Pickup"
+        case .delivery:
+            return "Delivery"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .pickup:
+            return "Buyer will pick up"
+        case .delivery:
+            return "Seller will drop off"
+        }
+    }
+}
+
 struct Listing: Codable, Identifiable {
     let id: UUID
     let userId: String
@@ -66,6 +89,14 @@ struct Listing: Codable, Identifiable {
     let budgetMin: Double?
     let budgetMax: Double?
     let expiresAt: Date?
+    let deliveryMethod: DeliveryMethod?
+    // Quantity tracking
+    let quantityAvailable: Int?
+    let quantitySold: Int?
+    
+    // Computed properties for quantity
+    var hasMultipleUnits: Bool { (quantityAvailable ?? 1) > 1 }
+    var isOutOfStock: Bool { (quantityAvailable ?? 1) <= 0 }
     
     enum CodingKeys: String, CodingKey {
         case id, title, description, price, category, photo, photos
@@ -82,6 +113,10 @@ struct Listing: Codable, Identifiable {
         case budgetMin = "budget_min"
         case budgetMax = "budget_max"
         case expiresAt = "expires_at"
+        case deliveryMethod = "delivery_method"
+        // Quantity tracking
+        case quantityAvailable = "quantity_available"
+        case quantitySold = "quantity_sold"
     }
     
     // MARK: - Sample Data for Previews
@@ -104,7 +139,10 @@ struct Listing: Codable, Identifiable {
         intent: .offer,
         budgetMin: nil,
         budgetMax: nil,
-        expiresAt: nil
+        expiresAt: nil,
+        deliveryMethod: .pickup,
+        quantityAvailable: 1,
+        quantitySold: 0
     )
 }
 
@@ -126,6 +164,9 @@ struct ListingCreate: Codable {
     let budgetMin: Double?
     let budgetMax: Double?
     let expiresAt: Date?
+    let deliveryMethod: DeliveryMethod?
+    // Quantity tracking
+    let quantityAvailable: Int?
     
     enum CodingKeys: String, CodingKey {
         case title, description, price, category, photo, photos
@@ -140,6 +181,9 @@ struct ListingCreate: Codable {
         case budgetMin = "budget_min"
         case budgetMax = "budget_max"
         case expiresAt = "expires_at"
+        case deliveryMethod = "delivery_method"
+        // Quantity tracking
+        case quantityAvailable = "quantity_available"
     }
 }
 
@@ -164,6 +208,14 @@ struct ListingWithUser: Codable, Identifiable {
     let budgetMin: Double?
     let budgetMax: Double?
     let expiresAt: Date?
+    let deliveryMethod: DeliveryMethod?
+    // Quantity tracking
+    let quantityAvailable: Int?
+    let quantitySold: Int?
+    
+    // Computed properties for quantity
+    var hasMultipleUnits: Bool { (quantityAvailable ?? 1) > 1 }
+    var isOutOfStock: Bool { (quantityAvailable ?? 1) <= 0 }
     
     enum CodingKeys: String, CodingKey {
         case id, title, description, price, category, photo, photos, user
@@ -179,6 +231,10 @@ struct ListingWithUser: Codable, Identifiable {
         case budgetMin = "budget_min"
         case budgetMax = "budget_max"
         case expiresAt = "expires_at"
+        case deliveryMethod = "delivery_method"
+        // Quantity tracking
+        case quantityAvailable = "quantity_available"
+        case quantitySold = "quantity_sold"
     }
     
     // MARK: - Sample Data for Previews
@@ -201,7 +257,10 @@ struct ListingWithUser: Codable, Identifiable {
         intent: .offer,
         budgetMin: nil,
         budgetMax: nil,
-        expiresAt: nil
+        expiresAt: nil,
+        deliveryMethod: .pickup,
+        quantityAvailable: 1,
+        quantitySold: 0
     )
 }
 
@@ -214,15 +273,26 @@ struct User: Codable {
     let bio: String?
     let profilePic: String?
     let email: String?
+    let campus: String?
     let createdAt: Date
     let campusEmailVerified: Bool?
     let trustScore: Int?
     let stripeConnectId: String?
     let stripePayoutsEnabled: Bool?
     let stripeDetailsSubmitted: Bool?
+    // Student verification fields
+    let verificationStatus: String?
+    let studentIdImageUrl: String?
+    let verificationSubmittedAt: Date?
+    let verificationReviewedAt: Date?
+    let verificationNotes: String?
+    
+    var isVerifiedStudent: Bool {
+        return verificationStatus == "verified"
+    }
     
     enum CodingKeys: String, CodingKey {
-        case id, name, bio, email
+        case id, name, bio, email, campus
         case profilePic = "profile_pic"
         case createdAt = "created_at"
         case campusEmailVerified = "campus_email_verified"
@@ -230,6 +300,11 @@ struct User: Codable {
         case stripeConnectId = "stripe_connect_id"
         case stripePayoutsEnabled = "stripe_payouts_enabled"
         case stripeDetailsSubmitted = "stripe_details_submitted"
+        case verificationStatus = "verification_status"
+        case studentIdImageUrl = "student_id_image_url"
+        case verificationSubmittedAt = "verification_submitted_at"
+        case verificationReviewedAt = "verification_reviewed_at"
+        case verificationNotes = "verification_notes"
     }
     
     // MARK: - Sample Data for Previews
@@ -239,12 +314,18 @@ struct User: Codable {
         bio: "This is a sample user for testing and preview purposes.",
         profilePic: nil,
         email: "sample@example.com",
+        campus: "Indiana University Bloomington",
         createdAt: Date(),
         campusEmailVerified: true,
         trustScore: 85,
         stripeConnectId: "acct_sample123",
         stripePayoutsEnabled: true,
-        stripeDetailsSubmitted: true
+        stripeDetailsSubmitted: true,
+        verificationStatus: "verified",
+        studentIdImageUrl: nil,
+        verificationSubmittedAt: nil,
+        verificationReviewedAt: nil,
+        verificationNotes: nil
     )
     
     // Alias for UserProfile compatibility

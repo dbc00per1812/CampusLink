@@ -135,8 +135,9 @@ struct SearchListing: Codable, Identifiable {
     let description: String?
     let price: Double?
     let category: String?
-    let condition: String?
-    let images: [String]? // JSON array from database
+    let photo: String? // Single photo field from database
+    let photos: [String]? // JSON array from database (photos column)
+    let images: [String]? // Alternative field name that might be used
     let intent: String // Raw string from database
     let status: String
     let archived: Bool
@@ -147,14 +148,16 @@ struct SearchListing: Codable, Identifiable {
     // User information from joined query
     let user_name: String?
     let user_email: String?
+    let user_campus: String?
     let user_avatar_url: String?
     let user_trust_score: Int?
     
     // Custom CodingKeys to handle different JSON field names
     enum CodingKeys: String, CodingKey {
-        case id, user_id, title, description, price, category, condition, images
+        case id, user_id, title, description, price, category
+        case photo, photos, images
         case intent, status, archived, service_location, created_at, relevance_score
-        case user_name, user_email, user_avatar_url, user_trust_score
+        case user_name, user_email, user_campus, user_avatar_url, user_trust_score
     }
     
     // Convert to ListingWithUser for compatibility with existing views
@@ -166,19 +169,41 @@ struct SearchListing: Codable, Identifiable {
             bio: nil,
             profilePic: user_avatar_url,
             email: user_email,
+            campus: user_campus,
             createdAt: created_at,
             campusEmailVerified: true,
             trustScore: user_trust_score,
             stripeConnectId: nil,
             stripePayoutsEnabled: false,
-            stripeDetailsSubmitted: false
+            stripeDetailsSubmitted: false,
+            verificationStatus: nil,
+            studentIdImageUrl: nil,
+            verificationSubmittedAt: nil,
+            verificationReviewedAt: nil,
+            verificationNotes: nil
         )
         
         // Convert intent string to enum
         let listingIntent = ListingIntent(rawValue: intent) ?? .offer
         
-        // Get first image URL if available
-        let photo = images?.first
+        // Determine which photo fields are available
+        // Priority: photos array > images array > single photo field
+        let photoArray: [String]
+        let singlePhoto: String?
+        
+        if let photos = photos, !photos.isEmpty {
+            photoArray = photos
+            singlePhoto = photos.first
+        } else if let images = images, !images.isEmpty {
+            photoArray = images
+            singlePhoto = images.first
+        } else if let photo = photo {
+            photoArray = [photo]
+            singlePhoto = photo
+        } else {
+            photoArray = []
+            singlePhoto = nil
+        }
         
         return ListingWithUser(
             id: id,
@@ -186,8 +211,8 @@ struct SearchListing: Codable, Identifiable {
             description: description ?? "",
             price: price ?? 0,
             category: category ?? "",
-            photo: photo,
-            photos: images ?? [],
+            photo: singlePhoto,
+            photos: photoArray,
             isSold: false, // Default for active listings
             listingType: .product, // Default, could be enhanced later
             serviceDuration: nil,
@@ -199,7 +224,10 @@ struct SearchListing: Codable, Identifiable {
             intent: listingIntent,
             budgetMin: nil, // Not in current search results
             budgetMax: nil, // Not in current search results
-            expiresAt: nil // Not in current search results
+            expiresAt: nil, // Not in current search results
+            deliveryMethod: nil, // Not in current search results
+            quantityAvailable: 1, // Default quantity
+            quantitySold: 0 // Default sold count
         )
     }
 }

@@ -130,6 +130,18 @@ class ChatViewModel: ObservableObject {
         
         print("SUCCESS: USER IS A PARTICIPANT")
         
+        // Check if other user is blocked
+        if let otherUser = conversation.otherParticipant(currentUserId: userId) {
+            let isBlocked = (try? await BlockedUsersService.isUserBlocked(otherUser.id, currentUserId: userId)) ?? false
+            if isBlocked {
+                #if DEBUG
+                print("🚫 Cannot send message: User is blocked")
+                #endif
+                errorMessage = "You cannot message this user"
+                return
+            }
+        }
+        
         let content = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         messageText = "" // Clear immediately for better UX
         

@@ -10,19 +10,17 @@ struct PaymentMethodSheet: View {
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var feeService = FeeCalculationService.shared
     @State private var selectedPaymentMethod: PaymentMethod?
-    @State private var showingWalletInfo = false
     @State private var isProcessing = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var animationOffset: CGFloat = 50
     @State private var animationOpacity: Double = 0
     
-    private var priceCents: Int { Int((listing.price ?? 0) * 100) }
-    private var stripeFeeCents: Int { feeService.calculateStripeProcessingFee(amountCents: priceCents) }
-    private var totalWithFeesCents: Int { feeService.calculateTotalWithFees(baseAmountCents: priceCents) }
+    private var sellerPriceCents: Int { Int((listing.price ?? 0) * 100) }
+    private var buyerPriceCents: Int { feeService.calculateBuyerPrice(sellerPriceCents: sellerPriceCents) }
     private var canUseWallet: Bool {
         guard let wallet = wallet else { return false }
-        return wallet.availableCents >= priceCents
+        return wallet.availableCents >= sellerPriceCents
     }
     
     var body: some View {
@@ -42,57 +40,66 @@ struct PaymentMethodSheet: View {
                         .multilineTextAlignment(.center)
                         .accessibilityLabel("Payment method selection instructions")
                     
-                    // Price display with fee breakdown
+                    // Price display with detailed breakdown
                     VStack(spacing: 12) {
-                        // Base price
-                        HStack {
-                            Text("Item Price:")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .accessibilityLabel("Item price")
-                            Spacer()
-                            Text("$\((listing.price ?? 0), specifier: "%.2f")")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .accessibilityLabel("Item price \((listing.price ?? 0), specifier: "%.2f") dollars")
+                        // Fee breakdown
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("Offer Amount")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(feeService.formatTotal(totalCents: sellerPriceCents))
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            
+                            HStack {
+                                Text("Stripe Processing Fee")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(feeService.formatFee(feeCents: feeService.calculateStripeProcessingFee(amountCents: sellerPriceCents)))
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            Divider()
+                            
+                            HStack {
+                                Text("Total:")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.primary)
+                                    .accessibilityLabel("Total amount")
+                                Spacer()
+                                Text(feeService.formatTotal(totalCents: buyerPriceCents))
+                                    .font(.system(size: 28, weight: .bold))
+                                    .foregroundColor(Color("ThemeColor"))
+                                    .accessibilityLabel("Total price \(feeService.formatTotal(totalCents: buyerPriceCents))")
+                            }
                         }
                         
-                        // Stripe processing fee
-                        HStack {
-                            Text("Processing Fee:")
-                                .font(.subheadline)
+                        // Info note
+                        HStack(spacing: 8) {
+                            Image(systemName: "info.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                            Text("Processing fee covers secure payment handling")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
-                                .accessibilityLabel("Stripe processing fee")
                             Spacer()
-                            Text(feeService.formatFee(feeCents: stripeFeeCents))
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .accessibilityLabel("Processing fee \(feeService.formatFee(feeCents: stripeFeeCents))")
-                        }
-                        
-                        // Divider
-                        Divider()
-                            .background(Color.secondary.opacity(0.3))
-                        
-                        // Total with fees
-                        HStack {
-                            Text("Total:")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
-                                .accessibilityLabel("Total amount including fees")
-                            Spacer()
-                            Text(feeService.formatTotal(totalCents: totalWithFeesCents))
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(Color("ThemeColor"))
-                                .accessibilityLabel("Total price including fees \(feeService.formatTotal(totalCents: totalWithFeesCents))")
                         }
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
-                    .background(Color("ThemeColor").opacity(0.1))
+                    .background(Color("ThemeColor").opacity(0.05))
                     .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color("ThemeColor").opacity(0.2), lineWidth: 1)
+                    )
                 }
                 .padding(.top, 20)
                 .padding(.horizontal, 20)
@@ -138,17 +145,11 @@ struct PaymentMethodSheet: View {
                                         .foregroundColor(.orange)
                                         .font(.caption)
                                         .accessibilityHidden(true)
-                                    Text("Insufficient funds - need $\((listing.price ?? 0), specifier: "%.2f")")
+                                    Text("Insufficient funds - need \(feeService.formatTotal(totalCents: sellerPriceCents))")
                                         .font(.caption)
                                         .foregroundColor(.orange)
-                                        .accessibilityLabel("Insufficient funds, need \((listing.price ?? 0), specifier: "%.2f") dollars")
+                                        .accessibilityLabel("Insufficient funds, need \(feeService.formatTotal(totalCents: sellerPriceCents))")
                                     Spacer()
-                                    Button("Add Funds") {
-                                        showingWalletInfo = true
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                                    .accessibilityLabel("Add funds to wallet")
                                 }
                                 .padding(.horizontal, 20)
                                 .transition(.opacity.combined(with: .scale))
@@ -263,9 +264,6 @@ struct PaymentMethodSheet: View {
             .onAppear {
                 animateIn()
             }
-        }
-        .sheet(isPresented: $showingWalletInfo) {
-            WalletInfoSheet()
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK") {

@@ -29,7 +29,7 @@ enum OrderStatus: String, Codable, CaseIterable {
         case .sellerConfirmed: return .orange
         case .inProgress: return .yellow
         case .completed: return .green
-        case .disputed: return .red
+        case .disputed: return .facebookBlue
         case .cancelled: return .gray
         case .refunded: return .purple
         }
@@ -149,7 +149,9 @@ struct Order: Codable, Identifiable {
     let listingId: UUID
     let buyerId: UUID
     let sellerId: UUID
-    let priceCents: Int
+    let priceCents: Int  // Legacy field - kept for backward compatibility
+    let sellerPriceCents: Int?  // What seller receives (their listing price)
+    let buyerPriceCents: Int?   // What buyer pays (rounded up with fees)
     let paymentMethod: PaymentMethod
     let paymentStatus: PaymentStatus
     let orderStatus: OrderStatus
@@ -159,7 +161,6 @@ struct Order: Codable, Identifiable {
     let cancelledAt: Date?
     let refundedAt: Date?
     let updatedAt: Date?
-    let autoReleaseAt: Date?
     let createdAt: Date
     
     // Stripe Connect fields
@@ -170,12 +171,25 @@ struct Order: Codable, Identifiable {
     // Time slot for slot-based services
     let timeSlotId: UUID?
     
+    // Delivery verification
+    let deliveryPhotoUrl: String?
+    
+    // PIN verification for services
+    let verificationPin: String?
+    
+    // Quantity purchased
+    let quantity: Int
+    
     // Joined data
     var listing: Listing?
     
     // Computed properties
     var price: Double { Double(priceCents) / 100.0 }
+    var sellerPrice: Double { Double(sellerPriceCents ?? priceCents) / 100.0 }
+    var buyerPrice: Double { Double(buyerPriceCents ?? priceCents) / 100.0 }
     var formattedPrice: String { String(format: "$%.2f", price) }
+    var formattedSellerPrice: String { String(format: "$%.2f", sellerPrice) }
+    var formattedBuyerPrice: String { String(format: "$%.2f", buyerPrice) }
     var isActive: Bool { orderStatus.isActive }
     var isFinal: Bool { orderStatus.isFinal }
     var requiresEscrow: Bool { paymentMethod.requiresEscrow }
@@ -185,31 +199,12 @@ struct Order: Codable, Identifiable {
     var escrowStatus: String {
         if stripeEscrowAccountId == nil { return "No Escrow" }
         if orderStatus == .completed { return "Released" }
-        if let autoReleaseAt = autoReleaseAt, autoReleaseAt <= Date() { return "Auto-Released" }
         return "Held in Escrow"
     }
     
-    // Time-related computed properties
-    var timeUntilAutoRelease: TimeInterval? {
-        guard let autoReleaseAt = autoReleaseAt else { return nil }
-        return autoReleaseAt.timeIntervalSinceNow
-    }
+    // Delivery verification computed properties
+    var hasDeliveryPhoto: Bool { deliveryPhotoUrl != nil }
     
-    var autoReleaseFormatted: String? {
-        guard let timeInterval = timeUntilAutoRelease, timeInterval > 0 else { return nil }
-        
-        let hours = Int(timeInterval) / 3600
-        let minutes = Int(timeInterval) % 3600 / 60
-        
-        if hours > 24 {
-            let days = hours / 24
-            return "\(days) day\(days == 1 ? "" : "s")"
-        } else if hours > 0 {
-            return "\(hours) hour\(hours == 1 ? "" : "s")"
-        } else {
-            return "\(minutes) minute\(minutes == 1 ? "" : "s")"
-        }
-    }
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -217,6 +212,8 @@ struct Order: Codable, Identifiable {
         case buyerId = "buyer_id"
         case sellerId = "seller_id"
         case priceCents = "price_cents"
+        case sellerPriceCents = "seller_price_cents"
+        case buyerPriceCents = "buyer_price_cents"
         case paymentMethod = "payment_method"
         case paymentStatus = "payment_status"
         case orderStatus = "order_status"
@@ -226,12 +223,14 @@ struct Order: Codable, Identifiable {
         case cancelledAt = "cancelled_at"
         case refundedAt = "refunded_at"
         case updatedAt = "updated_at"
-        case autoReleaseAt = "auto_release_at"
         case createdAt = "created_at"
         case stripeEscrowAccountId = "stripe_escrow_account_id"
         case marketplaceFeeCents = "marketplace_fee_cents"
         case stripePaymentIntentId = "stripe_payment_intent_id"
         case timeSlotId = "time_slot_id"
+        case deliveryPhotoUrl = "delivery_photo_url"
+        case verificationPin = "verification_pin"
+        case quantity
         case listing
     }
 }
@@ -253,6 +252,8 @@ struct OrderWithDetails: Codable, Identifiable {
             buyerId: UUID(),
             sellerId: UUID(),
             priceCents: 2500,
+            sellerPriceCents: 2500,  // Seller receives $25
+            buyerPriceCents: 2600,   // Buyer pays $26 (rounded up)
             paymentMethod: .wallet,
             paymentStatus: .requiresCapture,
             orderStatus: .sellerConfirmed,
@@ -262,12 +263,14 @@ struct OrderWithDetails: Codable, Identifiable {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: Date().addingTimeInterval(-1 * 24 * 60 * 60), // 1 day ago
-            autoReleaseAt: Date().addingTimeInterval(7 * 24 * 60 * 60), // 7 days from now
             createdAt: Date().addingTimeInterval(-2 * 24 * 60 * 60), // 2 days ago
             stripeEscrowAccountId: "escrow_sample_123",
             marketplaceFeeCents: 0,
             stripePaymentIntentId: "pi_sample_123",
             timeSlotId: nil,
+            deliveryPhotoUrl: nil,
+            verificationPin: nil,
+            quantity: 1,
             listing: nil
         ),
         listing: Listing.sampleListing,
@@ -281,17 +284,23 @@ struct OrderCreate: Codable {
     let listingId: UUID
     let buyerId: UUID
     let sellerId: UUID
-    let priceCents: Int
+    let priceCents: Int  // Legacy field
+    let sellerPriceCents: Int?  // What seller receives
+    let buyerPriceCents: Int?   // What buyer pays
     let paymentMethod: PaymentMethod
     let timeSlotId: UUID? // For slot-based services
+    let quantity: Int  // Quantity being purchased (default 1)
     
     enum CodingKeys: String, CodingKey {
         case listingId = "listing_id"
         case buyerId = "buyer_id"
         case sellerId = "seller_id"
         case priceCents = "price_cents"
+        case sellerPriceCents = "seller_price_cents"
+        case buyerPriceCents = "buyer_price_cents"
         case paymentMethod = "payment_method"
         case timeSlotId = "time_slot_id"
+        case quantity
     }
 }
 
@@ -301,6 +310,8 @@ struct OrderInsert: Codable {
     let buyerId: UUID
     let sellerId: UUID
     let priceCents: Int
+    let sellerPriceCents: Int?
+    let buyerPriceCents: Int?
     let paymentMethod: String
     let orderStatus: String
     let paymentStatus: String
@@ -310,12 +321,16 @@ struct OrderInsert: Codable {
     let marketplaceFeeCents: Int
     let stripePaymentIntentId: String?
     let timeSlotId: UUID?
+    let verificationPin: String?
+    let quantity: Int
     
     enum CodingKeys: String, CodingKey {
         case listingId = "listing_id"
         case buyerId = "buyer_id"
         case sellerId = "seller_id"
         case priceCents = "price_cents"
+        case sellerPriceCents = "seller_price_cents"
+        case buyerPriceCents = "buyer_price_cents"
         case paymentMethod = "payment_method"
         case orderStatus = "order_status"
         case paymentStatus = "payment_status"
@@ -325,6 +340,8 @@ struct OrderInsert: Codable {
         case marketplaceFeeCents = "marketplace_fee_cents"
         case stripePaymentIntentId = "stripe_payment_intent_id"
         case timeSlotId = "time_slot_id"
+        case verificationPin = "verification_pin"
+        case quantity
     }
 }
 

@@ -9,7 +9,6 @@ struct ReportDisputeView: View {
 
     @State private var reason: DisputeReason = .notReceived
     @State private var notes: String = ""
-    @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
     @State private var isSubmitting = false
     @State private var errorMessage: String?
@@ -49,17 +48,17 @@ struct ReportDisputeView: View {
                         }
                     }
 
-                    PhotosPicker(selection: $selectedItems, maxSelectionCount: 3, matching: .images) {
-                        Text(selectedImages.isEmpty ? "Add Photos" : "Add More")
-                            .foregroundColor(Color("ThemeColor"))
-                    }
-                    .onChange(of: selectedItems) { oldValue, newValue in
-                        Task { await loadImages() }
-                    }
+                    MultiImagePickerButton(
+                        selectedImages: $selectedImages,
+                        maxSelectionCount: 3,
+                        label: selectedImages.isEmpty ? "Add Photos" : "Add More",
+                        icon: "camera",
+                        style: .text
+                    )
                 }
 
                 if let errorMessage = errorMessage {
-                    Section { Text(errorMessage).foregroundColor(.red) }
+                    Section { Text(errorMessage).foregroundColor(.facebookBlue) }
                 }
             }
             .hideKeyboardOnTap()
@@ -76,16 +75,6 @@ struct ReportDisputeView: View {
                 }
             }
         }
-    }
-
-    private func loadImages() async {
-        var images: [UIImage] = []
-        for item in selectedItems.prefix(3) {
-            if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
-                images.append(img)
-            }
-        }
-        await MainActor.run { selectedImages = images }
     }
 
     private func submit() async {

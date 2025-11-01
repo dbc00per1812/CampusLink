@@ -149,7 +149,7 @@ struct OfferAcceptanceDetailView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color(.systemGray6))
-                            .foregroundColor(.red)
+                            .foregroundColor(.facebookBlue)
                             .cornerRadius(12)
                         }
                         .disabled(isProcessing)
@@ -204,7 +204,7 @@ struct OfferAcceptanceDetailView: View {
         case "accepted":
             return .green
         case "declined":
-            return .red
+            return .facebookBlue
         default:
             return .gray
         }

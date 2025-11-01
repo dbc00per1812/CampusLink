@@ -83,7 +83,7 @@ extension Conversation {
     /// Display name for the conversation (other participant's name or fallback)
     func displayName(currentUserId: String) -> String {
         if let other = otherParticipant(currentUserId: currentUserId) {
-            return other.name ?? other.email ?? "Unknown User"
+            return (other.name ?? other.email ?? "Unknown User").formattedName
         }
         return "Conversation"
     }

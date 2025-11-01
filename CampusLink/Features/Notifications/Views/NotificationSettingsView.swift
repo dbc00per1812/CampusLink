@@ -46,7 +46,7 @@ struct NotificationSettingsView: View {
         Section {
             HStack {
                 Image(systemName: "bell.fill")
-                    .foregroundColor(notificationManager.areNotificationsEnabled ? .green : .red)
+                    .foregroundColor(notificationManager.areNotificationsEnabled ? .green : .facebookBlue)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Push Notifications")

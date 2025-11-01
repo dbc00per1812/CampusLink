@@ -48,7 +48,7 @@ enum ActionButtonType {
         case .editListing:
             return Color.blue
         case .deleteListing:
-            return Color.red
+            return Color.facebookBlue
         }
     }
     
@@ -194,7 +194,7 @@ struct ActionButtonRow: View {
             ResponsiveVStack(spacing: 8) {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.red)
+                        .foregroundColor(.facebookBlue)
                     Text("This listing is no longer available")
                         .responsiveFont(.subheadline)
                         .foregroundColor(.secondary)
@@ -258,19 +258,28 @@ struct ActionButton_Previews: PreviewProvider {
                         name: "Test User", 
                         bio: nil, 
                         profilePic: nil, 
-                        email: "test@example.com", 
+                        email: "test@example.com",
+                        campus: "Indiana University Bloomington",
                         createdAt: Date(),
                         campusEmailVerified: true,
                         trustScore: 85,
                         stripeConnectId: nil,
                         stripePayoutsEnabled: false,
-                        stripeDetailsSubmitted: false
+                        stripeDetailsSubmitted: false,
+                        verificationStatus: nil,
+                        studentIdImageUrl: nil,
+                        verificationSubmittedAt: nil,
+                        verificationReviewedAt: nil,
+                        verificationNotes: nil
                     ),
                     // Seek mode fields
                     intent: .offer,
                     budgetMin: nil,
                     budgetMax: nil,
-                    expiresAt: nil
+                    expiresAt: nil,
+                    deliveryMethod: .pickup,
+                    quantityAvailable: 1,
+                    quantitySold: 0
                 ),
                 isOwnListing: false,
                 isContactingLoading: false,

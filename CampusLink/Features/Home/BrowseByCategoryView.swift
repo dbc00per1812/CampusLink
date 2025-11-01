@@ -11,6 +11,13 @@ struct Category: Identifiable {
 struct BrowseByCategoryView: View {
     @Environment(\.dismiss) private var dismiss
     
+    // Callback for when a category is selected
+    let onCategorySelected: ((String, ListingType) -> Void)?
+    
+    init(onCategorySelected: ((String, ListingType) -> Void)? = nil) {
+        self.onCategorySelected = onCategorySelected
+    }
+    
     // Product categories
     private let productCategories = [
         Category(name: "Electronics", icon: "laptopcomputer", type: .product),
@@ -45,7 +52,9 @@ struct BrowseByCategoryView: View {
                         GridItem(.flexible())
                     ], spacing: 12) {
                         ForEach(productCategories) { category in
-                            NavigationLink(destination: CategoryListingsView(category: category.name, type: category.type)) {
+                            Button(action: {
+                                onCategorySelected?(category.name, category.type)
+                            }) {
                                 CategoryCard(category: category)
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -66,7 +75,9 @@ struct BrowseByCategoryView: View {
                         GridItem(.flexible())
                     ], spacing: 12) {
                         ForEach(serviceCategories) { category in
-                            NavigationLink(destination: CategoryListingsView(category: category.name, type: category.type)) {
+                            Button(action: {
+                                onCategorySelected?(category.name, category.type)
+                            }) {
                                 CategoryCard(category: category)
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -179,8 +190,11 @@ struct CategoryListingsView: View {
                 .execute()
                 .value
             
+            // Apply campus filtering
+            let filteredResult = await applyCampusFilter(result)
+            
             await MainActor.run {
-                listings = result
+                listings = filteredResult
                 isLoading = false
             }
         } catch {
@@ -188,6 +202,52 @@ struct CategoryListingsView: View {
             await MainActor.run {
                 isLoading = false
             }
+        }
+    }
+    
+    // Apply campus filtering to listings
+    private func applyCampusFilter(_ listings: [ListingWithUser]) async -> [ListingWithUser] {
+        guard AppConfig.enableCampusFilter else { return listings }
+        
+        // Get current user's campus from their profile
+        guard let currentUserId = authManager.session?.user.id.uuidString else {
+            print("🔍 Campus Filter: Could not get current user's ID")
+            return listings // Return all listings if we can't determine user
+        }
+        
+        // Fetch current user's campus
+        do {
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus")
+                .eq("id", value: currentUserId)
+                .single()
+                .execute()
+                .value
+            
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty else {
+                print("🔍 Campus Filter: Current user has no campus set")
+                return listings // Return all listings if user has no campus
+            }
+            
+            print("🔍 Campus Filter: Current user campus: \(currentCampus)")
+            
+            // Filter listings to only show those from users with the same campus
+            let filteredListings = listings.filter { listing in
+                guard let userCampus = listing.user.campus, !userCampus.isEmpty else {
+                    print("⚠️ Campus Filter: Excluding listing '\(listing.title)' - user has no campus set")
+                    return false // Exclude listings from users without campus
+                }
+                
+                return userCampus == currentCampus
+            }
+            
+            print("🔍 Campus Filter: Filtered \(listings.count) listings to \(filteredListings.count) for campus \(currentCampus)")
+            
+            return filteredListings
+        } catch {
+            print("❌ Campus Filter: Error fetching user campus: \(error)")
+            return listings // Return unfiltered if error
         }
     }
 }

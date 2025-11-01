@@ -7,7 +7,7 @@
 
 **Company:** CampusLink Labs, LLC  
 **Contact:** support@campuslink.app  
-**Address:** TBD  
+**Address:**  
 **State of Organization:** Indiana
 
 ## Overview

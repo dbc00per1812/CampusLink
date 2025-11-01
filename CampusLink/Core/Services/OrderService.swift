@@ -6,6 +6,11 @@ final class OrderService: ObservableObject {
     static let shared = OrderService()
     private init() {}
     
+    // MARK: - PIN Generation
+    private func generateVerificationPIN() -> String {
+        return String(format: "%04d", Int.random(in: 0...9999))
+    }
+    
     // MARK: - Order Creation
     func createOrder(_ orderCreate: OrderCreate) async throws -> Order {
         print("🔍 OrderService.createOrder called")
@@ -25,6 +30,20 @@ final class OrderService: ObservableObject {
             let escrowAccountId = try await escrowService.getOrCreateEscrowAccount(for: orderCreate.sellerId)
             print("🔍 Got escrow account: \(escrowAccountId)")
             
+            // Fetch listing to check if it's a service (for PIN generation)
+            print("🔍 Fetching listing to check type...")
+            let listing: Listing = try await supabase
+                .from("listings")
+                .select()
+                .eq("id", value: orderCreate.listingId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            // Generate PIN only for service listings
+            let verificationPin = listing.listingType == .service ? generateVerificationPIN() : nil
+            print("🔍 Listing type: \(listing.listingType), PIN generated: \(verificationPin ?? "none")")
+            
             print("🔍 DEBUG - Order creation params:")
             print("  listing_id: \(orderCreate.listingId.uuidString)")
             print("  buyer_id: \(orderCreate.buyerId.uuidString)")
@@ -36,13 +55,15 @@ final class OrderService: ObservableObject {
             print("  current_user_id: \(currentUserId.uuidString)")
             print("  buyer_id matches current user: \(currentUserId == orderCreate.buyerId)")
             
-            // Create order with all required fields including escrow
+            // Create order with all required fields including escrow and both prices
             // Debug: Let's see the exact JSON being sent
             let orderData = OrderInsert(
                 listingId: orderCreate.listingId,
                 buyerId: orderCreate.buyerId,
                 sellerId: orderCreate.sellerId,
                 priceCents: orderCreate.priceCents,
+                sellerPriceCents: orderCreate.sellerPriceCents,
+                buyerPriceCents: orderCreate.buyerPriceCents,
                 paymentMethod: orderCreate.paymentMethod.rawValue,
                 orderStatus: "placed",
                 paymentStatus: "succeeded",
@@ -51,7 +72,9 @@ final class OrderService: ObservableObject {
                 stripeEscrowAccountId: escrowAccountId,
                 marketplaceFeeCents: 0,
                 stripePaymentIntentId: nil,
-                timeSlotId: orderCreate.timeSlotId
+                timeSlotId: orderCreate.timeSlotId,
+                verificationPin: verificationPin,
+                quantity: orderCreate.quantity
             )
             
             // Debug the JSON
@@ -70,6 +93,77 @@ final class OrderService: ObservableObject {
                 .value
             
             print("✅ Order created successfully: \(order.id)")
+            
+            // CRITICAL: Deduct wallet balance if payment method is wallet
+            if orderCreate.paymentMethod == .wallet {
+                print("💳 Processing wallet payment - deducting \(orderCreate.buyerPriceCents) cents from buyer wallet")
+                
+                // Get buyer's current wallet
+                let buyerWallet: Wallet = try await supabase
+                    .from("wallets")
+                    .select()
+                    .eq("user_id", value: orderCreate.buyerId.uuidString)
+                    .single()
+                    .execute()
+                    .value
+                
+                print("💳 Current wallet balance: \(buyerWallet.availableCents) cents")
+                
+                // Verify sufficient funds (should already be checked, but double-check)
+                guard let buyerPriceCents = orderCreate.buyerPriceCents else {
+                    throw OrderServiceError.invalidPrice
+                }
+                
+                guard buyerWallet.availableCents >= buyerPriceCents else {
+                    // Rollback: Delete the order we just created
+                    _ = try? await supabase
+                        .from("orders")
+                        .delete()
+                        .eq("id", value: order.id.uuidString)
+                        .execute()
+                    throw OrderServiceError.insufficientFunds
+                }
+                
+                // Deduct from buyer's wallet
+                let newBalance = buyerWallet.availableCents - buyerPriceCents
+                print("💳 New wallet balance will be: \(newBalance) cents")
+                
+                struct WalletUpdate: Encodable {
+                    let available_cents: Int
+                    let updated_at: String
+                }
+                
+                let updateResult = try await supabase
+                    .from("wallets")
+                    .update(WalletUpdate(
+                        available_cents: newBalance,
+                        updated_at: ISO8601DateFormatter().string(from: Date())
+                    ))
+                    .eq("user_id", value: orderCreate.buyerId.uuidString)
+                    .execute()
+                
+                if updateResult.count == 0 {
+                    print("❌ Failed to deduct wallet balance")
+                    // Rollback: Delete the order
+                    _ = try? await supabase
+                        .from("orders")
+                        .delete()
+                        .eq("id", value: order.id.uuidString)
+                        .execute()
+                    throw OrderServiceError.walletUpdateFailed("Failed to deduct wallet balance")
+                }
+                
+                print("✅ Wallet payment processed: Deducted \(orderCreate.buyerPriceCents) cents, new balance: \(newBalance) cents")
+            }
+            
+            // Notify seller of new order
+            await NotificationService.shared.createOrderNotification(
+                for: orderCreate.sellerId.uuidString,
+                orderId: order.id,
+                listingTitle: listing.title,
+                status: .placed
+            )
+            
             return order
         } catch {
             print("❌ OrderService.createOrder ERROR: \(error)")
@@ -125,7 +219,7 @@ final class OrderService: ObservableObject {
         }
     }
     
-    func markDelivered(_ orderId: UUID) async throws -> Order {
+    func markDelivered(_ orderId: UUID, deliveryPhotoUrl: String) async throws -> Order {
         do {
             let session = try await supabase.auth.session
             let currentUserId = session.user.id
@@ -147,6 +241,7 @@ final class OrderService: ObservableObject {
                 .update([
                     "order_status": "seller_confirmed",
                     "seller_confirmed_at": ISO8601DateFormatter().string(from: Date()),
+                    "delivery_photo_url": deliveryPhotoUrl,
                     "updated_at": ISO8601DateFormatter().string(from: Date())
                 ])
                 .eq("id", value: orderId.uuidString)
@@ -154,6 +249,23 @@ final class OrderService: ObservableObject {
                 .single()
                 .execute()
                 .value
+            
+            // Fetch listing for notification
+            let listing: Listing = try await supabase
+                .from("listings")
+                .select()
+                .eq("id", value: order.listingId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            // Notify buyer that seller marked as delivered
+            await NotificationService.shared.createOrderNotification(
+                for: order.buyerId.uuidString,
+                orderId: orderId,
+                listingTitle: listing.title,
+                status: .sellerConfirmed
+            )
             
             return updatedOrder
         } catch {
@@ -186,6 +298,20 @@ final class OrderService: ObservableObject {
             }
             
             print("🔵 confirmDelivery: Order status verified, updating to completed")
+            
+            // STEP 1: Capture Stripe payment if this was a card payment
+            if let paymentIntentId = order.stripePaymentIntentId, order.paymentMethod == .card {
+                print("💳 confirmDelivery: Capturing Stripe payment: \(paymentIntentId)")
+                do {
+                    try await PaymentService.shared.capturePayment(paymentIntentId: paymentIntentId)
+                    print("✅ confirmDelivery: Payment captured successfully")
+                } catch {
+                    print("❌ confirmDelivery: Failed to capture payment: \(error)")
+                    throw OrderServiceError.paymentCaptureFailed("Failed to capture payment: \(error.localizedDescription)")
+                }
+            } else {
+                print("ℹ️ confirmDelivery: No payment capture needed (payment method: \(order.paymentMethod.displayName))")
+            }
             
             // Check seller's wallet BEFORE escrow release
             print("🔵 confirmDelivery: Checking seller wallet BEFORE escrow release...")
@@ -228,6 +354,23 @@ final class OrderService: ObservableObject {
             
             print("🔵 confirmDelivery: Escrow funds released successfully")
             
+            // Fetch listing for notification
+            let listing: Listing = try await supabase
+                .from("listings")
+                .select()
+                .eq("id", value: order.listingId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            // Notify seller that buyer confirmed receipt and funds are released
+            await NotificationService.shared.createOrderNotification(
+                for: order.sellerId.uuidString,
+                orderId: orderId,
+                listingTitle: listing.title,
+                status: .completed
+            )
+            
             // Check seller's wallet AFTER escrow release
             print("🔵 confirmDelivery: Checking seller wallet AFTER escrow release...")
             do {
@@ -257,8 +400,36 @@ final class OrderService: ObservableObject {
     }
     
     /// Releases funds from escrow to seller's wallet
+    /// - Note: Only releases if seller has completed Stripe Connect onboarding
     private func releaseEscrowFunds(order: Order) async throws {
         print("🔵 releaseEscrowFunds: Starting for order \(order.id)")
+        
+        // CRITICAL: Check if seller has completed Stripe Connect onboarding
+        print("🔵 releaseEscrowFunds: Checking seller's Stripe Connect status...")
+        let sellerProfile: User = try await supabase
+            .from("users")
+            .select()
+            .eq("id", value: order.sellerId.uuidString)
+            .single()
+            .execute()
+            .value
+        
+        // If seller hasn't completed onboarding, keep funds in escrow
+        if sellerProfile.stripeConnectId == nil || sellerProfile.stripePayoutsEnabled != true {
+            print("⚠️ Seller hasn't completed Stripe onboarding - funds remain in escrow")
+            print("   - stripe_connect_id: \(sellerProfile.stripeConnectId ?? "nil")")
+            print("   - payouts_enabled: \(sellerProfile.stripePayoutsEnabled ?? false)")
+            
+            // TODO: Send notification to seller
+            // "You made a $XX sale! Complete payout setup to receive your earnings"
+            
+            throw OrderServiceError.sellerOnboardingRequired(
+                "Seller must complete payout setup to receive funds. " +
+                "Order \(order.id.uuidString.prefix(8)) is being held in escrow."
+            )
+        }
+        
+        print("✅ Seller has completed Stripe onboarding - proceeding with fund release")
         
         // Test wallet access first
         print("🔵 releaseEscrowFunds: Testing wallet access...")
@@ -489,6 +660,210 @@ final class OrderService: ObservableObject {
             
             return updatedOrder
         } catch {
+            throw handleError(error)
+        }
+    }
+    
+    // MARK: - Order Cancellation
+    
+    /// Cancels an order and refunds the buyer (only allowed if seller hasn't confirmed yet)
+    /// - Parameter orderId: The order ID to cancel
+    /// - Returns: The updated cancelled order
+    func cancelOrder(_ orderId: UUID) async throws -> Order {
+        do {
+            print("🔵 cancelOrder: Starting cancellation for order \(orderId)")
+            
+            let session = try await supabase.auth.session
+            let currentUserId = session.user.id
+            print("🔵 cancelOrder: Current user ID: \(currentUserId)")
+            
+            // Get order details
+            let order = try await getOrderDetails(orderId)
+            print("🔵 cancelOrder: Order status: \(order.orderStatus), buyer: \(order.buyerId)")
+            
+            // Verify the current user is the buyer
+            guard currentUserId == order.buyerId else {
+                print("❌ cancelOrder: Unauthorized - current user is not the buyer")
+                throw OrderServiceError.unauthorizedAction
+            }
+            
+            // Only allow cancellation if seller hasn't confirmed yet (order is still in 'placed' status)
+            guard order.orderStatus == .placed else {
+                print("❌ cancelOrder: Cannot cancel - order status is \(order.orderStatus.displayName)")
+                throw OrderServiceError.invalidOrderStatus("Cannot cancel order. Order status must be 'placed', but current status is '\(order.orderStatus.displayName)'")
+            }
+            
+            print("🔵 cancelOrder: Order is eligible for cancellation")
+            
+            // Update order status to cancelled
+            let updatedOrder: Order = try await supabase
+                .from("orders")
+                .update([
+                    "order_status": "cancelled",
+                    "payment_status": "refunded",
+                    "cancelled_at": ISO8601DateFormatter().string(from: Date()),
+                    "refunded_at": ISO8601DateFormatter().string(from: Date()),
+                    "updated_at": ISO8601DateFormatter().string(from: Date())
+                ])
+                .eq("id", value: orderId.uuidString)
+                .select()
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 cancelOrder: Order status updated to cancelled")
+            
+            // Refund the buyer
+            try await refundBuyer(order: order)
+            
+            print("✅ cancelOrder: Order cancelled and buyer refunded successfully")
+            
+            // Notify seller that order was cancelled
+            await NotificationService.shared.createOrderNotification(
+                for: order.sellerId.uuidString,
+                orderId: orderId,
+                listingTitle: "Order",
+                status: .cancelled
+            )
+            
+            return updatedOrder
+        } catch {
+            throw handleError(error)
+        }
+    }
+    
+    /// Refunds the buyer for a cancelled order
+    /// - Parameter order: The order to refund
+    private func refundBuyer(order: Order) async throws {
+        print("🔵 refundBuyer: Starting refund for order \(order.id)")
+        print("🔵 refundBuyer: Buyer: \(order.buyerId), Amount: \(order.priceCents) cents")
+        
+        // Get or create buyer's wallet
+        var buyerWallet: Wallet
+        do {
+            buyerWallet = try await supabase
+                .from("wallets")
+                .select()
+                .eq("user_id", value: order.buyerId.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 refundBuyer: Found existing buyer wallet with \(buyerWallet.availableCents) cents")
+        } catch {
+            print("🔵 refundBuyer: No existing wallet found, creating new wallet for buyer \(order.buyerId)")
+            
+            // Create a new wallet for the buyer
+            struct WalletInsert: Encodable {
+                let user_id: String
+                let available_cents: Int
+                let escrow_cents: Int
+                let updated_at: String
+            }
+            
+            let insertData = WalletInsert(
+                user_id: order.buyerId.uuidString,
+                available_cents: 0,
+                escrow_cents: 0,
+                updated_at: ISO8601DateFormatter().string(from: Date())
+            )
+            
+            buyerWallet = try await supabase
+                .from("wallets")
+                .insert(insertData)
+                .select()
+                .single()
+                .execute()
+                .value
+            
+            print("🔵 refundBuyer: Created new wallet with \(buyerWallet.availableCents) cents")
+        }
+        
+        // Calculate refund amount (full order price for buyer)
+        let refundAmountCents = order.buyerPriceCents ?? order.priceCents
+        print("🔵 refundBuyer: Refund amount: \(refundAmountCents) cents")
+        print("🔵 refundBuyer: Current wallet balance: \(buyerWallet.availableCents)")
+        print("🔵 refundBuyer: New balance will be: \(buyerWallet.availableCents + refundAmountCents)")
+        
+        // Update buyer's wallet balance
+        struct WalletUpdate: Encodable {
+            let available_cents: Int
+            let updated_at: String
+        }
+        
+        let updateData = WalletUpdate(
+            available_cents: buyerWallet.availableCents + refundAmountCents,
+            updated_at: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        print("🔵 refundBuyer: Updating wallet...")
+        
+        let updateResult = try await supabase
+            .from("wallets")
+            .update(updateData)
+            .eq("user_id", value: order.buyerId.uuidString)
+            .execute()
+        
+        print("🔵 refundBuyer: Update result count: \(updateResult.count)")
+        
+        if updateResult.count == 0 {
+            print("❌ refundBuyer: No wallet rows were updated for buyer \(order.buyerId)")
+            throw OrderServiceError.walletUpdateFailed("Failed to refund buyer - wallet not found")
+        }
+        
+        print("✅ refundBuyer: Successfully refunded \(refundAmountCents) cents to buyer wallet")
+        
+        // Verify the wallet update
+        let verifyWallet: Wallet = try await supabase
+            .from("wallets")
+            .select()
+            .eq("user_id", value: order.buyerId.uuidString)
+            .single()
+            .execute()
+            .value
+        
+        let expectedBalance = buyerWallet.availableCents + refundAmountCents
+        print("🔵 refundBuyer: Wallet verification - Expected: \(expectedBalance), Actual: \(verifyWallet.availableCents)")
+        
+        if verifyWallet.availableCents != expectedBalance {
+            print("❌ refundBuyer: Wallet balance mismatch!")
+            throw OrderServiceError.walletUpdateFailed("Refund verification failed")
+        }
+        
+        print("✅ refundBuyer: Wallet balance verified successfully")
+    }
+    
+    // MARK: - PIN Verification
+    func verifyServicePIN(_ orderId: UUID, pin: String) async throws -> Order {
+        do {
+            print("🔍 verifyServicePIN: Starting verification for order \(orderId) with PIN \(pin)")
+            
+            let session = try await supabase.auth.session
+            let currentUserId = session.user.id
+            
+            // Verify the current user is the seller
+            let order = try await getOrderDetails(orderId)
+            print("🔍 verifyServicePIN: Current user \(currentUserId), seller \(order.sellerId)")
+            guard currentUserId == order.sellerId else {
+                print("❌ verifyServicePIN: Unauthorized - current user is not the seller")
+                throw OrderServiceError.unauthorizedAction
+            }
+            
+            print("🔍 verifyServicePIN: Calling RPC function...")
+            // Call RPC function using dictionary format like other RPC calls in codebase
+            try await supabase
+                .rpc("verify_service_pin", params: [
+                    "p_order_id": orderId.uuidString,
+                    "p_pin": pin
+                ])
+                .execute()
+            
+            print("✅ verifyServicePIN: PIN verified successfully, fetching updated order")
+            
+            // Return updated order
+            return try await getOrderDetails(orderId)
+        } catch {
+            print("❌ verifyServicePIN: Error - \(error)")
             throw handleError(error)
         }
     }
@@ -746,6 +1121,10 @@ enum OrderServiceError: Error, LocalizedError {
     case invalidOrderState
     case invalidOrderStatus(String)
     case walletUpdateFailed(String)
+    case pinVerificationFailed(String)
+    case insufficientFunds
+    case sellerOnboardingRequired(String)
+    case paymentCaptureFailed(String)
     
     var errorDescription: String? {
         switch self {
@@ -767,6 +1146,14 @@ enum OrderServiceError: Error, LocalizedError {
             return message
         case .walletUpdateFailed(let message):
             return "Failed to update wallet: \(message)"
+        case .pinVerificationFailed(let message):
+            return message
+        case .insufficientFunds:
+            return "Insufficient funds in wallet"
+        case .sellerOnboardingRequired(let message):
+            return message
+        case .paymentCaptureFailed(let message):
+            return "Payment capture failed: \(message)"
         }
     }
     
@@ -790,6 +1177,14 @@ enum OrderServiceError: Error, LocalizedError {
             return "Please ensure the order is in the correct status for this operation. \(message)"
         case .walletUpdateFailed(let message):
             return "Please contact support as there was an issue updating the seller's wallet. \(message)"
+        case .pinVerificationFailed(let message):
+            return "Please verify the PIN with the buyer and try again"
+        case .insufficientFunds:
+            return "Please add funds to your wallet and try again"
+        case .sellerOnboardingRequired:
+            return "The seller will be notified to complete payout setup. Funds will be released once verification is complete."
+        case .paymentCaptureFailed:
+            return "Please try again. If the problem persists, contact support."
         }
     }
 }

@@ -121,7 +121,7 @@ struct SellerDashboardView: View {
                     value: 0,
                     label: "Listings to delete & relist",
                     icon: "arrow.2.squarepath",
-                    color: .red
+                    color: .facebookBlue
                 )
                 
                 Spacer()

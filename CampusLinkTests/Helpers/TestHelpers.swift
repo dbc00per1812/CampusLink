@@ -96,7 +96,6 @@ struct TestDataBuilder {
             cancelledAt: nil,
             refundedAt: nil,
             updatedAt: Date(),
-            autoReleaseAt: Date().addingTimeInterval(7 * 24 * 60 * 60),
             createdAt: Date(),
             stripeEscrowAccountId: "escrow_test",
             marketplaceFeeCents: 500,

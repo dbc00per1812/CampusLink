@@ -3,6 +3,7 @@ import SwiftUI
 struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
+    @State private var showPassword = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isResettingPassword = false
@@ -41,10 +42,30 @@ struct LoginView: View {
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
                 
-                SecureField("Password", text: $password)
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(10)
+                ZStack(alignment: .trailing) {
+                    if showPassword {
+                        TextField("Password", text: $password)
+                            .padding()
+                            .padding(.trailing, 40)
+                            .background(Color(UIColor.systemGray6))
+                            .cornerRadius(10)
+                            .autocapitalization(.none)
+                    } else {
+                        SecureField("Password", text: $password)
+                            .padding()
+                            .padding(.trailing, 40)
+                            .background(Color(UIColor.systemGray6))
+                            .cornerRadius(10)
+                    }
+                    
+                    Button(action: {
+                        showPassword.toggle()
+                    }) {
+                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                            .foregroundColor(.gray)
+                            .padding(.trailing, 12)
+                    }
+                }
             }
             .padding(.horizontal)
 
@@ -152,7 +173,7 @@ struct LoginView: View {
             case .failure(let error):
                 switch error {
                 case .invalidEmail:
-                    alertMessage = "Please use a valid .edu email address"
+                    alertMessage = "Please enter a valid email address"
                 case .passwordResetFailed(let underlyingError):
                     alertMessage = "Failed to send password reset email: \(underlyingError.localizedDescription)"
                 default:

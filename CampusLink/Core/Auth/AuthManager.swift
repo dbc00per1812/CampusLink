@@ -72,10 +72,6 @@ class AuthManager: ObservableObject {
     }
 
     func signUp(email: String, password: String, name: String) async -> Result<Void, AuthError> {
-        guard email.hasSuffix(".edu") else {
-            return .failure(.invalidEmail)
-        }
-
         do {
             print("🔄 Starting signup process for \(email)")
             
@@ -124,22 +120,18 @@ class AuthManager: ObservableObject {
     }
     
     /// Sign up with email confirmation required (OTP-based)
-    func signUpWithEmailConfirmation(email: String, password: String, name: String) async -> Result<Void, AuthError> {
-        guard email.hasSuffix(".edu") else {
-            print("❌ Invalid email format: \(email) (must end with .edu)")
-            return .failure(.invalidEmail)
-        }
-
+    func signUpWithEmailConfirmation(email: String, password: String, name: String, campus: String) async -> Result<Void, AuthError> {
         do {
             print("🔄 Starting signup with email confirmation for \(email)")
             print("🔄 Password length: \(password.count)")
             print("🔄 Name: \(name)")
+            print("🔄 Campus: \(campus)")
             
             // Create user account with email confirmation required
             let authResponse = try await supabase.auth.signUp(
                 email: email,
                 password: password,
-                data: ["name": .string(name)]
+                data: ["name": .string(name), "campus": .string(campus)]
             )
             
             print("✅ Signup request sent successfully")
@@ -151,7 +143,18 @@ class AuthManager: ObservableObject {
             if authResponse.user.emailConfirmedAt == nil {
                 print("📧 Email confirmation required - user should receive verification email")
             } else {
-                print("⚠️ User already confirmed - this might be unexpected")
+                print("⚠️ User already confirmed - creating profile immediately")
+                
+                // User is auto-confirmed, create profile now with campus
+                let userId = authResponse.user.id.uuidString
+                await ensureUserProfileExists(userId: userId, email: email, name: name, campus: campus)
+                
+                // Update session if we have one
+                if let session = authResponse.session {
+                    await MainActor.run {
+                        self.session = session
+                    }
+                }
             }
             
             return .success(())
@@ -185,7 +188,14 @@ class AuthManager: ObservableObject {
             
             // Create user profile after successful email verification
             let userId = result.user.id.uuidString
-            await ensureUserProfileExists(userId: userId, email: email, name: name)
+            
+            // Extract campus from user metadata
+            print("🔍 User metadata: \(result.user.userMetadata)")
+            print("🔍 Raw campus value: \(result.user.userMetadata["campus"] ?? "nil")")
+            let campus = result.user.userMetadata["campus"]?.stringValue ?? ""
+            print("🔍 Extracted campus: '\(campus)'")
+            
+            await ensureUserProfileExists(userId: userId, email: email, name: name, campus: campus)
             
             print("✅ Signup completed successfully")
             return .success(())
@@ -196,11 +206,14 @@ class AuthManager: ObservableObject {
         }
     }    
     // Manual user profile creation - more reliable than database triggers
-    private func ensureUserProfileExists(userId: String, email: String, name: String) async {
+    private func ensureUserProfileExists(userId: String, email: String, name: String, campus: String = "") async {
         do {
             print("🔧 Ensuring user profile exists for \(userId)")
+            print("🔧 Email: \(email)")
+            print("🔧 Name: \(name)")
+            print("🔧 Campus: '\(campus)' (isEmpty: \(campus.isEmpty))")
             
-            // Try to create user profile manually
+            // Try to create user profile manually with default 5-star trust score
             let _: User = try await supabase
                 .from("users")
                 .insert([
@@ -208,14 +221,16 @@ class AuthManager: ObservableObject {
                     "email": email,
                     "name": name,
                     "created_at": ISO8601DateFormatter().string(from: Date()),
-                    "campus_email_verified": email.hasSuffix(".edu") ? "true" : "false"
+                    "campus_email_verified": "false",
+                    "campus": campus,
+                    "trust_score": "100"  // Default 5-star rating (100 = 5.0 * 20)
                 ])
                 .select()
                 .single()
                 .execute()
                 .value
             
-            print("✅ User profile created successfully")
+            print("✅ User profile created successfully with campus: '\(campus)'")
             
             // Also create notification preferences
             try await supabase
@@ -226,15 +241,37 @@ class AuthManager: ObservableObject {
             print("✅ Notification preferences created successfully")
             
         } catch {
-            // Check if user already exists (which is fine)
+            // Check if user already exists (which is fine if trigger created it)
             if error.localizedDescription.contains("duplicate") || 
                error.localizedDescription.contains("already exists") ||
                error.localizedDescription.contains("violates unique constraint") {
-                print("ℹ️ User profile already exists - this is normal")
+                print("ℹ️ User profile already exists (likely created by trigger)")
+                
+                // UPDATE the campus since trigger doesn't set it
+                if !campus.isEmpty {
+                    print("🔄 Updating campus to: '\(campus)'")
+                    await updateUserCampus(userId: userId, campus: campus)
+                }
             } else {
                 print("❌ Failed to create user profile: \(error)")
+                print("❌ Error details: \(error.localizedDescription)")
                 // Don't throw error - signup already succeeded, profile creation is secondary
             }
+        }
+    }
+    
+    // Update user's campus field
+    private func updateUserCampus(userId: String, campus: String) async {
+        do {
+            try await supabase
+                .from("users")
+                .update(["campus": campus])
+                .eq("id", value: userId)
+                .execute()
+            
+            print("✅ Campus updated successfully to: '\(campus)'")
+        } catch {
+            print("❌ Failed to update campus: \(error)")
         }
     }
 
@@ -283,10 +320,6 @@ class AuthManager: ObservableObject {
     }
     
     func resetPassword(email: String) async -> Result<Void, AuthError> {
-        guard email.hasSuffix(".edu") else {
-            return .failure(.invalidEmail)
-        }
-        
         do {
             print("🔄 Sending password reset to \(email)")
             
@@ -374,20 +407,25 @@ class AuthManager: ObservableObject {
 
     /// Deletes the currently authenticated user account from Supabase via edge function.
     func deleteCurrentUser() async throws {
+        print("🔄 Starting account deletion process...")
+        
         // Build edge function URL similar to PaymentService helper
         let base = Secrets.supabaseURL.absoluteString
         guard base.hasPrefix("https://"), base.hasSuffix(".supabase.co") else {
-            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid Supabase URL"]))
+            print("❌ Invalid Supabase URL format")
+            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Configuration error. Please contact support."]))
         }
         let ref = base
             .replacingOccurrences(of: "https://", with: "")
             .replacingOccurrences(of: ".supabase.co", with: "")
         guard let url = URL(string: "https://\(ref).functions.supabase.co/delete_user") else {
-            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid edge function URL"]))
+            print("❌ Invalid edge function URL")
+            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Configuration error. Please contact support."]))
         }
 
         guard let token = session?.accessToken else {
-            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "No active session"]))
+            print("❌ No active session")
+            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "No active session. Please sign in again."]))
         }
 
         var req = URLRequest(url: url)
@@ -402,12 +440,13 @@ class AuthManager: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: req)
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Invalid response type")
-                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Network error. Please try again."]))
             }
             
             print("📡 Response status: \(httpResponse.statusCode)")
             print("📡 Response data: \(String(data: data, encoding: .utf8) ?? "No data")")
             
+            // Handle success response
             if (200..<300).contains(httpResponse.statusCode) {
                 // Parse response to get success message
                 if let responseData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -417,23 +456,42 @@ class AuthManager: ObservableObject {
                     print("✅ Account deletion successful (no message)")
                 }
                 return
-            } else {
-                // Parse error response
-                let errorMessage: String
-                if let responseData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let error = responseData["error"] as? String {
-                    errorMessage = error
-                } else {
-                    errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                }
-                print("❌ Delete account failed with status \(httpResponse.statusCode): \(errorMessage)")
-                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage]))
             }
+            
+            // Handle 404 - edge function not deployed
+            if httpResponse.statusCode == 404 {
+                print("⚠️ Edge function not found (404) - falling back to sign out")
+                print("⚠️ Account deletion edge function not deployed. Please contact support to fully delete your account.")
+                // Fall back to just signing out the user
+                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Account deletion is temporarily unavailable. You have been signed out. Please contact support at support@campuslink.app to delete your account."]))
+            }
+            
+            // Handle 401/403 - authentication issues
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                print("⚠️ Authentication error (\(httpResponse.statusCode)) during deletion")
+                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Authentication error. Please try signing out and signing in again before deleting your account."]))
+            }
+            
+            // Handle other errors
+            let errorMessage: String
+            if let responseData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = responseData["error"] as? String {
+                errorMessage = error
+            } else {
+                errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            }
+            print("❌ Delete account failed with status \(httpResponse.statusCode): \(errorMessage)")
+            throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to delete account: \(errorMessage)"]))
+            
         } catch let error as AuthError {
             print("❌ AuthError during deletion: \(error)")
             throw error
         } catch {
             print("❌ Network error during account deletion: \(error.localizedDescription)")
+            // Check if it's a network error (no internet, etc.)
+            if (error as NSError).domain == NSURLErrorDomain {
+                throw AuthError.deleteFailed(NSError(domain: "AuthManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Network error. Please check your internet connection and try again."]))
+            }
             throw AuthError.deleteFailed(error)
         }
     }

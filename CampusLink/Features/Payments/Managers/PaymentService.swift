@@ -48,6 +48,10 @@ final class PaymentService: ObservableObject {
     /// - Parameter listingId: The identifier of the listing that the user intends to purchase.
     /// - Returns: Tuple containing client secret and fee information
     func preparePaymentSheet(listingId: String) async throws -> (clientSecret: String, baseAmountCents: Int, stripeFeeCents: Int, totalAmountCents: Int) {
+        #if DEBUG
+        print("🔍 PaymentService: Calling create_payment_intent for listing \(listingId)")
+        #endif
+        
         let url = try functionsURL(appendingPath: "create_payment_intent")
 
         struct RequestBody: Encodable { let listing_id: String }
@@ -68,35 +72,79 @@ final class PaymentService: ObservableObject {
         let token = try await currentAccessToken()
         let request = try makeRequest(url: url, token: token, body: RequestBody(listing_id: listingId))
 
+        #if DEBUG
+        print("🌐 Making request to: \(url.absoluteString)")
+        #endif
+        
         let (data, response) = try await URLSession.shared.data(for: request)
+        
+        #if DEBUG
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📥 Response status: \(httpResponse.statusCode)")
+            print("📥 Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+        }
+        #endif
+        
         try ensureSuccess(response: response, data: data)
+        
+        // New response format includes seller_price_cents and buyer_price_cents
+        struct ResponseBodyWithPricing: Decodable {
+            let client_secret: String
+            let seller_price_cents: Int
+            let buyer_price_cents: Int
+            let stripe_fee_cents: Int
+            let campuslink_cut_cents: Int?
+        }
         
         // Try new format first, fallback to old format
         do {
-            let decoded = try JSONDecoder().decode(ResponseBodyWithFees.self, from: data)
+            let decoded = try JSONDecoder().decode(ResponseBodyWithPricing.self, from: data)
             
-            // If we have fee information, use it
-            if let baseAmount = decoded.base_amount_cents,
-               let stripeFee = decoded.stripe_fee_cents,
-               let totalAmount = decoded.total_amount_cents {
-                return (decoded.client_secret, baseAmount, stripeFee, totalAmount)
-            } else {
-                // Fallback: calculate fees on client side (not ideal but works)
-                // This matches what was working before
-                print("⚠️ Server didn't return fee information, calculating locally")
-                // We don't have the price here, so we'll need to handle this differently
-                return (decoded.client_secret, 0, 0, 0)
-            }
+            #if DEBUG
+            print("✅ Decoded payment intent with pricing")
+            print("   Seller price: $\(Double(decoded.seller_price_cents)/100)")
+            print("   Buyer price: $\(Double(decoded.buyer_price_cents)/100)")
+            print("   Stripe fee: $\(Double(decoded.stripe_fee_cents)/100)")
+            #endif
+            
+            // Return seller price as baseAmount for backward compatibility
+            // Total amount is now buyer price (rounded up)
+            return (decoded.client_secret, decoded.seller_price_cents, decoded.stripe_fee_cents, decoded.buyer_price_cents)
         } catch {
-            // Try old format
+            #if DEBUG
+            print("⚠️ Failed to decode ResponseBodyWithPricing: \(error)")
+            #endif
+            
+            // Try old format with fees
             do {
-                let decoded = try JSONDecoder().decode(ResponseBodyOld.self, from: data)
-                print("⚠️ Using old response format without fee information")
-                return (decoded.client_secret, 0, 0, 0)
+                let decoded = try JSONDecoder().decode(ResponseBodyWithFees.self, from: data)
+                
+                if let baseAmount = decoded.base_amount_cents,
+                   let stripeFee = decoded.stripe_fee_cents,
+                   let totalAmount = decoded.total_amount_cents {
+                    #if DEBUG
+                    print("✅ Decoded payment intent with fees (old format)")
+                    #endif
+                    return (decoded.client_secret, baseAmount, stripeFee, totalAmount)
+                } else {
+                    print("⚠️ Server didn't return fee information, calculating locally")
+                    return (decoded.client_secret, 0, 0, 0)
+                }
             } catch {
-                print("❌ Failed to decode payment intent response: \(error)")
-                print("Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
-                throw PaymentServiceError.invalidResponse
+                #if DEBUG
+                print("⚠️ Failed to decode ResponseBodyWithFees: \(error)")
+                #endif
+                
+                // Try old format without fees
+                do {
+                    let decoded = try JSONDecoder().decode(ResponseBodyOld.self, from: data)
+                    print("⚠️ Using old response format without fee information")
+                    return (decoded.client_secret, 0, 0, 0)
+                } catch {
+                    print("❌ Failed to decode payment intent response: \(error)")
+                    print("Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+                    throw PaymentServiceError.invalidResponse
+                }
             }
         }
     }
@@ -123,6 +171,15 @@ final class PaymentService: ObservableObject {
         // Get the client secret and fee info from our Edge Function
         let (clientSecret, baseAmountCents, stripeFeeCents, totalAmountCents) = try await preparePaymentSheet(listingId: listingId)
         
+        #if DEBUG
+        print("🔍 PaymentService: Configuring PaymentSheet")
+        print("   Listing ID: \(listingId)")
+        print("   Client Secret: \(clientSecret.prefix(20))...")
+        print("   Base Amount: $\(Double(baseAmountCents)/100)")
+        print("   Stripe Fee: $\(Double(stripeFeeCents)/100)")
+        print("   Total Amount: $\(Double(totalAmountCents)/100)")
+        #endif
+        
         // Configure the PaymentSheet
         var configuration = PaymentSheet.Configuration()
         configuration.merchantDisplayName = "CampusLink"
@@ -131,6 +188,10 @@ final class PaymentService: ObservableObject {
         // Enable Apple Pay
         configuration.applePay = .init(merchantId: "merchant.campuslink.com.campuslink", merchantCountryCode: "US")
         
+        #if DEBUG
+        print("✅ Apple Pay enabled")
+        #endif
+        
         // Initialize PaymentSheet
         self.paymentSheet = PaymentSheet(
             paymentIntentClientSecret: clientSecret,
@@ -138,8 +199,7 @@ final class PaymentService: ObservableObject {
         )
         
         #if DEBUG
-        print("✅ PaymentService: PaymentSheet configured for listing \(listingId)")
-        print("💰 Base: $\(Double(baseAmountCents)/100), Fee: $\(Double(stripeFeeCents)/100), Total: $\(Double(totalAmountCents)/100)")
+        print("✅ PaymentService: PaymentSheet configured successfully")
         #endif
         
         return (baseAmountCents, stripeFeeCents, totalAmountCents)
@@ -155,13 +215,21 @@ final class PaymentService: ObservableObject {
             return
         }
         
+        #if DEBUG
+        print("🔍 PaymentService: About to present PaymentSheet")
+        #endif
+        
         paymentSheet.present(from: presentingViewController) { [weak self] paymentResult in
+            #if DEBUG
+            print("🔍 PaymentService: PaymentSheet dismissed with result: \(paymentResult)")
+            #endif
+            
             self?.paymentResult = paymentResult
             
             switch paymentResult {
             case .completed:
                 #if DEBUG
-                print("✅ Payment completed successfully")
+                print("✅ PaymentService: Payment completed successfully")
                 #endif
                 // Update order with payment intent ID for escrow tracking
                 Task { [weak self] in
@@ -169,11 +237,13 @@ final class PaymentService: ObservableObject {
                 }
             case .canceled:
                 #if DEBUG
-                print("⚠️ Payment canceled by user")
+                print("⚠️ PaymentService: Payment canceled - either by user or Stripe validation failure")
                 #endif
             case .failed(let error):
                 #if DEBUG
-                print("❌ Payment failed: \(error.localizedDescription)")
+                print("❌ PaymentService: Payment failed with error: \(error)")
+                print("❌ PaymentService: Error type: \(type(of: error))")
+                print("❌ PaymentService: Error localized: \(error.localizedDescription)")
                 #endif
             }
         }
