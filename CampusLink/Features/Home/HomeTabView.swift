@@ -37,7 +37,7 @@ struct HomeTabView: View {
     
     // Debug states for visual debugging
     
-    private let pageSize = 10
+    private let pageSize = 20  // Load 20 listings per page for smooth infinite scroll
     private let enableCampusFilter = true  // Enabled for production - campus-specific filtering
     
     enum ListingFilter: String, CaseIterable {
@@ -114,6 +114,11 @@ struct HomeTabView: View {
                     selectedCategory = category
                     selectedCategoryType = type
                     
+                    // Reset pagination and clear listings for category browsing
+                    currentPage = 0
+                    hasMorePages = true
+                    listings = []  // Clear existing listings to prevent duplicates
+                    
                     // Load category listings
                     Task {
                         await loadCategoryListings(category: category, type: type)
@@ -168,6 +173,11 @@ extension HomeTabView {
                         isSearchActive = false
                         searchResults = []
                         searchQuery = SearchQuery()
+                        
+                        // Reset pagination and clear listings when changing filters
+                        currentPage = 0
+                        hasMorePages = true
+                        listings = []  // Clear existing listings to prevent duplicates
                         
                         if filter == .more {
                             // Show category browser sheet
@@ -475,11 +485,15 @@ extension HomeTabView {
                     return false // Exclude listings from users without campus
                 }
                 
-                let shouldInclude = userCampus == currentCampus
+                // Case-insensitive, whitespace-tolerant comparison to handle minor variations
+                let normalizedUserCampus = userCampus.trimmingCharacters(in: .whitespaces).lowercased()
+                let normalizedCurrentCampus = currentCampus.trimmingCharacters(in: .whitespaces).lowercased()
+                let shouldInclude = normalizedUserCampus == normalizedCurrentCampus
+                
                 if !shouldInclude {
-                    print("🚫 Campus Filter: Excluding listing '\(listing.title)' - campus mismatch (user: \(userCampus) vs current: \(currentCampus))")
+                    print("🚫 Campus Filter: Excluding listing '\(listing.title)' - campus mismatch (user: '\(userCampus)' vs current: '\(currentCampus)')")
                 } else {
-                    print("✅ Campus Filter: Including listing '\(listing.title)' - campus match (both: \(currentCampus))")
+                    print("✅ Campus Filter: Including listing '\(listing.title)' - campus match (both: '\(currentCampus)')")
                 }
                 
                 return shouldInclude
@@ -544,40 +558,126 @@ extension HomeTabView {
     }
 
     private func loadMoreListings() async {
-        // Load more using current filter (though we limit to 20 for now)
-        await refreshListings()
-        await MainActor.run { 
+        // Check if we should load more
+        guard hasMorePages, !isLoadingMore else { return }
+        
+        await MainActor.run {
+            isLoadingMore = true
+            currentPage += 1
+        }
+        
+        // Load next page using current filter
+        switch selectedFilter {
+        case .forYou:
+            await loadAllListings()
+        case .all:
+            await loadAllListings()
+        case .forSale:
+            await loadOfferListings()
+        case .wanted:
+            await loadSeekListings()
+        case .more:
+            break // Category browser uses separate pagination
+        }
+        
+        await MainActor.run {
             isLoadingMore = false
-            hasMorePages = false
         }
     }
 
     private func loadAllListings() async {
         do {
-            let result: [ListingWithUser] = try await supabase
-                .from("listings")
-                .select("*, user:users(*)")
-                .eq("status", value: "active")
-                .neq("archived", value: true)
-                .eq("is_sold", value: false)
-                .order("created_at", ascending: false)
-                .limit(20)
+            // Get current user's campus first for server-side filtering
+            guard let currentUserId = authManager.session?.user.id.uuidString else {
+                print("❌ No user ID found - cannot load listings")
+                await MainActor.run { isLoading = false }
+                return
+            }
+            
+            // Fetch current user to get their campus
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus, created_at")
+                .eq("id", value: currentUserId)
+                .single()
                 .execute()
                 .value
             
-            print("🔍 Loaded \(result.count) listings")
+            // Calculate pagination offset
+            let offset = currentPage * pageSize
             
-            // Apply campus filtering
-            var filteredResult = await applyCampusFilter(result)
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty, enableCampusFilter else {
+                // No campus or filter disabled - fetch all listings with pagination
+                let result: [ListingWithUser] = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .order("created_at", ascending: false)
+                    .range(from: offset, to: offset + pageSize - 1)
+                    .execute()
+                    .value
+                
+                print("🔍 Loaded \(result.count) listings (page \(currentPage), no campus filter)")
+                
+                // Apply blocked users filtering
+                var filteredResult = result
+                if let currentUserId = authManager.currentUserId {
+                    filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
+                }
+                
+                await MainActor.run {
+                    if currentPage == 0 {
+                        listings = filteredResult
+                    } else {
+                        listings.append(contentsOf: filteredResult)
+                    }
+                    hasMorePages = result.count == pageSize
+                    isLoading = false
+                }
+                return
+            }
+            
+            print("🔍 Loading listings for campus: \(currentCampus) (page \(currentPage))")
+            
+            // Fetch listings with campus filter applied at DATABASE level (server-side) + pagination
+            let result: [ListingWithUser] = try await supabase
+                .from("listings")
+                .select("*, user:users!inner(*)")  // inner join to filter by user properties
+                .eq("status", value: "active")
+                .neq("archived", value: true)
+                .eq("is_sold", value: false)
+                .eq("users.campus", value: currentCampus)  // Server-side campus filter
+                .order("created_at", ascending: false)
+                .range(from: offset, to: offset + pageSize - 1)  // Pagination
+                .execute()
+                .value
+            
+            print("🔍 Loaded \(result.count) listings for campus \(currentCampus) (page \(currentPage))")
             
             // Apply blocked users filtering
+            var filteredResult = result
             if let currentUserId = authManager.currentUserId {
                 filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
             }
             
             await MainActor.run {
-                listings = filteredResult
+                if currentPage == 0 {
+                    // First page - replace listings
+                    listings = filteredResult
+                } else {
+                    // Subsequent pages - append to existing listings, avoiding duplicates
+                    let existingIds = Set(listings.map { $0.id })
+                    let newListings = filteredResult.filter { !existingIds.contains($0.id) }
+                    listings.append(contentsOf: newListings)
+                }
+                // If we got fewer than pageSize results, we've reached the end
+                hasMorePages = result.count == pageSize
                 isLoading = false
+                
+                // Prefetch images for newly loaded listings
+                prefetchImages(for: filteredResult)
             }
         } catch {
             print("❌ Error loading listings: \(error)")
@@ -589,31 +689,97 @@ extension HomeTabView {
     
     private func loadOfferListings() async {
         do {
+            // Get current user's campus first for server-side filtering
+            guard let currentUserId = authManager.session?.user.id.uuidString else {
+                print("❌ No user ID found - cannot load listings")
+                await MainActor.run { isLoading = false }
+                return
+            }
+            
+            // Fetch current user to get their campus
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus, created_at")
+                .eq("id", value: currentUserId)
+                .single()
+                .execute()
+                .value
+            
+            // Calculate pagination offset
+            let offset = currentPage * pageSize
+            
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty, enableCampusFilter else {
+                // No campus or filter disabled - fetch all listings with pagination
+                let result: [ListingWithUser] = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: "offer")
+                    .order("created_at", ascending: false)
+                    .range(from: offset, to: offset + pageSize - 1)
+                    .execute()
+                    .value
+                
+                print("🔍 Loaded \(result.count) offer listings (page \(currentPage), no campus filter)")
+                
+                // Apply blocked users filtering
+                var filteredResult = result
+                if let currentUserId = authManager.currentUserId {
+                    filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
+                }
+                
+                await MainActor.run {
+                    if currentPage == 0 {
+                        listings = filteredResult
+                    } else {
+                        listings.append(contentsOf: filteredResult)
+                    }
+                    hasMorePages = result.count == pageSize
+                    isLoading = false
+                }
+                return
+            }
+            
+            print("🔍 Loading offer listings for campus: \(currentCampus) (page \(currentPage))")
+            
+            // Fetch listings with campus filter applied at DATABASE level (server-side) + pagination
             let result: [ListingWithUser] = try await supabase
                 .from("listings")
-                .select("*, user:users(*)")
+                .select("*, user:users!inner(*)")  // inner join to filter by user properties
                 .eq("status", value: "active")
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
                 .eq("intent", value: "offer")
+                .eq("users.campus", value: currentCampus)  // Server-side campus filter
                 .order("created_at", ascending: false)
-                .limit(20)
+                .range(from: offset, to: offset + pageSize - 1)  // Pagination
                 .execute()
                 .value
             
-            print("🔍 Loaded \(result.count) offer listings")
-            
-            // Apply campus filtering
-            var filteredResult = await applyCampusFilter(result)
+            print("🔍 Loaded \(result.count) offer listings for campus \(currentCampus) (page \(currentPage))")
             
             // Apply blocked users filtering
+            var filteredResult = result
             if let currentUserId = authManager.currentUserId {
                 filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
             }
             
             await MainActor.run {
-                listings = filteredResult
+                if currentPage == 0 {
+                    listings = filteredResult
+                } else {
+                    // Append to existing listings, avoiding duplicates
+                    let existingIds = Set(listings.map { $0.id })
+                    let newListings = filteredResult.filter { !existingIds.contains($0.id) }
+                    listings.append(contentsOf: newListings)
+                }
+                hasMorePages = result.count == pageSize
                 isLoading = false
+                
+                // Prefetch images for newly loaded listings
+                prefetchImages(for: filteredResult)
             }
         } catch {
             print("❌ Error loading offer listings: \(error)")
@@ -625,34 +791,97 @@ extension HomeTabView {
     
     private func loadSeekListings() async {
         do {
+            // Get current user's campus first for server-side filtering
+            guard let currentUserId = authManager.session?.user.id.uuidString else {
+                print("❌ No user ID found - cannot load listings")
+                await MainActor.run { isLoading = false }
+                return
+            }
+            
+            // Fetch current user to get their campus
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus, created_at")
+                .eq("id", value: currentUserId)
+                .single()
+                .execute()
+                .value
+            
+            // Calculate pagination offset
+            let offset = currentPage * pageSize
+            
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty, enableCampusFilter else {
+                // No campus or filter disabled - fetch all listings with pagination
+                let result: [ListingWithUser] = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("intent", value: "seek")
+                    .order("created_at", ascending: false)
+                    .range(from: offset, to: offset + pageSize - 1)
+                    .execute()
+                    .value
+                
+                print("🔍 SEEK FILTER: Found \(result.count) seeking posts (page \(currentPage), no campus filter)")
+                
+                // Apply blocked users filtering
+                var filteredResult = result
+                if let currentUserId = authManager.currentUserId {
+                    filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
+                }
+                
+                await MainActor.run {
+                    if currentPage == 0 {
+                        listings = filteredResult
+                    } else {
+                        listings.append(contentsOf: filteredResult)
+                    }
+                    hasMorePages = result.count == pageSize
+                    isLoading = false
+                }
+                return
+            }
+            
+            print("🔍 Loading seek listings for campus: \(currentCampus) (page \(currentPage))")
+            
+            // Fetch listings with campus filter applied at DATABASE level (server-side) + pagination
             let result: [ListingWithUser] = try await supabase
                 .from("listings")
-                .select("*, user:users(*)")
+                .select("*, user:users!inner(*)")  // inner join to filter by user properties
                 .eq("status", value: "active")
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
                 .eq("intent", value: "seek")
+                .eq("users.campus", value: currentCampus)  // Server-side campus filter
                 .order("created_at", ascending: false)
-                .limit(20)
+                .range(from: offset, to: offset + pageSize - 1)  // Pagination
                 .execute()
                 .value
             
-            print("🔍 SEEK FILTER: Found \(result.count) seeking posts")
-            for listing in result.prefix(3) {
-                print("   - \(listing.title) (intent: \(listing.intent.rawValue), archived: \(listing.archived ?? false))")
-            }
-            
-            // Apply campus filtering
-            var filteredResult = await applyCampusFilter(result)
+            print("🔍 SEEK FILTER: Found \(result.count) seeking posts for campus \(currentCampus) (page \(currentPage))")
             
             // Apply blocked users filtering
+            var filteredResult = result
             if let currentUserId = authManager.currentUserId {
                 filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
             }
             
             await MainActor.run {
-                listings = filteredResult
+                if currentPage == 0 {
+                    listings = filteredResult
+                } else {
+                    // Append to existing listings, avoiding duplicates
+                    let existingIds = Set(listings.map { $0.id })
+                    let newListings = filteredResult.filter { !existingIds.contains($0.id) }
+                    listings.append(contentsOf: newListings)
+                }
+                hasMorePages = result.count == pageSize
                 isLoading = false
+                
+                // Prefetch images for newly loaded listings
+                prefetchImages(for: filteredResult)
             }
         } catch {
             print("❌ Error loading seek listings: \(error)")
@@ -664,27 +893,87 @@ extension HomeTabView {
     
     private func loadCategoryListings(category: String, type: ListingType) async {
         do {
+            // Get current user's campus first for server-side filtering
+            guard let currentUserId = authManager.session?.user.id.uuidString else {
+                print("❌ No user ID found - cannot load listings")
+                await MainActor.run { isLoading = false }
+                return
+            }
+            
+            // Fetch current user to get their campus
+            let currentUser: User = try await supabase
+                .from("users")
+                .select("id, campus, created_at")
+                .eq("id", value: currentUserId)
+                .single()
+                .execute()
+                .value
+            
+            // Calculate pagination offset
+            let offset = currentPage * pageSize
+            
+            guard let currentCampus = currentUser.campus, !currentCampus.isEmpty, enableCampusFilter else {
+                // No campus or filter disabled - fetch all listings with pagination
+                let result: [ListingWithUser] = try await supabase
+                    .from("listings")
+                    .select("*, user:users(*)")
+                    .eq("status", value: "active")
+                    .neq("archived", value: true)
+                    .eq("is_sold", value: false)
+                    .eq("category", value: category)
+                    .eq("listing_type", value: type.rawValue)
+                    .order("created_at", ascending: false)
+                    .range(from: offset, to: offset + pageSize - 1)
+                    .execute()
+                    .value
+                
+                print("🔍 Category Filter: Found \(result.count) \(category) listings (page \(currentPage), no campus filter)")
+                
+                await MainActor.run {
+                    if currentPage == 0 {
+                        listings = result
+                    } else {
+                        listings.append(contentsOf: result)
+                    }
+                    hasMorePages = result.count == pageSize
+                    isLoading = false
+                }
+                return
+            }
+            
+            print("🔍 Loading category listings for campus: \(currentCampus) (page \(currentPage))")
+            
+            // Fetch listings with campus filter applied at DATABASE level (server-side) + pagination
             let result: [ListingWithUser] = try await supabase
                 .from("listings")
-                .select("*, user:users(*)")
+                .select("*, user:users!inner(*)")  // inner join to filter by user properties
                 .eq("status", value: "active")
                 .neq("archived", value: true)
                 .eq("is_sold", value: false)
                 .eq("category", value: category)
                 .eq("listing_type", value: type.rawValue)
+                .eq("users.campus", value: currentCampus)  // Server-side campus filter
                 .order("created_at", ascending: false)
-                .limit(20)
+                .range(from: offset, to: offset + pageSize - 1)  // Pagination
                 .execute()
                 .value
             
-            print("🔍 Category Filter: Found \(result.count) \(category) listings")
-            
-            // Apply campus filtering
-            let filteredResult = await applyCampusFilter(result)
+            print("🔍 Category Filter: Found \(result.count) \(category) listings for campus \(currentCampus) (page \(currentPage))")
             
             await MainActor.run {
-                listings = filteredResult
+                if currentPage == 0 {
+                    listings = result
+                } else {
+                    // Append to existing listings, avoiding duplicates
+                    let existingIds = Set(listings.map { $0.id })
+                    let newListings = result.filter { !existingIds.contains($0.id) }
+                    listings.append(contentsOf: newListings)
+                }
+                hasMorePages = result.count == pageSize
                 isLoading = false
+                
+                // Prefetch images for newly loaded listings
+                prefetchImages(for: result)
             }
         } catch {
             print("❌ Error loading category listings: \(error)")
@@ -696,6 +985,13 @@ extension HomeTabView {
 
 
     private func refreshListings() async {
+        // Reset pagination and clear listings on refresh
+        await MainActor.run {
+            currentPage = 0
+            hasMorePages = true
+            listings = []  // Clear existing listings to prevent duplicates
+        }
+        
         // Refresh using current filter
         switch selectedFilter {
         case .forYou:
@@ -748,6 +1044,22 @@ extension HomeTabView {
         default:
             return campus
         }
+    }
+    
+    /// Prefetch images for upcoming listings in background
+    private func prefetchImages(for listings: [ListingWithUser]) {
+        let imageUrls = listings.flatMap { listing -> [String] in
+            // Get all photo URLs for this listing
+            if !listing.photos.isEmpty {
+                return listing.photos
+            } else if let photo = listing.photo {
+                return [photo]
+            }
+            return []
+        }
+        
+        // Prefetch in background
+        ImageCacheManager.shared.prefetchImages(urls: imageUrls)
     }
 }
 
@@ -809,31 +1121,6 @@ struct ListingCard: View {
                     .foregroundColor(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                
-                // Author with profile picture and verified badge
-                HStack(spacing: 6) {
-                    // User avatar (profile picture or initials)
-                    UserAvatarView(user: listing.user, size: 24)
-                    
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text((listing.user.name ?? "Unknown").formattedName)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                        
-                        // Only show verified badge if user is verified
-                        if listing.user.isVerifiedStudent {
-                            HStack(spacing: 3) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color("ThemeColor"))
-                                Text("Verified Student")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -875,90 +1162,64 @@ struct ListingCard: View {
                     )
                     .frame(width: size, height: size)
             } else if urls.count == 1 {
-                // Single image - square
-                if let url = URL(string: urls[0]) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: size, height: size)
-                                .clipped()
-                        case .failure(_):
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(width: size, height: size)
-                        case .empty:
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(width: size, height: size)
-                                .overlay(ProgressView())
-                        @unknown default:
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(width: size, height: size)
-                        }
-                    }
+                // Single image - square (with caching)
+                CachedAsyncImage(url: urls[0]) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipped()
+                } placeholder: {
+                    Rectangle()
+                        .fill(Color(UIColor.systemGray6))
+                        .frame(width: size, height: size)
+                        .overlay(ProgressView())
                 }
             } else {
-                // Multiple images - show first with indicator
-                if let url = URL(string: urls[0]) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: size, height: size)
-                                .clipped()
-                                .overlay(
-                                    VStack {
-                                        HStack {
-                                            // Quantity badge (top-left)
-                                            if let qty = listing.quantityAvailable, qty > 1 {
-                                                Text("\(qty) left")
-                                                    .font(.system(size: 10, weight: .bold))
-                                                    .foregroundColor(.white)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 3)
-                                                    .background(Color.black.opacity(0.7))
-                                                    .cornerRadius(8)
-                                                    .padding(6)
-                                            }
-                                            Spacer()
-                                            // Image counter (top-right)
-                                            HStack(spacing: 3) {
-                                                Image(systemName: "photo.stack")
-                                                    .font(.system(size: 9))
-                                                Text("\(urls.count)")
-                                                    .font(.system(size: 10, weight: .medium))
-                                            }
+                // Multiple images - show first with indicator (with caching)
+                CachedAsyncImage(url: urls[0]) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipped()
+                        .overlay(
+                            VStack {
+                                HStack {
+                                    // Quantity badge (top-left)
+                                    if let qty = listing.quantityAvailable, qty > 1 {
+                                        Text("\(qty) left")
+                                            .font(.system(size: 10, weight: .bold))
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 3)
-                                            .background(Color.black.opacity(0.6))
+                                            .background(Color.black.opacity(0.7))
                                             .cornerRadius(8)
                                             .padding(6)
-                                        }
-                                        Spacer()
                                     }
-                                )
-                        case .failure(_):
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(width: size, height: size)
-                        case .empty:
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(width: size, height: size)
-                                .overlay(ProgressView())
-                        @unknown default:
-                            Rectangle()
-                                .fill(Color(UIColor.systemGray6))
-                                .frame(width: size, height: size)
-                        }
-                    }
+                                    Spacer()
+                                    // Image counter (top-right)
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "photo.stack")
+                                            .font(.system(size: 9))
+                                        Text("\(urls.count)")
+                                            .font(.system(size: 10, weight: .medium))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(8)
+                                    .padding(6)
+                                }
+                                Spacer()
+                            }
+                        )
+                } placeholder: {
+                    Rectangle()
+                        .fill(Color(UIColor.systemGray6))
+                        .frame(width: size, height: size)
+                        .overlay(ProgressView())
                 }
             }
         }

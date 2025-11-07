@@ -839,37 +839,37 @@ struct ListingDetailView: View {
                 .responsiveFont(.headline)
                 .foregroundColor(.primary)
 
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(Color("ThemeColor").opacity(0.2))
-                    .responsiveFrame(width: 50, height: 50)
-                    .overlay(
-                        Text((listing.user.name?.first?.uppercased()) ?? "?")
-                            .responsiveFont(.title2, weight: .bold)
-                            .fontWeight(.bold)
-                            .foregroundColor(Color("ThemeColor"))
-                    )
+            NavigationLink(destination: PublicProfileView(user: listing.user).environmentObject(authManager)) {
+                HStack(spacing: 12) {
+                    UserAvatarView(user: listing.user, size: 50)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text((listing.user.name ?? "Unknown Seller").formattedName)
-                        .responsiveFont(.headline)
-                        .foregroundColor(.primary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text((listing.user.name ?? "Unknown Seller").formattedName)
+                            .responsiveFont(.headline)
+                            .foregroundColor(.primary)
 
-                    Text("Member since \(formatDate(listing.createdAt))")
-                        .responsiveFont(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    // Seller ratings
-                    if AppConfig.enableRatings {
-                        SellerRatingSummaryView(userId: listing.user.id)
+                        Text("Member since \(formatDate(listing.createdAt))")
+                            .responsiveFont(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        // Seller ratings
+                        if AppConfig.enableRatings {
+                            SellerRatingSummaryView(userId: listing.user.id)
+                        }
                     }
+                    Spacer()
+                    
+                    // Chevron to indicate tappability
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 14))
                 }
-                Spacer()
+                .responsiveSpacing(12)
+                .responsiveHorizontalSpacing(12)
+                .background(Color(UIColor.systemGray6))
+                .responsiveCornerRadius(12)
             }
-            .responsiveSpacing(12)
-            .responsiveHorizontalSpacing(12)
-            .background(Color(UIColor.systemGray6))
-            .responsiveCornerRadius(12)
+            .buttonStyle(.plain)
         }
     }
     

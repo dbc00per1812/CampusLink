@@ -400,11 +400,12 @@ final class OrderService: ObservableObject {
     }
     
     /// Releases funds from escrow to seller's wallet
-    /// - Note: Only releases if seller has completed Stripe Connect onboarding
+    /// - Note: Credits seller wallet regardless of Stripe onboarding status
+    /// - Seller can see funds in wallet but must complete onboarding to withdraw
     private func releaseEscrowFunds(order: Order) async throws {
         print("🔵 releaseEscrowFunds: Starting for order \(order.id)")
         
-        // CRITICAL: Check if seller has completed Stripe Connect onboarding
+        // Check seller's Stripe Connect onboarding status for notification purposes
         print("🔵 releaseEscrowFunds: Checking seller's Stripe Connect status...")
         let sellerProfile: User = try await supabase
             .from("users")
@@ -414,22 +415,17 @@ final class OrderService: ObservableObject {
             .execute()
             .value
         
-        // If seller hasn't completed onboarding, keep funds in escrow
-        if sellerProfile.stripeConnectId == nil || sellerProfile.stripePayoutsEnabled != true {
-            print("⚠️ Seller hasn't completed Stripe onboarding - funds remain in escrow")
+        let sellerNeedsOnboarding = sellerProfile.stripeConnectId == nil || sellerProfile.stripePayoutsEnabled != true
+        
+        if sellerNeedsOnboarding {
+            print("⚠️ Seller hasn't completed Stripe onboarding - funds will be credited to wallet but held until onboarding complete")
             print("   - stripe_connect_id: \(sellerProfile.stripeConnectId ?? "nil")")
             print("   - payouts_enabled: \(sellerProfile.stripePayoutsEnabled ?? false)")
-            
-            // TODO: Send notification to seller
-            // "You made a $XX sale! Complete payout setup to receive your earnings"
-            
-            throw OrderServiceError.sellerOnboardingRequired(
-                "Seller must complete payout setup to receive funds. " +
-                "Order \(order.id.uuidString.prefix(8)) is being held in escrow."
-            )
+        } else {
+            print("✅ Seller has completed Stripe onboarding - funds will be available for immediate payout")
         }
         
-        print("✅ Seller has completed Stripe onboarding - proceeding with fund release")
+        print("🔵 releaseEscrowFunds: Proceeding with wallet credit...")
         
         // Test wallet access first
         print("🔵 releaseEscrowFunds: Testing wallet access...")
@@ -613,6 +609,38 @@ final class OrderService: ObservableObject {
             }
             
             print("✅ releaseEscrowFunds: Wallet balance verified successfully")
+            
+            // Send notification to seller if they need to complete onboarding
+            if sellerNeedsOnboarding {
+                print("📧 releaseEscrowFunds: Sending onboarding notification to seller...")
+                
+                // Get listing for notification
+                do {
+                    let listing: Listing = try await supabase
+                        .from("listings")
+                        .select()
+                        .eq("id", value: order.listingId.uuidString)
+                        .single()
+                        .execute()
+                        .value
+                    
+                    let amountEarned = Double(netAmountCents) / 100.0
+                    
+                    // Create a custom notification about the sale and onboarding requirement
+                    await NotificationService.shared.createSystemNotification(
+                        for: order.sellerId.uuidString,
+                        title: "🎉 You made a sale!",
+                        message: String(format: "You earned $%.2f from \"\(listing.title)\". Complete payout setup to withdraw your earnings.", amountEarned),
+                        type: "sale_requires_onboarding",
+                        relatedId: order.id.uuidString
+                    )
+                    
+                    print("✅ releaseEscrowFunds: Onboarding notification sent to seller")
+                } catch {
+                    print("⚠️ releaseEscrowFunds: Failed to send onboarding notification: \(error)")
+                    // Don't throw - notification is non-critical
+                }
+            }
             
             // Additional verification - let's also check if we can read the wallet from a different query
             print("🔵 releaseEscrowFunds: Performing additional wallet verification...")

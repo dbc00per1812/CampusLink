@@ -239,7 +239,10 @@ struct CategoryListingsView: View {
                     return false // Exclude listings from users without campus
                 }
                 
-                return userCampus == currentCampus
+                // Case-insensitive, whitespace-tolerant comparison to handle minor variations
+                let normalizedUserCampus = userCampus.trimmingCharacters(in: .whitespaces).lowercased()
+                let normalizedCurrentCampus = currentCampus.trimmingCharacters(in: .whitespaces).lowercased()
+                return normalizedUserCampus == normalizedCurrentCampus
             }
             
             print("🔍 Campus Filter: Filtered \(listings.count) listings to \(filteredListings.count) for campus \(currentCampus)")

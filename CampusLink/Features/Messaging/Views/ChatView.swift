@@ -12,6 +12,7 @@ struct ChatView: View {
     @State private var isProcessingOffer = false
     @State private var offerError: String?
     @State private var showingOrderDetail = false
+    @State private var showingListingDetail = false
     @State private var conversationOrder: Order?
     
     init(conversation: Conversation) {
@@ -115,6 +116,14 @@ struct ChatView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingListingDetail) {
+            if let listingWithUser = conversation.listingWithUser(currentUserId: authManager.session?.user.id.uuidString ?? "") {
+                NavigationView {
+                    ListingDetailView(listing: listingWithUser)
+                        .environmentObject(authManager)
+                }
+            }
+        }
         .hideKeyboardOnTap()
         .onAppear {
             print("CHATVIEW ONAPPEAR CALLED") // Simple print
@@ -150,7 +159,7 @@ struct ChatView: View {
             }
             Spacer()
             
-            // Tap to view order indicator
+            // Tap to view indicator
             Image(systemName: "chevron.right")
                 .font(.caption2)
                 .foregroundColor(.secondary)
@@ -159,7 +168,12 @@ struct ChatView: View {
         .background(Color(UIColor.secondarySystemBackground))
         .contentShape(Rectangle())
         .onTapGesture {
-            showingOrderDetail = true
+            // If there's an order, show order details. Otherwise, show listing details.
+            if conversationOrder != nil {
+                showingOrderDetail = true
+            } else {
+                showingListingDetail = true
+            }
         }
     }
     

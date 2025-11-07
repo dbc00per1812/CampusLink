@@ -98,4 +98,34 @@ extension Conversation {
         }
         return "No messages yet"
     }
+    
+    /// Convert Listing to ListingWithUser using the seller information
+    func listingWithUser(currentUserId: String) -> ListingWithUser? {
+        guard let listing = listing, let sellerUser = seller else { return nil }
+        
+        return ListingWithUser(
+            id: listing.id ?? UUID(),
+            title: listing.title,
+            description: listing.description,
+            price: listing.price,
+            category: listing.category,
+            photo: listing.photo,
+            photos: listing.photos,
+            isSold: false,
+            listingType: listing.listingType,
+            serviceDuration: listing.serviceDuration,
+            serviceLocation: listing.serviceLocation,
+            serviceAvailability: listing.serviceAvailability,
+            archived: listing.archived,
+            createdAt: Date(),
+            user: sellerUser,
+            intent: listing.intent,
+            budgetMin: listing.budgetMin,
+            budgetMax: listing.budgetMax,
+            expiresAt: listing.expiresAt,
+            deliveryMethod: listing.deliveryMethod,
+            quantityAvailable: listing.quantityAvailable,
+            quantitySold: nil
+        )
+    }
 }
