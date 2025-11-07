@@ -1,12 +1,15 @@
 <!-- quantity-management-plan -->
+
 # Quantity Management & Auto-Archive Implementation
 
 ## Overview
+
 Add quantity tracking for listings so sellers can list multiple units and buyers can purchase specific quantities. Auto-archive or decrement quantity after purchase.
 
 ## Database Changes (Supabase)
 
 ### 1. Add columns to `listings` table
+
 ```sql
 -- Add quantity fields
 ALTER TABLE listings 
@@ -25,6 +28,7 @@ ADD CONSTRAINT quantity_available_check CHECK (quantity_available >= 0);
 ```
 
 ### 2. Add column to `orders` table
+
 ```sql
 -- Add quantity purchased field
 ALTER TABLE orders 
@@ -37,6 +41,7 @@ WHERE quantity IS NULL;
 ```
 
 ### 3. Create trigger/function to update quantity on purchase
+
 ```sql
 -- Function to decrement listing quantity and archive if needed
 CREATE OR REPLACE FUNCTION decrement_listing_quantity()
@@ -74,6 +79,7 @@ CREATE TRIGGER on_order_created
 ### 1. Update `ProductModels.swift` - Listing struct
 
 Add quantity fields:
+
 ```swift
 struct Listing: Codable, Identifiable {
     // ... existing fields ...
@@ -93,6 +99,7 @@ struct Listing: Codable, Identifiable {
 ```
 
 ### 2. Update `ListingCreate` struct
+
 ```swift
 struct ListingCreate: Codable {
     // ... existing fields ...
@@ -108,6 +115,7 @@ struct ListingCreate: Codable {
 ### 3. Update `OrderModels.swift` - Order struct
 
 Add quantity field:
+
 ```swift
 struct Order: Codable, Identifiable {
     // ... existing fields ...
@@ -137,6 +145,7 @@ struct OrderInsert: Codable {
 **File**: `CreateListingView.swift` and `EditListingView.swift`
 
 Add after price input:
+
 ```swift
 // Quantity selector (for products)
 if selectedListingType == .product {
@@ -183,6 +192,7 @@ if selectedListingType == .product {
 ```
 
 Add state variable:
+
 ```swift
 @State private var quantity: Int = 1
 ```
@@ -192,6 +202,7 @@ Add state variable:
 **File**: `ListingDetailView.swift`
 
 Add quantity display in header:
+
 ```swift
 // After price section, before description
 if let quantityAvailable = listing.quantityAvailable, quantityAvailable > 1 {
@@ -207,6 +218,7 @@ if let quantityAvailable = listing.quantityAvailable, quantityAvailable > 1 {
 ```
 
 Add quantity selector before purchase button:
+
 ```swift
 // Quantity selector for purchase
 if !isOwnListing && listing.quantityAvailable ?? 1 > 0 {
@@ -262,6 +274,7 @@ if !isOwnListing && listing.quantityAvailable ?? 1 > 0 {
 ```
 
 Add state variable:
+
 ```swift
 @State private var purchaseQuantity: Int = 1
 ```
@@ -271,6 +284,7 @@ Add state variable:
 **File**: `HomeTabView.swift` - ListingCard
 
 Add quantity badge overlay on image:
+
 ```swift
 .overlay(
     VStack {
@@ -298,6 +312,7 @@ Add quantity badge overlay on image:
 **File**: `ProfileTabView.swift`
 
 Show quantity info in listing row:
+
 ```swift
 // Add after price
 if let qtyAvailable = listing.quantityAvailable, 
@@ -314,6 +329,7 @@ if let qtyAvailable = listing.quantityAvailable,
 ### Update `OrderService.swift`
 
 Modify `createOrder` to accept quantity:
+
 ```swift
 func createOrder(_ orderCreate: OrderCreate) async throws -> Order {
     // ... existing code ...
@@ -332,6 +348,7 @@ func createOrder(_ orderCreate: OrderCreate) async throws -> Order {
 **File**: `ListingDetailView.swift`
 
 Update order creation to include quantity and calculate total price:
+
 ```swift
 // Calculate total price based on quantity
 let sellerPriceCents = Int((listing.price ?? 0) * 100) * purchaseQuantity
@@ -355,6 +372,7 @@ let orderCreate = OrderCreate(
 ### Update `create_payment_intent`
 
 Calculate price based on quantity:
+
 ```typescript
 // Get listing and quantity from request
 const { listing_id, quantity = 1 } = await req.json();
@@ -409,4 +427,3 @@ const paymentIntent = await stripe.paymentIntents.create({
 - Default quantity = 1 for backward compatibility
 - When quantity_available reaches 0, auto-archive listing
 - Consider bulk pricing discounts in future enhancement
-

@@ -142,20 +142,24 @@ serve(async (req) => {
     // Round UP to next dollar - this is what buyer pays
     const buyerPriceCents = Math.ceil(subtotalCents / 100) * 100;
     
-    // Your cut is the rounded-up amount
+    // Your cut is the rounded-up amount (used for escrow mode)
     const campusLinkCutCents = buyerPriceCents - subtotalCents;
+    
+    // For destination charges: application fee = everything except seller's listing price
+    // This ensures seller receives exactly their listing price, platform gets the rest + covers Stripe fee
+    const applicationFeeCents = buyerPriceCents - sellerPriceCents;
 
     console.log("💰 Pricing breakdown:");
     console.log(`   Seller price: $${sellerPriceCents / 100}`);
-    console.log(`   Stripe fee: $${stripeFeeCents / 100}`);
+    console.log(`   Stripe fee (estimated): $${stripeFeeCents / 100}`);
     console.log(`   Subtotal: $${subtotalCents / 100}`);
     console.log(`   Buyer pays: $${buyerPriceCents / 100}`);
-    console.log(`   Platform cut: $${campusLinkCutCents / 100}`);
+    console.log(`   Platform round-up cut: $${campusLinkCutCents / 100}`);
+    console.log(`   Application fee (destination charges): $${applicationFeeCents / 100}`);
 
-    // Calculate how much seller receives after Stripe's processing fee
-    // Stripe's fee is ~2.9% + $0.30, but with destination charges, it comes from the total
-    // Seller should receive: buyer payment - platform cut - Stripe fee
-    const sellerReceivesCents = buyerPriceCents - campusLinkCutCents - stripeFeeCents;
+    // With destination charges: seller receives exactly their listing price
+    // Platform's application fee covers the Stripe processing fee + round-up profit
+    const sellerReceivesCents = sellerPriceCents;
 
     console.log(`💸 Seller will receive: $${sellerReceivesCents / 100}`);
 
@@ -175,6 +179,7 @@ serve(async (req) => {
         buyer_price_cents: buyerPriceCents.toString(),
         stripe_fee_cents: stripeFeeCents.toString(),
         campuslink_cut_cents: campusLinkCutCents.toString(),
+        application_fee_cents: applicationFeeCents.toString(),
         seller_receives_cents: sellerReceivesCents.toString(),
       },
     };
@@ -186,11 +191,14 @@ serve(async (req) => {
       paymentIntentParams.transfer_data = {
         destination: sellerStripeConnectId,
       };
-      paymentIntentParams.application_fee_amount = campusLinkCutCents;
+      // Application fee = everything except seller's listing price
+      // This ensures seller gets exactly their listing price, platform covers Stripe fee + profit
+      paymentIntentParams.application_fee_amount = applicationFeeCents;
       
       console.log("✅ Using DESTINATION CHARGES:");
-      console.log(`   → $${sellerReceivesCents / 100} goes to seller's Connect account`);
-      console.log(`   → $${campusLinkCutCents / 100} application fee to platform`);
+      console.log(`   → Seller receives: $${sellerReceivesCents / 100} (their listing price)`);
+      console.log(`   → Application fee to platform: $${applicationFeeCents / 100}`);
+      console.log(`   → Platform net after Stripe fee: ~$${(applicationFeeCents - stripeFeeCents) / 100}`);
     } else {
       console.log("⚠️ Using ESCROW MODE:");
       console.log(`   → Payment will be held by platform until seller completes onboarding`);
@@ -210,6 +218,7 @@ serve(async (req) => {
         buyer_price_cents: buyerPriceCents,
         stripe_fee_cents: stripeFeeCents,
         campuslink_cut_cents: campusLinkCutCents,
+        application_fee_cents: applicationFeeCents,
         seller_receives_cents: sellerReceivesCents,
         payment_intent_id: paymentIntent.id,
       }),

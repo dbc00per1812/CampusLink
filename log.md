@@ -2661,3 +2661,310 @@ Buyer pays → Seller ships → Buyer confirms → ✅ SUCCESS
 
 **Darragh** - The fix is complete and ready for production deployment. This aligns with marketplace best practices (deferred onboarding) and ensures buyers are never blocked from completing transactions. The money flow is secure: funds go to seller's wallet but stay in platform escrow until the seller completes Stripe onboarding and requests a payout.
 
+---
+
+## Session: Fix Stripe Application Fee Calculation for Destination Charges
+**Date**: November 7, 2025  
+**Developer**: AI Assistant (for Darragh)  
+**Environment**: Production (Stripe Live Mode)
+
+---
+
+## Critical Production Bug Discovered
+
+### Problem
+When testing a $0.25 listing with destination charges (seller had completed Stripe Connect onboarding):
+
+**What SHOULD have happened**:
+- Buyer pays: $1.00
+- Seller receives: $0.25 (their listing price)
+- Platform receives: $0.75 (covers Stripe fee + profit)
+
+**What ACTUALLY happened**:
+- Buyer pays: $1.00 ✅
+- Seller receives: $0.56 ❌ (2.24x their listing price!)
+- Platform receives: $0.44 - $0.33 Stripe fee = $0.11 ❌ (should be ~$0.42)
+
+**Impact**: Platform losing $0.33 per transaction, sellers getting paid 2.24x their listing price!
+
+### Root Cause
+
+**File**: `supabase/functions/create_payment_intent/index.ts` (line 189)
+
+The `application_fee_amount` for Stripe destination charges was set to `campusLinkCutCents` (just the round-up amount), but with destination charges, Stripe works differently:
+
+```typescript
+// How destination charges work:
+Payment of $1.00
+  ↓
+Application fee taken first: $0.44 (went to platform)
+  ↓
+Remainder to seller: $1.00 - $0.44 = $0.56 (WRONG!)
+  ↓
+Stripe processing fee: Deducted from platform's $0.44
+
+// The seller got $0.56 instead of $0.25!
+```
+
+**The issue**: `application_fee_amount` needs to be **everything except the seller's listing price**, not just the platform's profit margin.
+
+---
+
+## Solution Implemented: Correct Application Fee Formula
+
+### New Calculation
+
+**Old (BROKEN)**:
+```typescript
+const campusLinkCutCents = buyerPriceCents - subtotalCents; // $0.44
+const application_fee_amount = campusLinkCutCents; // ❌ Too small!
+```
+
+**New (FIXED)**:
+```typescript
+const campusLinkCutCents = buyerPriceCents - subtotalCents; // $0.44 (still track for escrow mode)
+
+// For destination charges: application fee = everything except seller's listing price
+const applicationFeeCents = buyerPriceCents - sellerPriceCents; // $0.75
+
+const application_fee_amount = applicationFeeCents; // ✅ Correct!
+```
+
+---
+
+## Code Changes
+
+### Files Modified
+
+1. **`supabase/functions/create_payment_intent/index.ts`**
+2. **`supabase_functions/create_payment_intent/index.ts`** (duplicate copy)
+
+### Changes Made
+
+**Lines 145-164** - Updated fee calculations:
+```typescript
+// Added new calculation for destination charges
+const applicationFeeCents = buyerPriceCents - sellerPriceCents;
+
+// Updated seller receives calculation (they get exactly their listing price)
+const sellerReceivesCents = sellerPriceCents;
+```
+
+**Line 195** - Fixed application_fee_amount:
+```typescript
+// BEFORE:
+paymentIntentParams.application_fee_amount = campusLinkCutCents;
+
+// AFTER:
+paymentIntentParams.application_fee_amount = applicationFeeCents;
+```
+
+**Metadata Updated** (Line 182):
+```typescript
+metadata: {
+  // ... other fields ...
+  application_fee_cents: applicationFeeCents.toString(), // NEW
+}
+```
+
+**Console Logs Updated** (Lines 198-201):
+```typescript
+console.log("✅ Using DESTINATION CHARGES:");
+console.log(`   → Seller receives: $${sellerReceivesCents / 100} (their listing price)`);
+console.log(`   → Application fee to platform: $${applicationFeeCents / 100}`);
+console.log(`   → Platform net after Stripe fee: ~$${(applicationFeeCents - stripeFeeCents) / 100}`);
+```
+
+---
+
+## How Money Flows Now
+
+### Example: $0.25 Listing
+
+**Before Fix (BROKEN)**:
+```
+Buyer pays: $1.00
+    ↓
+Application fee to platform: $0.44
+    ↓
+Seller receives: $1.00 - $0.44 = $0.56 ❌ WRONG!
+    ↓
+Stripe fee deducted from platform's $0.44: $0.33
+    ↓
+Platform net: $0.11 ❌ LOSING MONEY!
+```
+
+**After Fix (WORKING)**:
+```
+Buyer pays: $1.00
+    ↓
+Application fee to platform: $0.75
+    ↓
+Seller receives: $1.00 - $0.75 = $0.25 ✅ CORRECT!
+    ↓
+Stripe fee deducted from platform's $0.75: $0.33
+    ↓
+Platform net: $0.42 ✅ PROFITABLE!
+```
+
+### Example: $10.00 Listing
+
+**Calculation**:
+```
+Seller price: $10.00
+Stripe fee: $0.59 (2.9% + $0.30)
+Subtotal: $10.59
+Buyer pays (rounded up): $11.00
+Round-up profit: $0.41
+```
+
+**Before Fix**:
+- Application fee: $0.41
+- Seller receives: $11.00 - $0.41 = $10.59 ❌ (overpaid by $0.59!)
+- Platform receives: $0.41 - $0.32 = $0.09 ❌ (lost $0.32!)
+
+**After Fix**:
+- Application fee: $1.00
+- Seller receives: $11.00 - $1.00 = $10.00 ✅ (exactly their listing price)
+- Platform receives: $1.00 - $0.32 = $0.68 ✅ (covers fee + profit)
+
+---
+
+## Technical Explanation: Why This Happened
+
+### How Stripe Destination Charges Work
+
+When you create a payment intent with destination charges:
+
+```typescript
+stripe.paymentIntents.create({
+  amount: 100,  // $1.00
+  transfer_data: {
+    destination: sellerConnectAccountId
+  },
+  application_fee_amount: 44  // Platform's cut
+})
+```
+
+**What Stripe does when payment is captured**:
+1. Takes the full amount: $1.00
+2. Sends `application_fee_amount` to platform: $0.44
+3. Sends **remainder** to seller: $1.00 - $0.44 = $0.56
+4. Charges Stripe processing fee from platform's $0.44
+
+**The mistake**: We thought we could just take the round-up profit ($0.44) as our application fee, but this left the seller with too much money ($0.56 instead of $0.25).
+
+**The fix**: Application fee must be `buyerPrice - sellerPrice` = $0.75, so the seller gets exactly their listing price ($0.25).
+
+---
+
+## Impact Analysis
+
+### Financial Impact Per Transaction
+
+| Listing Price | Buyer Pays | Before: Seller Gets | After: Seller Gets | Before: Platform Gets | After: Platform Gets |
+|---------------|------------|---------------------|--------------------|-----------------------|----------------------|
+| $0.25 | $1.00 | $0.56 ❌ | $0.25 ✅ | $0.11 ❌ | ~$0.42 ✅ |
+| $10.00 | $11.00 | $10.59 ❌ | $10.00 ✅ | $0.09 ❌ | ~$0.68 ✅ |
+| $50.00 | $52.00 | $50.75 ❌ | $50.00 ✅ | $0.25 ❌ | ~$1.55 ✅ |
+
+### If You Processed 100 Transactions at $0.25
+
+**Before Fix**:
+- Sellers overpaid: 100 × $0.31 = $31.00
+- Platform lost: 100 × $0.33 = $33.00
+- Total platform loss: **$33.00**
+
+**After Fix**:
+- Sellers paid correctly: 100 × $0.25 = $25.00 ✅
+- Platform receives: 100 × $0.42 = $42.00 ✅
+- No money leakage ✅
+
+---
+
+## Deployment Required
+
+### 🚨 CRITICAL: This is a BACKEND change!
+
+**This fix requires deploying the updated Edge Function to Supabase.**
+
+### Deployment Steps
+
+#### Option 1: Supabase CLI (Recommended)
+```bash
+cd /Users/eileenmurphy/CampusLink
+supabase functions deploy create_payment_intent
+```
+
+#### Option 2: Supabase Dashboard
+1. Go to: https://supabase.com/dashboard
+2. Navigate to: **Edge Functions**
+3. Find: `create_payment_intent`
+4. Deploy new version with updated `index.ts`
+
+### Verification After Deployment
+
+Create a test transaction:
+- List item at $0.25
+- Purchase as buyer
+- Check Stripe dashboard:
+  - Application fee should be: $0.75
+  - Seller should receive: $0.25
+  - Platform should receive: $0.75
+
+---
+
+## Key Takeaway
+
+**The Formula for Destination Charges**:
+```typescript
+// Seller should receive exactly their listing price
+application_fee_amount = buyerPrice - sellerPrice
+
+// NOT just the profit margin!
+application_fee_amount = roundUpAmount  // ❌ WRONG!
+```
+
+**Why**: Stripe automatically sends the remainder to the seller after taking the application fee. The application fee must include ALL platform costs (Stripe processing fee + profit), not just the profit.
+
+---
+
+## Files Modified
+
+1. ✅ **supabase/functions/create_payment_intent/index.ts**
+   - Lines 145-164: Updated fee calculations
+   - Line 195: Fixed application_fee_amount
+   - Lines 182, 198-201: Updated metadata and logs
+
+2. ✅ **supabase_functions/create_payment_intent/index.ts**
+   - Same changes as above (duplicate file)
+
+3. ✅ **FIX_STRIPE_APPLICATION_FEE.md**
+   - Complete deployment guide and testing checklist
+
+---
+
+## Status
+✅ **CODE FIXED** - Changes committed  
+⚠️ **NEEDS DEPLOYMENT** - Must deploy to Supabase Edge Functions
+
+---
+
+## Testing Checklist (After Deployment)
+
+### Test 1: Small Amount
+- [ ] Create listing: $0.25
+- [ ] Complete purchase
+- [ ] Verify seller receives: $0.25 (not $0.56)
+- [ ] Verify platform application fee: $0.75 (not $0.44)
+
+### Test 2: Medium Amount
+- [ ] Create listing: $10.00
+- [ ] Complete purchase
+- [ ] Verify seller receives: $10.00 (not $10.59)
+- [ ] Verify platform application fee: $1.00 (not $0.41)
+
+---
+
+**Darragh** - This is a CRITICAL fix that must be deployed immediately. Every transaction with destination charges is currently losing you money and overpaying sellers. The code is fixed and ready - you just need to deploy the updated Edge Function to Supabase. Use `supabase functions deploy create_payment_intent` or deploy via the dashboard.
+

@@ -22,7 +22,9 @@ struct OrderDetailView: View {
     @State private var showDeliveryPhotoSheet = false
     @State private var showPINEntrySheet = false
     @State private var showCancelAlert = false
+    @State private var refreshTimer: Timer?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     
     init(order: Order) {
         self.order = order
@@ -161,6 +163,16 @@ struct OrderDetailView: View {
                 await loadOrderData() 
                 await checkRatingStatus()
             }
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // Refresh order data when app comes to foreground to prevent stale data
+            if newPhase == .active {
+                Task { await loadOrderData() }
+            }
+        }
+        .refreshable {
+            // Pull-to-refresh support
+            await loadOrderData()
         }
     }
     
@@ -939,12 +951,14 @@ struct OrderDetailView: View {
     }
     
     private func loadOrderData() async {
-        // Refresh order data from the service
+        // Refresh order data from the service to prevent stale data issues
         do {
             let updatedOrder = try await OrderService.shared.getOrderDetails(currentOrder.id)
-            // In a real app, you would update the local order state
-            // For now, we'll just ensure the conversation is loaded
-            print("✅ Order data refreshed")
+            await MainActor.run {
+                // Update local state with fresh data from database
+                self.currentOrder = updatedOrder
+            }
+            print("✅ Order data refreshed - status: \(updatedOrder.orderStatus.displayName)")
         } catch {
             print("❌ Failed to refresh order data: \(error)")
         }
