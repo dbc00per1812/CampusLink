@@ -45,6 +45,11 @@ struct TransactionGuideView: View {
                     // Payment & Wallet
                     paymentWalletSection
                     
+                    Divider()
+                    
+                    // Contact Support
+                    contactSupportSection
+                    
                     Spacer(minLength: 40)
                 }
                 .padding(.vertical)
@@ -487,6 +492,61 @@ struct TransactionGuideView: View {
             .padding()
             .background(Color.purple.opacity(0.05))
             .cornerRadius(12)
+        }
+        .padding(.horizontal)
+    }
+    
+    // MARK: - Contact Support
+    
+    @ViewBuilder
+    private var contactSupportSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(
+                icon: "questionmark.circle.fill",
+                title: "Need Help?",
+                color: Color("ThemeColor")
+            )
+            
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Have questions or concerns about a transaction?")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                
+                Text("Our support team is here to help you with any issues related to buying, selling, payments, or disputes.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                
+                Button(action: {
+                    if let url = URL(string: "mailto:darragh.b3272@gmail.com?subject=CampusLink%20Support%20Request") {
+                        UIApplication.shared.open(url)
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 18))
+                        
+                        Text("Contact Support")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color("ThemeColor"))
+                    .cornerRadius(12)
+                }
+                
+                // Quick response time indicator
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.fill")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                    
+                    Text("We typically respond within 24 hours")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
         }
         .padding(.horizontal)
     }

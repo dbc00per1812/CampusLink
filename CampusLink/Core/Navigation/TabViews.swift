@@ -26,7 +26,7 @@ struct PostView: View {
     @State private var title = ""
     @State private var description = ""
     @State private var price = ""
-    @State private var selectedCategory = "Electronics"
+    @State private var selectedCategory = ""
     @State private var customCategory = ""
     @State private var showingCustomCategoryField = false
     @State private var selectedListingType = ListingType.product
@@ -59,19 +59,47 @@ struct PostView: View {
     @FocusState private var isTextFieldFocused: Bool
     
     // Product categories
-    let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
+    let productCategories = ["Choose", "Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
     
     // Service categories
-    let serviceCategories = ["Tutoring", "Moving", "Cleaning", "Other"]
+    let serviceCategories = ["Choose", "Tutoring", "Moving", "Cleaning", "Other"]
     
     // Computed property for current categories based on listing type
     private var currentCategories: [String] {
         selectedListingType == .product ? productCategories : serviceCategories
     }
     
+    // Computed property for title placeholder
+    private var titlePlaceholder: String {
+        if selectedIntent == .seek {
+            return selectedListingType == .product ? "What do you want to buy?" : "What service do you need?"
+        } else {
+            return selectedListingType == .product ? "What are you selling?" : "What service are you offering?"
+        }
+    }
+    
+    // Computed property for description placeholder
+    private var descriptionPlaceholder: String {
+        if selectedIntent == .seek {
+            return selectedListingType == .product ? "Describe what you're looking for..." : "Describe the service you need..."
+        } else {
+            return selectedListingType == .product ? "Describe your item..." : "Describe your service..."
+        }
+    }
+    
     // Computed property for button disabled state
     private var isDisabled: Bool {
         if isLoading || title.isEmpty || description.isEmpty {
+            return true
+        }
+        
+        // Require category selection
+        if selectedCategory.isEmpty || selectedCategory == "Choose" {
+            return true
+        }
+        
+        // For "Other" category, require custom category text
+        if selectedCategory == "Other" && customCategory.isEmpty {
             return true
         }
         
@@ -214,7 +242,7 @@ struct PostView: View {
                             Text("Title")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                            TextField(selectedListingType == .product ? "What are you selling?" : "What service are you offering?", text: $title)
+                            TextField(titlePlaceholder, text: $title)
                                 .focused($isTextFieldFocused)
                                 .padding()
                                 .background(Color(UIColor.systemGray6))
@@ -225,7 +253,7 @@ struct PostView: View {
                             Text("Description")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                            TextField(selectedListingType == .product ? "Describe your item..." : "Describe your service...", text: $description, axis: .vertical)
+                            TextField(descriptionPlaceholder, text: $description, axis: .vertical)
                                 .focused($isTextFieldFocused)
                                 .lineLimit(4...8)
                                 .padding()
@@ -580,16 +608,6 @@ struct PostView: View {
                                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                                 .padding(.top, 8)
                                         }
-                                        
-                                        // Show ticket guarantee info when Tickets category is selected
-                                        if selectedCategory == "Tickets" {
-                                            TicketGuaranteeInfoView(isOwnListing: false)
-                                        }
-                                        
-                                        // Show product verification info for products
-                                        if selectedListingType == .product {
-                                            ProductVerificationInfoView(isForSeller: false)
-                                        }
                                     }
                                     
                                     VStack(alignment: .leading, spacing: 8) {
@@ -602,6 +620,16 @@ struct PostView: View {
                                             .background(Color(UIColor.systemGray6))
                                             .cornerRadius(12)
                                     }
+                                }
+                                
+                                // Show ticket guarantee info when Tickets category is selected
+                                if selectedCategory == "Tickets" {
+                                    TicketGuaranteeInfoView(isOwnListing: false)
+                                }
+                                
+                                // Show product verification info for products
+                                if selectedListingType == .product {
+                                    ProductVerificationInfoView(isForSeller: false)
                                 }
                                 
                                 // Delivery Method Picker for Seek mode (for products only)

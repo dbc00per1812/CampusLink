@@ -13,6 +13,7 @@ struct MyTransactionsView: View {
     @State private var showingFilters = false
     @State private var showSuccessToast = false
     @State private var successToastMessage = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     enum Segment: String, CaseIterable { 
         case purchases = "Purchases"
@@ -67,6 +68,12 @@ struct MyTransactionsView: View {
                 showDeliveryPhotoSheet = false
                 activeOrder = nil
                 activeConversation = nil
+            }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                // Auto-refresh when app returns to foreground to prevent stale order data
+                if newPhase == .active {
+                    Task { await refreshData() }
+                }
             }
             .refreshable {
                 await refreshData()

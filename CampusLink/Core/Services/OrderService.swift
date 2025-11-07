@@ -627,13 +627,19 @@ final class OrderService: ObservableObject {
                     let amountEarned = Double(netAmountCents) / 100.0
                     
                     // Create a custom notification about the sale and onboarding requirement
-                    await NotificationService.shared.createSystemNotification(
-                        for: order.sellerId.uuidString,
+                    let notification = NotificationCreate(
+                        userId: order.sellerId.uuidString,
+                        type: .paymentSucceeded,
                         title: "🎉 You made a sale!",
-                        message: String(format: "You earned $%.2f from \"\(listing.title)\". Complete payout setup to withdraw your earnings.", amountEarned),
-                        type: "sale_requires_onboarding",
-                        relatedId: order.id.uuidString
+                        body: String(format: "You earned $%.2f from \"\(listing.title)\". Complete payout setup to withdraw your earnings.", amountEarned),
+                        data: ["order_id": AnyCodable(order.id.uuidString), "requires_onboarding": AnyCodable(true)],
+                        scheduledFor: nil,
+                        orderId: order.id,
+                        messageId: nil,
+                        listingId: order.listingId,
+                        relatedUserId: order.buyerId.uuidString
                     )
+                    await NotificationService.shared.createNotification(notification)
                     
                     print("✅ releaseEscrowFunds: Onboarding notification sent to seller")
                 } catch {

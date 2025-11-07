@@ -137,3 +137,4 @@ If the diagnostic shows many users without campus:
 **Darragh** - Run `CHECK_MISSING_CAMPUS_DATA.sql` first. If it shows users without campus data, that's your issue. The normalized comparison fix I made is still good to have, but the real problem is likely missing campus data.
 
 
+
