@@ -718,6 +718,17 @@ struct ListingDetailView: View {
                             .background(listing.listingType == .product ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
                             .foregroundColor(listing.listingType == .product ? .blue : .green)
                             .responsiveCornerRadius(8)
+                        
+                        // SEEKING badge for buy posts
+                        if AppConfig.enableSeekMode && listing.intent == .seek {
+                            Text("SEEKING")
+                                .responsiveFont(.subheadline, weight: .bold)
+                                .responsiveHorizontalSpacing(12)
+                                .responsiveSpacing(6)
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .responsiveCornerRadius(8)
+                        }
                     }
                 }
 

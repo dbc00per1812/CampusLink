@@ -6,6 +6,7 @@ private struct UserEmailFetch: Codable { let email: String? }
 
 struct HomeTabView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var activeOrderMonitor: ActiveOrderMonitor
 
     @State private var listings: [ListingWithUser] = []
     @State private var isLoading = true
@@ -34,6 +35,10 @@ struct HomeTabView: View {
     
     // Transaction guide
     @State private var showingTransactionGuide = false
+    
+    // Active transactions
+    @State private var showingMyTransactions = false
+    @State private var flashingAnimation = false
     
     // Debug states for visual debugging
     
@@ -135,6 +140,25 @@ struct HomeTabView: View {
         }
         .sheet(isPresented: $showingTransactionGuide) {
             TransactionGuideView()
+        }
+        .sheet(isPresented: $showingMyTransactions) {
+            NavigationView {
+                MyTransactionsView()
+                    .environmentObject(authManager)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showingMyTransactions = false
+                            }
+                        }
+                    }
+            }
+        }
+        .onAppear {
+            // Start flashing animation
+            withAnimation(Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                flashingAnimation = true
+            }
         }
     }
 }
@@ -250,6 +274,37 @@ extension HomeTabView {
                         .responsiveCornerRadius(20)
                 }
                 .accessibleButton("View transaction guide")
+                
+                // Active Post button - shows when orders need attention
+                if activeOrderMonitor.ordersRequiringAction > 0 {
+                    Button(action: {
+                        showingMyTransactions = true
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .responsiveFontSize(16)
+                            Text("Active Post")
+                                .responsiveFont(.subheadline, weight: .bold)
+                            if activeOrderMonitor.ordersRequiringAction > 0 {
+                                Text("\(activeOrderMonitor.ordersRequiringAction)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(minWidth: 18, minHeight: 18)
+                                    .background(Color.white.opacity(0.3))
+                                    .clipShape(Circle())
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .responsiveHorizontalSpacing(12)
+                        .responsiveSpacing(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.red)
+                                .opacity(flashingAnimation ? 1.0 : 0.7)
+                        )
+                    }
+                    .accessibleButton("View active transactions requiring action")
+                }
                 
                 Button(action: {
                     showingSellerDashboard = true
@@ -1160,6 +1215,25 @@ struct ListingCard: View {
                                 .foregroundColor(.secondary)
                         }
                     )
+                    .overlay(
+                        VStack {
+                            Spacer()
+                            HStack {
+                                // SEEKING badge (bottom-left)
+                                if AppConfig.enableSeekMode && listing.intent == .seek {
+                                    Text("SEEKING")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.orange)
+                                        .cornerRadius(6)
+                                        .padding(6)
+                                }
+                                Spacer()
+                            }
+                        }
+                    )
                     .frame(width: size, height: size)
             } else if urls.count == 1 {
                 // Single image - square (with caching)
@@ -1169,6 +1243,25 @@ struct ListingCard: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: size, height: size)
                         .clipped()
+                        .overlay(
+                            VStack {
+                                Spacer()
+                                HStack {
+                                    // SEEKING badge (bottom-left)
+                                    if AppConfig.enableSeekMode && listing.intent == .seek {
+                                        Text("SEEKING")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color.orange)
+                                            .cornerRadius(6)
+                                            .padding(6)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                        )
                 } placeholder: {
                     Rectangle()
                         .fill(Color(UIColor.systemGray6))
@@ -1213,6 +1306,20 @@ struct ListingCard: View {
                                     .padding(6)
                                 }
                                 Spacer()
+                                // SEEKING badge (bottom-left)
+                                if AppConfig.enableSeekMode && listing.intent == .seek {
+                                    HStack {
+                                        Text("SEEKING")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color.orange)
+                                            .cornerRadius(6)
+                                            .padding(6)
+                                        Spacer()
+                                    }
+                                }
                             }
                         )
                 } placeholder: {

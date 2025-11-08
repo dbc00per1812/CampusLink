@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MyTransactionsView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var activeOrderMonitor: ActiveOrderMonitor
     @State private var selection: Segment = .purchases
     @State private var purchases: [Order] = []
     @State private var sales: [Order] = []
@@ -13,11 +14,27 @@ struct MyTransactionsView: View {
     @State private var showingFilters = false
     @State private var showSuccessToast = false
     @State private var successToastMessage = ""
+    @State private var pulseAnimation = false
     @Environment(\.scenePhase) private var scenePhase
 
     enum Segment: String, CaseIterable { 
         case purchases = "Purchases"
         case sales = "Sales" 
+    }
+    
+    // Computed property for orders requiring action based on current tab
+    private var ordersRequiringActionCount: Int {
+        if selection == .purchases {
+            // Buyer needs to confirm receipt for orders in seller_confirmed status
+            return purchases.filter { order in
+                order.orderStatus == .sellerConfirmed && order.paymentStatus == .requiresCapture
+            }.count
+        } else {
+            // Seller needs to deliver for orders in placed or in_progress status
+            return sales.filter { order in
+                order.orderStatus == .placed || order.orderStatus == .inProgress
+            }.count
+        }
     }
 
     var body: some View {
@@ -54,11 +71,36 @@ struct MyTransactionsView: View {
         }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingFilters.toggle() }) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .foregroundColor(selectedStatusFilter != nil ? .blue : .primary)
+                    HStack(spacing: 12) {
+                        // Red badge icon when orders require action
+                        if ordersRequiringActionCount > 0 {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.red)
+                                    .scaleEffect(pulseAnimation ? 1.1 : 1.0)
+                                    .animation(Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulseAnimation)
+                                
+                                // Count badge
+                                Text("\(ordersRequiringActionCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(minWidth: 16, minHeight: 16)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                                    .offset(x: 8, y: -8)
+                            }
+                        }
+                        
+                        Button(action: { showingFilters.toggle() }) {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                                .foregroundColor(selectedStatusFilter != nil ? .blue : .primary)
+                        }
                     }
                 }
+            }
+            .onAppear {
+                pulseAnimation = true
             }
             .onAppear { Task { await loadData() } }
             .onDisappear {

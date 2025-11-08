@@ -62,6 +62,7 @@ struct PurchaseConfirmationView: View {
                     
                     if let order = order {
                         orderDetailsSection(order: order)
+                        verificationStepsSection
                     }
                     
                     escrowProtectionSection
@@ -216,6 +217,100 @@ struct PurchaseConfirmationView: View {
             }
             .padding(20)
             .background(Color.green.opacity(0.05))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 20)
+        .opacity(animationOpacity)
+        .offset(y: animationOffset)
+    }
+    
+    private var verificationStepsSection: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 16) {
+                HStack {
+                    Image(systemName: "list.number")
+                        .foregroundColor(Color("ThemeColor"))
+                        .font(.title2)
+                        .accessibilityHidden(true)
+                    
+                    Text("What Happens Next")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    
+                    Spacer()
+                }
+                
+                Text("Follow these steps to complete your transaction safely:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Verification Steps Timeline
+                VStack(spacing: 16) {
+                    VerificationStepRow(
+                        number: "1",
+                        title: "Seller Prepares Item",
+                        description: "The seller will prepare and arrange delivery of your item",
+                        estimatedTime: "Within 24-48 hours",
+                        icon: "box.truck.fill"
+                    )
+                    
+                    Divider()
+                    
+                    VerificationStepRow(
+                        number: "2",
+                        title: "Delivery & Photo Upload",
+                        description: "Seller uploads a delivery photo and marks the order as delivered",
+                        estimatedTime: "When delivered",
+                        icon: "camera.fill"
+                    )
+                    
+                    Divider()
+                    
+                    VerificationStepRow(
+                        number: "3",
+                        title: "You'll Be Notified",
+                        description: "You'll receive a notification to confirm receipt of the item",
+                        estimatedTime: "Immediately",
+                        icon: "bell.badge.fill"
+                    )
+                    
+                    Divider()
+                    
+                    VerificationStepRow(
+                        number: "4",
+                        title: "Confirm Receipt",
+                        description: "Verify the item matches the description and confirm to release payment",
+                        estimatedTime: "After inspection",
+                        icon: "checkmark.shield.fill"
+                    )
+                }
+                
+                // Important notice
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.blue)
+                        .font(.title3)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Your Protection")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        
+                        Text("Payment is held securely in escrow until you confirm receipt. Only confirm after verifying the item is as described.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(12)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(10)
+            }
+            .padding(20)
+            .background(Color(UIColor.secondarySystemBackground))
             .cornerRadius(16)
         }
         .padding(.horizontal, 20)
@@ -381,6 +476,60 @@ struct PurchaseConfirmationView: View {
         } else {
             generator.notificationOccurred(.warning)
         }
+    }
+}
+
+// MARK: - Verification Step Row
+
+struct VerificationStepRow: View {
+    let number: String
+    let title: String
+    let description: String
+    let estimatedTime: String
+    let icon: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // Step number badge
+            Text(number)
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .frame(width: 32, height: 32)
+                .background(Color("ThemeColor"))
+                .clipShape(Circle())
+            
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: icon)
+                        .foregroundColor(Color("ThemeColor"))
+                        .font(.subheadline)
+                    
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                }
+                
+                Text(description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                HStack {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Text(estimatedTime)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(number): \(title). \(description). Estimated time: \(estimatedTime)")
     }
 }
 

@@ -4,6 +4,8 @@ struct MainTabView: View {
     @EnvironmentObject private var authManager: AuthManager
     @StateObject private var tabCoordinator = TabCoordinator.shared
     @StateObject private var notificationManager = NotificationManager.shared
+    @StateObject private var activeOrderMonitor = ActiveOrderMonitor.shared
+    @StateObject private var expiredListingArchiver = ExpiredListingArchiver.shared
     @State private var walletBadge: String?
     @State private var homeNavigationPath = NavigationPath()
     @State private var hasRequestedPermissions = false
@@ -99,11 +101,30 @@ struct MainTabView: View {
             .adaptiveBottomPadding()
         }
         .environmentObject(tabCoordinator)
+        .environmentObject(activeOrderMonitor)
         .task {
             // Request notification permissions on first launch after login
             if isAuthenticated && !hasRequestedPermissions && notificationManager.authorizationStatus == .notDetermined {
                 hasRequestedPermissions = true
                 await notificationManager.requestPermissions()
+            }
+            
+            // Start active order monitoring if authenticated
+            if isAuthenticated, let userId = authManager.session?.user.id {
+                await activeOrderMonitor.startMonitoring(userId: userId)
+            }
+            
+            // Start expired listing archiver (runs for all users, even unauthenticated)
+            await expiredListingArchiver.startAutoArchiving()
+        }
+        .onChange(of: authManager.session) { oldSession, newSession in
+            // Start or stop monitoring based on authentication
+            if let userId = newSession?.user.id {
+                Task {
+                    await activeOrderMonitor.startMonitoring(userId: userId)
+                }
+            } else {
+                activeOrderMonitor.stopMonitoring()
             }
         }
         .onChange(of: tabCoordinator.selectedTab) { newTab in

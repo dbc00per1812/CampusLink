@@ -49,6 +49,9 @@ struct PostView: View {
     @State private var budgetMax = ""
     @State private var expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60) // 7 days default
     
+    // Ticket event date (required for ticket listings)
+    @State private var eventDate = Date().addingTimeInterval(24 * 60 * 60) // Tomorrow by default
+    
     // Delivery method
     @State private var selectedDeliveryMethod: DeliveryMethod = .pickup
     
@@ -100,6 +103,11 @@ struct PostView: View {
         
         // For "Other" category, require custom category text
         if selectedCategory == "Other" && customCategory.isEmpty {
+            return true
+        }
+        
+        // For "Tickets" category, require event date to be in the future
+        if selectedCategory == "Tickets" && eventDate <= Date() {
             return true
         }
         
@@ -451,6 +459,41 @@ struct PostView: View {
                             // Show ticket guarantee info when Tickets category is selected
                             if selectedCategory == "Tickets" {
                                 TicketGuaranteeInfoView(isOwnListing: true)
+                                
+                                // Event Date Picker for Tickets (REQUIRED)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text("Event Date")
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        Text("*")
+                                            .foregroundColor(.red)
+                                            .font(.headline)
+                                    }
+                                    
+                                    DatePicker(
+                                        "Event Date",
+                                        selection: $eventDate,
+                                        in: Date()...,
+                                        displayedComponents: [.date, .hourAndMinute]
+                                    )
+                                    .datePickerStyle(.compact)
+                                    .padding()
+                                    .background(Color(UIColor.systemGray6))
+                                    .cornerRadius(12)
+                                    .labelsHidden()
+                                    
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "info.circle.fill")
+                                            .font(.caption)
+                                            .foregroundColor(.blue)
+                                        Text("Ticket will automatically expire after the event")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.top, 4)
+                                }
+                                .padding(.top, 8)
                             }
                             
                             // Show product verification info for products
@@ -559,6 +602,25 @@ struct PostView: View {
                                         .background(Color(UIColor.systemGray6))
                                         .cornerRadius(12)
                                     }
+                                }
+                                
+                                // Budget validation warning
+                                if !budgetMin.isEmpty && !budgetMax.isEmpty,
+                                   let min = Double(budgetMin), let max = Double(budgetMax),
+                                   min > max {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                        Text("Minimum budget cannot be greater than maximum budget")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(Color.orange.opacity(0.1))
+                                    .cornerRadius(8)
                                 }
                                 
                                 // Fee notice for seek posts
@@ -890,6 +952,38 @@ struct PostView: View {
             priceValue = price
         }
         
+        // Validate budget constraints for seek posts
+        if selectedIntent == .seek {
+            let minBudget = budgetMin.isEmpty ? nil : Double(budgetMin)
+            let maxBudget = budgetMax.isEmpty ? nil : Double(budgetMax)
+            
+            // Check if both budgets are provided and min > max
+            if let min = minBudget, let max = maxBudget, min > max {
+                await MainActor.run {
+                    alertMessage = "Minimum budget ($\(String(format: "%.0f", min))) cannot be greater than maximum budget ($\(String(format: "%.0f", max))). Please adjust your budget range."
+                    showingAlert = true
+                }
+                return
+            }
+            
+            // Check for negative or zero budgets
+            if let min = minBudget, min < 0 {
+                await MainActor.run {
+                    alertMessage = "Minimum budget cannot be negative."
+                    showingAlert = true
+                }
+                return
+            }
+            
+            if let max = maxBudget, max <= 0 {
+                await MainActor.run {
+                    alertMessage = "Maximum budget must be greater than zero."
+                    showingAlert = true
+                }
+                return
+            }
+        }
+        
         await MainActor.run {
             isLoading = true
         }
@@ -934,6 +1028,15 @@ struct PostView: View {
         
         // Create listing in database
         do {
+            // Determine expiration date based on listing type
+            var expirationDate: Date? = nil
+            if selectedIntent == .seek {
+                expirationDate = expiresDate
+            } else if selectedCategory == "Tickets" {
+                // Tickets expire at the event date
+                expirationDate = eventDate
+            }
+            
             let newListing = ListingCreate(
                 userId: userId,
                 title: title,
@@ -951,7 +1054,7 @@ struct PostView: View {
                 intent: selectedIntent,
                 budgetMin: selectedIntent == .seek ? (budgetMin.isEmpty ? nil : Double(budgetMin)) : nil,
                 budgetMax: selectedIntent == .seek ? (budgetMax.isEmpty ? nil : Double(budgetMax)) : nil,
-                expiresAt: selectedIntent == .seek ? expiresDate : nil,
+                expiresAt: expirationDate,
                 deliveryMethod: selectedListingType == .product ? selectedDeliveryMethod : nil,
                 quantityAvailable: selectedListingType == .product ? quantity : nil
             )
@@ -1002,6 +1105,8 @@ struct PostView: View {
         budgetMin = ""
         budgetMax = ""
         expiresDate = Date().addingTimeInterval(7 * 24 * 60 * 60)
+        // Reset ticket event date
+        eventDate = Date().addingTimeInterval(24 * 60 * 60)
         // Delivery method
         selectedDeliveryMethod = .pickup
         // Reset quantity
