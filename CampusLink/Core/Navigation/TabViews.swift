@@ -38,6 +38,12 @@ struct PostView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var navigateToHome = false
+    
+    // Share sheet states
+    @State private var showingShareSheet = false
+    @State private var sharedListingTitle = ""
+    @State private var sharedListingDescription = ""
+    @State private var sharedListingPrice = ""
     @State private var userProfile: User? = nil
     @State private var isLoadingProfile = true
     @State private var shouldShowPayoutSetup = false
@@ -785,6 +791,14 @@ struct PostView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareListingSheet(
+                listingTitle: sharedListingTitle,
+                listingDescription: sharedListingDescription,
+                listingPrice: sharedListingPrice,
+                isPresented: $showingShareSheet
+            )
+        }
     }
     
     private func loadUserProfile() async {
@@ -1096,11 +1110,23 @@ struct PostView: View {
                     print("📊 Analytics: Listing posted - Category: \(newListing.category), Type: \(newListing.listingType), Price: \(newListing.price)")
                 }
                 
-                alertMessage = "Listing posted successfully! 🎉"
-                showingAlert = true
+                // Prepare share sheet data
+                sharedListingTitle = title
+                sharedListingDescription = description
+                if selectedIntent == .seek {
+                    if let min = newListing.budgetMin, let max = newListing.budgetMax {
+                        sharedListingPrice = "Budget: $\(String(format: "%.0f", min)) - $\(String(format: "%.0f", max))"
+                    }
+                } else {
+                    sharedListingPrice = "$\(String(format: "%.2f", newListing.price ?? 0.0))"
+                }
+                
                 isLoading = false
                 // Auto-clear form after successful posting
                 clearForm()
+                
+                // Show share sheet instead of alert
+                showingShareSheet = true
             }
             
         } catch {
