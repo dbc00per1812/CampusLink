@@ -29,6 +29,12 @@ struct ListingDetailView: View {
     @State private var showingOffersList = false
     @State private var purchaseQuantity: Int = 1
     @State private var isUserBlocked = false
+    @State private var currentListing: ListingWithUser?
+
+    // Use currentListing if available, otherwise fall back to the initial listing
+    private var displayedListing: ListingWithUser {
+        currentListing ?? listing
+    }
 
     private var isAuthenticated: Bool {
         authManager.session != nil
@@ -41,12 +47,12 @@ struct ListingDetailView: View {
         }
         
         // Try case-insensitive comparison since UUIDs might have different casing
-        let isOwner = listing.user.id.lowercased() == currentUserId.lowercased()
+        let isOwner = displayedListing.user.id.lowercased() == currentUserId.lowercased()
         
         print("🔍 Current User ID: \(currentUserId)")
         print("🔍 Current User ID (lowercase): \(currentUserId.lowercased())")
-        print("🔍 Listing User ID: \(listing.user.id)")
-        print("🔍 Listing User ID (lowercase): \(listing.user.id.lowercased())")
+        print("🔍 Listing User ID: \(displayedListing.user.id)")
+        print("🔍 Listing User ID (lowercase): \(displayedListing.user.id.lowercased())")
         print("🔍 Is Owner: \(isOwner)")
         print("🔍 Auth Session User: \(authManager.session?.user.id.uuidString ?? "nil")")
         
@@ -87,7 +93,7 @@ struct ListingDetailView: View {
                             Button {
                                 activeSheet = .report(
                                     userId: listing.user.id,
-                                    userName: (listing.user.name ?? "Unknown User").formattedName,
+                                    userName: (displayedListing.user.name ?? "Unknown User").formattedName,
                                     listingId: listing.id.uuidString,
                                     listingTitle: listing.title
                                 )
@@ -98,7 +104,7 @@ struct ListingDetailView: View {
                             Button(role: .destructive) {
                                 activeSheet = .blockUser(
                                     userId: listing.user.id,
-                                    userName: (listing.user.name ?? "Unknown User").formattedName
+                                    userName: (displayedListing.user.name ?? "Unknown User").formattedName
                                 )
                             } label: {
                                 Label(isUserBlocked ? "Unblock User" : "Block User", systemImage: "hand.raised.fill")
@@ -116,7 +122,7 @@ struct ListingDetailView: View {
         .onAppear {
             Task {
                 if !isOwnListing, let currentUserId = authManager.currentUserId {
-                    isUserBlocked = (try? await BlockedUsersService.isUserBlocked(listing.user.id, currentUserId: currentUserId)) ?? false
+                    isUserBlocked = (try? await BlockedUsersService.isUserBlocked(displayedListing.user.id, currentUserId: currentUserId)) ?? false
                 }
             }
         }
@@ -169,9 +175,11 @@ struct ListingDetailView: View {
             case let .chat(conversation):
                 ChatView(conversation: conversation)
             case .editListing:
-                EditListingView(listing: listing) {
-                    // On updated, simply dismiss this detail view to refresh upstream
-                    dismiss()
+                EditListingView(listing: displayedListing) {
+                    // On updated, reload the listing to show fresh data
+                    Task {
+                        await reloadListing()
+                    }
                 }
                 .environmentObject(authManager)
             case .guestPrompt:
@@ -285,6 +293,48 @@ struct ListingDetailView: View {
         showingOffersList = true
     }
     
+    private func reloadListing() async {
+        #if DEBUG
+        print("🔄 Reloading listing after edit...")
+        #endif
+        
+        do {
+            let refreshedListing: ListingWithUser = try await supabase
+                .from("listings")
+                .select("""
+                    *,
+                    user:users!listings_user_id_fkey (
+                        id,
+                        name,
+                        email,
+                        bio,
+                        profile_pic,
+                        campus,
+                        created_at,
+                        campus_email_verified,
+                        trust_score
+                    )
+                """)
+                .eq("id", value: listing.id.uuidString)
+                .single()
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.currentListing = refreshedListing
+            }
+            
+            #if DEBUG
+            print("✅ Listing reloaded successfully")
+            print("   - accepts_offers: \(refreshedListing.acceptsOffers ?? false)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ Failed to reload listing: \(error)")
+            #endif
+        }
+    }
+    
     private func deleteListing() async {
         guard let userId = authManager.session?.user.id.uuidString else { return }
         
@@ -319,7 +369,7 @@ struct ListingDetailView: View {
             }
             
             #if DEBUG
-            print("✅ Listing removed (hard or soft) successfully: \(listing.id)")
+            print("✅ Listing removed (hard or soft) successfully: \(displayedListing.id)")
             #endif
             
         } catch {
@@ -385,7 +435,7 @@ struct ListingDetailView: View {
                         isContactingSeller = false
                         activeSheet = .chat(conversation)
                         #if DEBUG
-                        print("✅ Opening chat for listing: \(listing.title)")
+                        print("✅ Opening chat for listing: \(displayedListing.title)")
                         #endif
                     }
                 } else {
@@ -394,7 +444,7 @@ struct ListingDetailView: View {
                         purchaseError = "Failed to start conversation. Please try again."
                         showErrorAlert = true
                         #if DEBUG
-                        print("❌ Failed to create/find conversation for listing: \(listing.title)")
+                        print("❌ Failed to create/find conversation for listing: \(displayedListing.title)")
                         #endif
                     }
                 }
@@ -452,10 +502,10 @@ struct ListingDetailView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        if listing.listingType == .product {
+        if displayedListing.listingType == .product {
             // Show payment method selection for products
             showPaymentMethodSheet = true
-        } else if listing.listingType == .service {
+        } else if displayedListing.listingType == .service {
             // Show payment method selection directly for services
             // Service coordination happens through messaging after payment
             showPaymentMethodSheet = true
@@ -499,7 +549,7 @@ struct ListingDetailView: View {
             throw PaymentError.walletNotLoaded
         }
         
-        let priceCents = Int((listing.price ?? 0) * 100)
+        let priceCents = Int((displayedListing.price ?? 0) * 100)
         guard wallet.availableCents >= priceCents else {
             throw PaymentError.insufficientFunds
         }
@@ -514,7 +564,7 @@ struct ListingDetailView: View {
             throw PaymentError.orderCreationFailed
         }
         
-        let sellerPriceCents = Int((listing.price ?? 0) * 100) * purchaseQuantity
+        let sellerPriceCents = Int((displayedListing.price ?? 0) * 100) * purchaseQuantity
         let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
         
         let orderCreate = OrderCreate(
@@ -591,7 +641,7 @@ struct ListingDetailView: View {
                                     }
                                     
                                     // Calculate pricing using new model
-                                    let sellerPriceCents = Int((listing.price ?? 0) * 100)
+                                    let sellerPriceCents = Int((displayedListing.price ?? 0) * 100)
                                     let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
                                     let processingFeeCents = FeeCalculationService.shared.calculateStripeProcessingFee(amountCents: sellerPriceCents)
                                     
@@ -698,12 +748,12 @@ struct ListingDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(listing.title)
+                    Text(displayedListing.title)
                         .responsiveFont(.title, weight: .bold)
                         .lineLimit(3)
 
                     HStack {
-                        Text(listing.category)
+                        Text(displayedListing.category)
                             .responsiveFont(.subheadline)
                             .responsiveHorizontalSpacing(12)
                             .responsiveSpacing(6)
@@ -711,12 +761,12 @@ struct ListingDetailView: View {
                             .foregroundColor(Color("ThemeColor"))
                             .responsiveCornerRadius(8)
 
-                        Text(listing.listingType.displayName)
+                        Text(displayedListing.listingType.displayName)
                             .responsiveFont(.subheadline)
                             .responsiveHorizontalSpacing(12)
                             .responsiveSpacing(6)
-                            .background(listing.listingType == .product ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
-                            .foregroundColor(listing.listingType == .product ? .blue : .green)
+                            .background(displayedListing.listingType == .product ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
+                            .foregroundColor(displayedListing.listingType == .product ? .blue : .green)
                             .responsiveCornerRadius(8)
                         
                         // WANTED badge for buy posts
@@ -752,14 +802,14 @@ struct ListingDetailView: View {
                     } else {
                         // Show prices based on user role
                         let isOwnListingLocal = authManager.session?.user.id.uuidString.lowercased() == listing.user.id.lowercased()
-                        let sellerPriceCents = Int((listing.price ?? 0) * 100)
+                        let sellerPriceCents = Int((displayedListing.price ?? 0) * 100)
                         let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
                         let buyerPrice = Double(buyerPriceCents) / 100.0
                         
                         if isOwnListingLocal {
                             // Seller viewing their own listing - show only their net price
                             VStack(alignment: .trailing, spacing: 4) {
-                                Text("$\((listing.price ?? 0), specifier: "%.2f")")
+                                Text("$\((displayedListing.price ?? 0), specifier: "%.2f")")
                                     .responsiveFont(.title, weight: .bold)
                                     .foregroundColor(.green)
                                 Text("Your price")
@@ -786,7 +836,7 @@ struct ListingDetailView: View {
     
     @ViewBuilder
     private var serviceDetailsSection: some View {
-        if listing.listingType == .service {
+        if displayedListing.listingType == .service {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Service Details")
                     .responsiveFont(.headline)
@@ -824,19 +874,19 @@ struct ListingDetailView: View {
                 .responsiveFont(.headline)
                 .foregroundColor(.primary)
 
-            Text(listing.description)
+            Text(displayedListing.description)
                 .responsiveFont(.body)
                 .foregroundColor(.secondary)
                 .lineSpacing(4)
             
             // Show ticket guarantee info when Tickets category is selected
-            if listing.category == "Tickets" {
+            if displayedListing.category == "Tickets" {
                 TicketGuaranteeInfoView(isOwnListing: isOwnListing)
                     .padding(.top, 8)
             }
             
             // Show product verification info for products
-            if listing.listingType == .product {
+            if displayedListing.listingType == .product {
                 ProductVerificationInfoView(isForSeller: isOwnListing)
                     .padding(.top, 8)
             }
@@ -855,11 +905,11 @@ struct ListingDetailView: View {
                     UserAvatarView(user: listing.user, size: 50)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text((listing.user.name ?? "Unknown Seller").formattedName)
+                        Text((displayedListing.user.name ?? "Unknown Seller").formattedName)
                             .responsiveFont(.headline)
                             .foregroundColor(.primary)
 
-                        Text("Member since \(formatDate(listing.createdAt))")
+                        Text("Member since \(formatDate(displayedListing.createdAt))")
                             .responsiveFont(.caption)
                             .foregroundColor(.secondary)
                         
@@ -896,7 +946,7 @@ struct ListingDetailView: View {
                     .responsiveFont(.subheadline)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(formatDate(listing.createdAt))
+                Text(formatDate(displayedListing.createdAt))
                     .responsiveFont(.subheadline)
                     .foregroundColor(.primary)
             }
@@ -992,7 +1042,7 @@ struct ListingDetailView: View {
             }
         } else {
             // Regular offer post actions
-            if isOwnListing && (listing.acceptsOffers ?? false) {
+            if isOwnListing && (displayedListing.acceptsOffers ?? false) {
                 // Owner of listing that accepts offers
                 VStack(spacing: 12) {
                     Button(action: handleViewOffers) {
@@ -1037,14 +1087,14 @@ struct ListingDetailView: View {
                         }
                     }
                 }
-            } else if !isOwnListing && (listing.acceptsOffers ?? false) {
+            } else if !isOwnListing && (displayedListing.acceptsOffers ?? false) {
                 // Buyer viewing listing that accepts offers - show both options
                 VStack(spacing: 12) {
                     // Primary: Buy at listed price
                     Button(action: handlePrimaryAction) {
                         HStack {
                             Image(systemName: listing.listingType == .product ? "cart.fill" : "calendar.badge.checkmark")
-                            Text(listing.listingType == .product ? "Buy Now" : "Book Now")
+                            Text(displayedListing.listingType == .product ? "Buy Now" : "Book Now")
                         }
                         .responsiveFont(.headline)
                         .foregroundColor(.white)
@@ -1188,7 +1238,7 @@ struct ListingDetailView: View {
     private var multiplePhotosGallery: some View {
         VStack(spacing: 12) {
             mainPhotoView
-            if listing.photos.count > 1 {
+            if displayedListing.photos.count > 1 {
                 thumbnailGallery
             }
         }
@@ -1219,7 +1269,7 @@ struct ListingDetailView: View {
     private var thumbnailGallery: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
+                ForEach(Array(displayedListing.photos.enumerated()), id: \.offset) { index, photoURL in
                     thumbnailButton(for: photoURL, at: index)
                 }
             }
@@ -1312,7 +1362,7 @@ struct ListingDetailView: View {
             Spacer()
             HStack {
                 Spacer()
-                Text("\(selectedPhotoIndex + 1) / \(listing.photos.count)")
+                Text("\(selectedPhotoIndex + 1) / \(displayedListing.photos.count)")
                     .font(.caption)
                     .fontWeight(.medium)
                     .foregroundColor(.white)

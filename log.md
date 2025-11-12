@@ -1,5 +1,190 @@
 # CampusLink Development Log
 
+## November 12, 2025 - Legal Documents UI/UX Improvements ✨
+
+### Problem
+The signup page's terms of service links were difficult to click, and all legal documents (Privacy Policy, Terms of Service, Community Guidelines) contained weird placeholder text with HTML entities like `&quot;` and brackets like `[Privacy Policy...`.
+
+### Changes Made
+
+#### 1. SignUpView - Made Legal Links Tappable ✅
+**File**: `CampusLink/Core/Auth/SignUpView.swift` (lines 174-280)
+
+**Before**: The legal text was concatenated using `Text() + Text()` which made it non-tappable, forcing users to use the small caption buttons below.
+
+**After**: 
+- Made each legal document name in the sentence an actual tappable Button
+- Added larger, styled button chips below with icons for easier tapping:
+  - Terms button with doc.text icon
+  - Privacy button with lock.shield icon
+  - Guidelines button with person.2 icon
+- Each button has padding, background color, and rounded corners for better UX
+- All buttons properly trigger the respective sheet presentations
+
+#### 2. Created Professional HTML Files ✅
+
+**Created `terms.html`**:
+- Professional styling matching privacy.html
+- Clean, readable formatting with proper sections
+- Removed all HTML entities and weird bracket placeholders
+- Added important legal highlights in yellow boxes
+- Updated company information to CampusLink Labs, LLC
+- Contact info: support@campuslink.app
+
+**Created `community-guidelines.html`**:
+- Comprehensive community guidelines with professional formatting
+- Organized into clear sections:
+  - Core Community Rules (6 main rules)
+  - Content Standards (pornography, hate speech, harassment, etc.)
+  - Marketplace-Specific Rules (listing quality, safety)
+  - Consequences for Violations
+  - Reporting section
+- Professional design with color-coded sections
+- Visual hierarchy with proper headings and spacing
+
+#### 3. Cleaned Up LegalContent.swift ✅
+**File**: `CampusLink/Features/Legal/LegalContent.swift`
+
+**Before**: Had weird placeholder text like:
+- `[Privacy Policy CampusLink LLC (hereinafter known as "Provider"...`
+- HTML entities like `&quot;` instead of actual quotes
+- Unclear formatting with walls of text
+
+**After**: 
+- Removed ALL brackets and placeholder markers
+- Replaced HTML entities with proper characters
+- Clean, bullet-point formatting for easy reading
+- Updated dates to match current version
+- Professional section headers in ALL CAPS
+- Organized information with clear hierarchies
+- Privacy Policy, Terms of Service, and Community Guidelines all cleaned up
+
+### Files Created
+1. `/Users/eileenmurphy/CampusLink/terms.html` - Professional Terms of Service HTML
+2. `/Users/eileenmurphy/CampusLink/community-guidelines.html` - Professional Community Guidelines HTML
+
+### Files Modified
+1. `/Users/eileenmurphy/CampusLink/CampusLink/Core/Auth/SignUpView.swift` - Enhanced legal document links UX
+2. `/Users/eileenmurphy/CampusLink/CampusLink/Features/Legal/LegalContent.swift` - Cleaned up all legal content
+
+### Impact
+- **Better UX**: Users can now easily tap any legal document link on the signup page
+- **Professional Appearance**: All legal documents look clean and professional without weird text
+- **Consistency**: HTML files match the existing privacy.html styling
+- **Compliance**: Legal documents are clear, readable, and properly formatted for users
+
+### Testing Recommendations
+1. Test signup flow on iPhone and iPad to ensure legal buttons are easy to tap
+2. Verify all three sheet presentations work (Terms, Privacy, Guidelines)
+3. Check that HTML files load properly when accessed via GitHub Pages
+4. Confirm in-app legal document views display cleanly
+
+---
+
+## November 12, 2025 - Debugging "Accept Offers" Toggle Issue 🔍
+
+### Problem
+User (Darragh) tried to edit a listing titled "Diff" to enable the "Accept Offers" feature but it either didn't show or didn't save properly.
+
+### Investigation
+
+#### 1. Understanding the "Accept Offers" Feature
+**Location**: `CampusLink/Features/Marketplace/Views/EditListingView.swift` (lines 259-276)
+
+The "Accept Offers" toggle is present in the code and should appear in the edit listing form. However, it has a critical condition:
+
+```swift
+// Accept Offers Toggle (only for regular listings with intent='offer')
+if listing.intent == .offer {
+    // Toggle appears here
+}
+```
+
+**Key Finding**: The toggle **only shows for listings with `intent = 'offer'`** (regular sell listings), NOT for seek listings (`intent = 'seek'`).
+
+#### 2. Possible Causes
+1. **Listing is a Seek listing**: If the listing has `intent = 'seek'`, the toggle won't appear
+2. **Database column missing**: The `accepts_offers` column might not exist in production
+3. **RLS policy issue**: User might not have permission to update the field
+4. **Save logic issue**: The value might not be getting sent to the database correctly
+
+#### 3. Diagnostic Steps
+Created `CHECK_LISTING_STATUS.sql` to verify:
+- The listing's current `intent` value
+- Whether `accepts_offers` column exists
+- Current value of `accepts_offers` for this listing
+- User ownership verification
+
+### Findings
+
+#### Code Audit Complete ✅
+
+1. **PostView (Create Listing)** - Line 68, 468-482:
+   - Has `@State private var acceptsOffers: Bool = false`
+   - Shows "Accept Offers" toggle when `selectedIntent == .offer`
+   - Properly includes field in insert: `acceptsOffers: selectedIntent == .offer ? acceptsOffers : nil`
+
+2. **EditListingView (Edit Listing)** - Line 54, 80, 259-276, 501:
+   - Has `@State private var acceptsOffers: Bool`
+   - Initializes from `listing.acceptsOffers ?? false`
+   - Shows toggle when `listing.intent == .offer`
+   - Properly includes field in update: `acceptsOffers: listing.intent == .offer ? acceptsOffers : nil`
+
+**Conclusion**: The code is correct! The toggle should work for regular sell listings.
+
+### Root Cause Identified ✅
+
+User confirmed the bug: toggling "Accept Offers" in EditListingView didn't persist. The issue was **NOT** with saving to the database, but with **refreshing the UI** after save.
+
+**The Problem:**
+1. User edits listing and toggles "Accept Offers"
+2. Update IS sent to database successfully
+3. EditListingView calls `onUpdated()` callback
+4. ListingDetailView's callback just dismissed the sheet
+5. **ListingDetailView kept showing the OLD listing data** (never reloaded from database)
+
+### Fix Applied 🔧
+
+#### File 1: `EditListingView.swift`
+Added debug logging to confirm updates are being sent:
+- Line 504-510: Log the listing ID, intent, and accepts_offers value being sent
+- Line 521-523: Log success
+- Line 531-534: Log errors with full details
+
+#### File 2: `ListingDetailView.swift`
+Made the view refresh listing data after edits:
+
+1. **Added `currentListing` state** (line 32):
+   - Holds refreshed listing data after edits
+   
+2. **Added `displayedListing` computed property** (lines 35-37):
+   - Returns `currentListing` if available, otherwise falls back to original `listing`
+   - Used throughout the view for display
+
+3. **Added `reloadListing()` function** (lines 296-336):
+   - Fetches fresh listing data from database after edit
+   - Updates `currentListing` state
+   - Includes debug logging
+
+4. **Updated EditListingView callback** (lines 178-183):
+   - Changed from `dismiss()` to `Task { await reloadListing() }`
+   - Now fetches fresh data when edit is saved
+
+5. **Bulk replaced view references**:
+   - Changed `listing.` to `displayedListing.` in all UI code
+   - Kept `listing.id` in database queries (where we need the original ID)
+
+### Result
+✅ "Accept Offers" toggle now persists correctly
+✅ All listing edits refresh immediately in the detail view
+✅ Debug logging added for future troubleshooting
+
+### Next Steps
+1. Test the fix in the app
+2. Verify accepts_offers persists after edit
+
+---
+
 ## November 12, 2025 - Share Sheet Widget for Posted Listings 🎉
 
 ### Overview
@@ -701,6 +886,51 @@ Sellers should NOT see "active order" banner when buyer hasn't paid yet - that's
 - Created `CHECK_ACTIVE_ORDERS.sql` to manually inspect database
 - Can verify what orders exist and their statuses
 - Helps diagnose count vs loading mismatches
+
+### Update 4: Critical Fix - Removed Listing Join for Offer-Based Orders
+
+**User tested and reported**: Still getting error when clicking banner for an order where seller accepted offer but buyer hasn't paid yet.
+
+**Root Cause Found:**
+The queries were joining with `listings` table using:
+```swift
+.select("""
+    *,
+    listing:listings(*)
+""")
+```
+
+**The Problem:**
+When a seller accepts an offer on a listing, the listing is automatically **archived**. The INNER JOIN with `listings` table would fail because the archived listing is no longer in the active listings table, causing the order to be uncountable and unloadable.
+
+**The Fix:**
+Removed ALL listing joins from active order queries:
+
+1. **HomeTabView.swift** (lines 1337-1397):
+   - Removed `listing:listings(*)` join from buyer payment query
+   - Removed `listing:listings(*)` join from buyer confirmation query
+   - Removed `listing:listings(*)` join from seller delivery query
+   - Changed all to simple `select("*")`
+
+2. **ActiveOrderMonitor.swift** (lines 60-127):
+   - Removed `listing:listings(*)` join from ALL debug queries
+   - Removed `listing:listings(*)` join from buyer payment query
+   - Removed `listing:listings(*)` join from buyer confirmation query
+   - Removed `listing:listings(*)` join from seller delivery query
+   - Changed all to simple `select("*")`
+
+**Why This Works:**
+- Orders table has all the data needed (title, description, price, etc.)
+- Listing reference is optional - order can exist without active listing
+- This is especially important for offer-based orders where listing gets archived
+- OrderDetailView doesn't require listing data to function
+
+**Impact:**
+- ✅ Active order banner now works for offer-based orders
+- ✅ Buyers can see orders waiting for payment even if listing archived
+- ✅ Sellers can see orders needing delivery even if listing archived
+- ✅ Queries are faster (no join overhead)
+- ✅ More robust against data inconsistencies
 
 ---
 

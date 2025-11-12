@@ -501,6 +501,14 @@ struct EditListingView: View {
                 acceptsOffers: listing.intent == .offer ? acceptsOffers : nil
             )
 
+            #if DEBUG
+            print("🔍 EditListingView: Saving listing update")
+            print("   - Listing ID: \(listing.id.uuidString)")
+            print("   - Listing intent: \(listing.intent)")
+            print("   - acceptsOffers toggle value: \(acceptsOffers)")
+            print("   - acceptsOffers being sent: \(listing.intent == .offer ? String(describing: acceptsOffers) : "nil")")
+            #endif
+
             do {
                 // Extra safety: ensure the owner matches
                 try await supabase
@@ -510,12 +518,21 @@ struct EditListingView: View {
                     .eq("user_id", value: userId)
                     .execute()
 
+                #if DEBUG
+                print("✅ EditListingView: Update successful")
+                #endif
+
                 await MainActor.run {
                     isSaving = false
                     onUpdated()
                     dismiss()
                 }
             } catch {
+                #if DEBUG
+                print("❌ EditListingView: Update failed - \(error.localizedDescription)")
+                print("   Full error: \(error)")
+                #endif
+                
                 await MainActor.run {
                     isSaving = false
                     errorMessage = "Failed to save changes: \(error.localizedDescription)"
