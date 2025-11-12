@@ -93,6 +93,8 @@ struct Listing: Codable, Identifiable {
     // Quantity tracking
     let quantityAvailable: Int?
     let quantitySold: Int?
+    // Offers/negotiation
+    let acceptsOffers: Bool?
     
     // Computed properties for quantity
     var hasMultipleUnits: Bool { (quantityAvailable ?? 1) > 1 }
@@ -117,6 +119,8 @@ struct Listing: Codable, Identifiable {
         // Quantity tracking
         case quantityAvailable = "quantity_available"
         case quantitySold = "quantity_sold"
+        // Offers/negotiation
+        case acceptsOffers = "accepts_offers"
     }
     
     // MARK: - Sample Data for Previews
@@ -142,7 +146,8 @@ struct Listing: Codable, Identifiable {
         expiresAt: nil,
         deliveryMethod: .pickup,
         quantityAvailable: 1,
-        quantitySold: 0
+        quantitySold: 0,
+        acceptsOffers: false
     )
 }
 
@@ -167,6 +172,8 @@ struct ListingCreate: Codable {
     let deliveryMethod: DeliveryMethod?
     // Quantity tracking
     let quantityAvailable: Int?
+    // Offers/negotiation
+    let acceptsOffers: Bool?
     
     enum CodingKeys: String, CodingKey {
         case title, description, price, category, photo, photos
@@ -184,6 +191,8 @@ struct ListingCreate: Codable {
         case deliveryMethod = "delivery_method"
         // Quantity tracking
         case quantityAvailable = "quantity_available"
+        // Offers/negotiation
+        case acceptsOffers = "accepts_offers"
     }
 }
 
@@ -212,6 +221,8 @@ struct ListingWithUser: Codable, Identifiable {
     // Quantity tracking
     let quantityAvailable: Int?
     let quantitySold: Int?
+    // Offers/negotiation
+    let acceptsOffers: Bool?
     
     // Computed properties for quantity
     var hasMultipleUnits: Bool { (quantityAvailable ?? 1) > 1 }
@@ -235,6 +246,8 @@ struct ListingWithUser: Codable, Identifiable {
         // Quantity tracking
         case quantityAvailable = "quantity_available"
         case quantitySold = "quantity_sold"
+        // Offers/negotiation
+        case acceptsOffers = "accepts_offers"
     }
     
     // MARK: - Sample Data for Previews
@@ -260,7 +273,8 @@ struct ListingWithUser: Codable, Identifiable {
         expiresAt: nil,
         deliveryMethod: .pickup,
         quantityAvailable: 1,
-        quantitySold: 0
+        quantitySold: 0,
+        acceptsOffers: false
     )
 }
 
@@ -333,12 +347,27 @@ struct User: Codable {
 }
 
 // MARK: - Offer Model (Phase 0)
+// MARK: - Offer Listing Type
+enum OfferListingType: String, Codable {
+    case seek = "seek"
+    case regular = "regular"
+}
+
+// MARK: - Unified Offer Model
 struct Offer: Codable, Identifiable {
     let id: UUID
-    let seekListingId: UUID
-    let offerListingId: UUID?
-    let seekerId: String
-    let sellerId: String
+    let listingId: UUID  // Unified field (was seekListingId)
+    let listingType: OfferListingType  // NEW: 'seek' or 'regular'
+    let offerListingId: UUID?  // Optional: seller's listing when offering on seek post
+    let offerFromUserId: String  // NEW: Person making the offer
+    let offerToUserId: String    // NEW: Person receiving the offer
+    let parentOfferId: UUID?     // NEW: For counter-offers
+    
+    // Legacy fields for backward compatibility (deprecated)
+    let seekListingId: UUID?
+    let seekerId: String?
+    let sellerId: String?
+    
     let message: String?
     let status: String
     let priceCents: Int?  // Custom offer amount in cents
@@ -348,10 +377,17 @@ struct Offer: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case id
-        case seekListingId = "seek_listing_id"
+        case listingId = "listing_id"
+        case listingType = "listing_type"
         case offerListingId = "offer_listing_id"
+        case offerFromUserId = "offer_from_user_id"
+        case offerToUserId = "offer_to_user_id"
+        case parentOfferId = "parent_offer_id"
+        // Legacy fields
+        case seekListingId = "seek_listing_id"
         case seekerId = "seeker_id"
         case sellerId = "seller_id"
+        // Standard fields
         case message
         case status
         case priceCents = "price_cents"
@@ -360,7 +396,7 @@ struct Offer: Codable, Identifiable {
         case updatedAt = "updated_at"
     }
     
-    // Computed properties
+    // MARK: - Computed Properties
     var price: Double? {
         guard let cents = priceCents else { return nil }
         return Double(cents) / 100.0
@@ -370,4 +406,34 @@ struct Offer: Codable, Identifiable {
         guard let p = price else { return nil }
         return String(format: "$%.2f", p)
     }
+    
+    var isCounterOffer: Bool {
+        parentOfferId != nil
+    }
+    
+    var isSeekOffer: Bool {
+        listingType == .seek
+    }
+    
+    var isBuyerOffer: Bool {
+        listingType == .regular
+    }
+    
+    // Helper to determine current user's role in the offer
+    func getUserRole(currentUserId: String) -> OfferUserRole {
+        if offerFromUserId.lowercased() == currentUserId.lowercased() {
+            return .sender
+        } else if offerToUserId.lowercased() == currentUserId.lowercased() {
+            return .receiver
+        } else {
+            return .none
+        }
+    }
+}
+
+// MARK: - Offer User Role
+enum OfferUserRole {
+    case sender   // User made the offer
+    case receiver // User received the offer
+    case none     // User not involved
 } 

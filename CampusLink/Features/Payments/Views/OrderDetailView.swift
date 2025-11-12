@@ -1,4 +1,6 @@
 import SwiftUI
+import StripePaymentSheet
+import Realtime
 
 struct OrderDetailView: View {
     let order: Order
@@ -23,8 +25,13 @@ struct OrderDetailView: View {
     @State private var showPINEntrySheet = false
     @State private var showCancelAlert = false
     @State private var refreshTimer: Timer?
+    @State private var showPaymentSheet = false
+    @State private var isProcessingPayment = false
+    @State private var realtimeChannel: RealtimeChannelV2?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    
+    private let paymentService = PaymentService.shared
     
     init(order: Order) {
         self.order = order
@@ -40,7 +47,13 @@ struct OrderDetailView: View {
     }
     
     private var canConfirmReceived: Bool {
-        isBuyer && currentOrder.paymentStatus == .succeeded && currentOrder.orderStatus == .sellerConfirmed
+        // Buyer can confirm after seller delivers
+        // Payment status can be either:
+        // - .requiresCapture (escrow - funds held, released on confirm)
+        // - .succeeded (direct payment - already captured)
+        let validPaymentStatus = currentOrder.paymentStatus == .requiresCapture || 
+                                 currentOrder.paymentStatus == .succeeded
+        return isBuyer && validPaymentStatus && currentOrder.orderStatus == .sellerConfirmed
     }
     
     private var canMarkDelivered: Bool {
@@ -49,6 +62,10 @@ struct OrderDetailView: View {
     
     private var canCancelOrder: Bool {
         isBuyer && currentOrder.orderStatus == .placed
+    }
+    
+    private var needsPayment: Bool {
+        isBuyer && currentOrder.paymentStatus == .pending && currentOrder.orderStatus == .placed
     }
     
     var body: some View {
@@ -162,6 +179,14 @@ struct OrderDetailView: View {
             Task { 
                 await loadOrderData() 
                 await checkRatingStatus()
+                // Setup realtime subscription for instant updates
+                await setupRealtimeSubscription()
+            }
+        }
+        .onDisappear {
+            Task {
+                // Cleanup realtime subscription when view disappears
+                await cleanupRealtimeSubscription()
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -169,10 +194,6 @@ struct OrderDetailView: View {
             if newPhase == .active {
                 Task { await loadOrderData() }
             }
-        }
-        .refreshable {
-            // Pull-to-refresh support
-            await loadOrderData()
         }
     }
     
@@ -408,6 +429,96 @@ struct OrderDetailView: View {
                 .fontWeight(.semibold)
             
             VStack(spacing: 12) {
+                // PRIORITY: Payment Required - Confirm Order & Pay
+                if needsPayment {
+                    VStack(spacing: 12) {
+                        // Warning banner
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Payment Required")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Text("Complete payment to confirm this order")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(12)
+                        
+                        // Confirm & Pay button
+                        Button(action: {
+                            Task { await handleConfirmAndPay() }
+                        }) {
+                            HStack(spacing: 8) {
+                                if isProcessingPayment {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Image(systemName: "creditcard.fill")
+                                        .font(.headline)
+                                    Text("Confirm Order & Pay")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.green)
+                            .cornerRadius(12)
+                        }
+                        .disabled(isProcessingPayment)
+                    }
+                }
+                
+                // Seller waiting for payment - show Contact Buyer button
+                if isSeller && currentOrder.paymentStatus == .pending && currentOrder.orderStatus == .placed {
+                    VStack(spacing: 12) {
+                        // Info banner for seller
+                        HStack(spacing: 12) {
+                            Image(systemName: "clock.fill")
+                                .foregroundColor(.blue)
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Waiting for Payment")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Text("The buyer needs to complete payment")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(12)
+                        
+                        // Contact Buyer button
+                        Button(action: {
+                            showContactSheet = true
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "message.fill")
+                                    .font(.headline)
+                                Text("Contact Buyer")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.blue)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                
                 // Show PIN for buyers with service orders in 'placed' status
                 if isBuyer && currentOrder.orderStatus == .placed && currentOrder.listing?.listingType == .service {
                     if let pin = currentOrder.verificationPin {
@@ -416,6 +527,52 @@ struct OrderDetailView: View {
                     }
                 }
                 
+                // CONTACT BUTTONS - Show first so users can coordinate before taking action
+                
+                // Contact Seller button for buyers (show for active orders)
+                if isBuyer && currentOrder.orderStatus != .completed && currentOrder.orderStatus != .cancelled {
+                    Button(action: {
+                        showContactSheet = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "message.fill")
+                                .font(.headline)
+                            Text("Coordinate with Seller")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                    }
+                }
+                
+                // Contact Buyer button for sellers (show for ALL active orders not already handled above)
+                if isSeller && currentOrder.orderStatus != .completed && currentOrder.orderStatus != .cancelled &&
+                   !(currentOrder.paymentStatus == .pending && currentOrder.orderStatus == .placed) {
+                    Button(action: {
+                        showContactSheet = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "message.fill")
+                                .font(.headline)
+                            Text("Coordinate with Buyer")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                    }
+                }
+                
+                // PRIMARY ACTION BUTTONS
+                
+                // BUYER: Confirm Product Received
                 if canConfirmReceived {
                     Button(action: { showConfirmAlert = true }) {
                         HStack(spacing: 8) {
@@ -430,6 +587,46 @@ struct OrderDetailView: View {
                         .padding(.vertical, 16)
                         .background(Color.green)
                         .cornerRadius(12)
+                    }
+                }
+                
+                // SELLER: Mark as Delivered
+                if canMarkDelivered {
+                    // For service orders: PIN entry or direct confirmation
+                    if currentOrder.listing?.listingType == .service {
+                        // Service orders don't need photo - just mark complete
+                        Button(action: { 
+                            Task { await markDelivered(with: "") }
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.headline)
+                                Text("Mark Service Complete")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.green)
+                            .cornerRadius(12)
+                        }
+                    } else {
+                        // For product orders (or unknown): ALWAYS show photo upload
+                        Button(action: { showDeliveryPhotoSheet = true }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.headline)
+                                Text("Mark as Delivered")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.green)
+                            .cornerRadius(12)
+                        }
                     }
                 }
                 
@@ -454,24 +651,6 @@ struct OrderDetailView: View {
                     }
                 }
                 
-                // Show photo upload for product orders only
-                if canMarkDelivered && currentOrder.listing?.listingType == .product {
-                    Button(action: { showDeliveryPhotoSheet = true }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "shippingbox.fill")
-                                .font(.headline)
-                            Text("Mark as Delivered")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.blue)
-                        .cornerRadius(12)
-                    }
-                }
-                
                 // Cancel order button (only for buyers when seller hasn't confirmed)
                 if canCancelOrder {
                     Button(action: { showCancelAlert = true }) {
@@ -485,7 +664,7 @@ struct OrderDetailView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color.facebookBlue)
+                        .background(Color.red)
                         .cornerRadius(12)
                     }
                 }
@@ -531,26 +710,7 @@ struct OrderDetailView: View {
                     .padding(.vertical, 20)
                     .background(Color.green.opacity(0.1))
                     .cornerRadius(12)
-                } else if !canConfirmReceived && !canMarkDelivered && currentOrder.orderStatus == .placed {
-                    // Show coordination message for placed orders
-                    VStack(spacing: 8) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                        Text(isBuyer ? "Coordinate with Seller" : "Coordinate with Buyer")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.blue)
-                        Text(isBuyer ? "Coordinate with seller to complete transaction" : "Coordinate with buyer to complete transaction")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
-                } else if !canConfirmReceived && !canMarkDelivered {
+                } else if !canConfirmReceived && !canMarkDelivered && currentOrder.orderStatus != .placed {
                     VStack(spacing: 8) {
                         Image(systemName: "clock")
                             .font(.title2)
@@ -843,6 +1003,193 @@ struct OrderDetailView: View {
         }
     }
     
+    // MARK: - Payment Handling
+    
+    private func handleConfirmAndPay() async {
+        isProcessingPayment = true
+        
+        do {
+            print("💳 Configuring payment for existing order: \(currentOrder.id)")
+            print("💳 Using listing_id from order: \(currentOrder.listingId)")
+            
+            // SIMPLER APPROACH: Use listing_id from the order with existing payment flow
+            // The order already exists, webhook will update it instead of creating new one
+            let (_, _, _) = try await paymentService.configurePaymentSheet(for: currentOrder.listingId.uuidString)
+            
+            await MainActor.run {
+                // Get the TOPMOST view controller (not the one presenting this sheet)
+                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                      let window = windowScene.windows.first else {
+                    errorMessage = "Unable to present payment sheet"
+                    isProcessingPayment = false
+                    return
+                }
+                
+                // Get the topmost presented view controller
+                var topVC = window.rootViewController
+                while let presented = topVC?.presentedViewController {
+                    topVC = presented
+                }
+                
+                guard let presentingVC = topVC else {
+                    errorMessage = "Unable to find presenting view controller"
+                    isProcessingPayment = false
+                    return
+                }
+                
+                print("🔵 About to present payment sheet from TOPMOST view controller: \(type(of: presentingVC))")
+                
+                // Present the payment sheet from the topmost VC
+                paymentService.presentPaymentSheet(from: presentingVC)
+                
+                print("🔵 Payment sheet present() called, polling for result...")
+                
+                // Poll for payment result
+                Task { @MainActor in
+                    var attempts = 0
+                    let maxAttempts = 60 // 60 seconds timeout
+                    
+                    while attempts < maxAttempts {
+                        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                        
+                        if let result = paymentService.paymentResult {
+                            print("🔵 Got payment result after \(attempts) seconds: \(result)")
+                            await handlePaymentResult(result)
+                            paymentService.paymentResult = nil
+                            isProcessingPayment = false
+                            return
+                        }
+                        
+                        attempts += 1
+                    }
+                    
+                    // Timeout
+                    isProcessingPayment = false
+                    print("⚠️ Payment result timeout after 60 seconds")
+                }
+                
+                isProcessingPayment = false
+            }
+        } catch {
+            print("❌ Failed to configure payment: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            print("❌ Error description: \(error.localizedDescription)")
+            if let nsError = error as NSError? {
+                print("❌ Error domain: \(nsError.domain)")
+                print("❌ Error code: \(nsError.code)")
+                print("❌ Error userInfo: \(nsError.userInfo)")
+            }
+            await MainActor.run {
+                isProcessingPayment = false
+                errorMessage = "Payment failed: \(error.localizedDescription)"
+            }
+        }
+    }
+    
+    private func handlePaymentResult(_ result: PaymentSheetResult) async {
+        switch result {
+        case .completed:
+            print("✅ Payment completed! Refreshing order...")
+            
+            // Show success immediately for better UX
+            await MainActor.run {
+                successMessage = "Payment completed! Your order has been confirmed. Waiting for seller to fulfill the order."
+                showSuccessView = true
+                showPaymentSheet = false
+                isProcessingPayment = false
+            }
+            
+            // Start listening for order updates via Realtime
+            await setupRealtimeSubscription()
+            
+            // Also do a quick refresh to catch any immediate updates
+            await loadOrderData()
+            
+            // Poll a few times as fallback (much shorter delays)
+            for attempt in 1...3 {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                await loadOrderData()
+                
+                // If payment status updated, we're done
+                if currentOrder.paymentStatus != .pending {
+                    print("✅ Order updated after \(attempt * 500)ms")
+                    break
+                }
+            }
+            
+        case .canceled:
+            print("⚠️ Payment cancelled by user")
+            
+        case .failed(let error):
+            print("❌ Payment failed: \(error.localizedDescription)")
+            print("❌ Payment error type: \(type(of: error))")
+            print("❌ Payment error details: \(error)")
+            if let nsError = error as NSError? {
+                print("❌ Payment NSError domain: \(nsError.domain)")
+                print("❌ Payment NSError code: \(nsError.code)")
+                print("❌ Payment NSError userInfo: \(nsError.userInfo)")
+            }
+            await MainActor.run {
+                errorMessage = "Payment failed: \(error.localizedDescription). Please try again or contact support."
+            }
+        }
+    }
+    
+    // MARK: - Realtime Subscription
+    
+    private func setupRealtimeSubscription() async {
+        // Clean up any existing subscription first
+        await cleanupRealtimeSubscription()
+        
+        let channel = supabase.realtimeV2.channel("order:\(currentOrder.id.uuidString)")
+        
+        // Subscribe to UPDATE events on orders table for this specific order
+        _ = channel.onPostgresChange(
+            UpdateAction.self,
+            schema: "public",
+            table: "orders",
+            filter: "id=eq.\(currentOrder.id.uuidString)"
+        ) { [currentOrder] change in
+            Task { @MainActor in
+                do {
+                    let orderData = try JSONEncoder().encode(change.record)
+                    let updatedOrder = try JSONDecoder().decode(Order.self, from: orderData)
+                    
+                    print("🔄 Realtime update: Order payment_status changed to \(updatedOrder.paymentStatus.rawValue)")
+                    
+                    // Update the current order with the new data
+                    self.currentOrder = updatedOrder
+                    
+                    // Invalidate cache to ensure consistency
+                    DataCacheManager.shared.invalidateOrders()
+                    
+                } catch {
+                    print("❌ Failed to parse realtime order update: \(error)")
+                }
+            }
+        }
+        
+        // Subscribe to the channel
+        await channel.subscribe()
+        
+        // Store reference for cleanup
+        await MainActor.run {
+            self.realtimeChannel = channel
+        }
+        
+        print("✅ Realtime subscription setup for order: \(currentOrder.id)")
+    }
+    
+    private func cleanupRealtimeSubscription() async {
+        if let channel = realtimeChannel {
+            await channel.unsubscribe()
+            await MainActor.run {
+                self.realtimeChannel = nil
+            }
+            print("🧹 Cleaned up realtime subscription for order")
+        }
+    }
+    
     private func cancelOrder() async {
         print("🔵 cancelOrder: Starting cancellation for order \(currentOrder.id)")
         isLoading = true
@@ -957,8 +1304,12 @@ struct OrderDetailView: View {
             await MainActor.run {
                 // Update local state with fresh data from database
                 self.currentOrder = updatedOrder
+                print("🔄 Order refreshed:")
+                print("   Order Status: \(updatedOrder.orderStatus.displayName)")
+                print("   Payment Status: \(updatedOrder.paymentStatus.displayName)")
+                print("   Can confirm received? \(canConfirmReceived)")
+                print("   Needs payment? \(needsPayment)")
             }
-            print("✅ Order data refreshed - status: \(updatedOrder.orderStatus.displayName)")
         } catch {
             print("❌ Failed to refresh order data: \(error)")
         }

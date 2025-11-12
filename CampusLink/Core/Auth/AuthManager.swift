@@ -121,6 +121,12 @@ class AuthManager: ObservableObject {
     
     /// Sign up with email confirmation required (OTP-based)
     func signUpWithEmailConfirmation(email: String, password: String, name: String, campus: String) async -> Result<Void, AuthError> {
+        // Validate .edu email requirement
+        guard email.lowercased().hasSuffix(".edu") else {
+            print("❌ Signup rejected: email does not end with .edu")
+            return .failure(.invalidEmail)
+        }
+        
         do {
             print("🔄 Starting signup with email confirmation for \(email)")
             print("🔄 Password length: \(password.count)")

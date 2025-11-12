@@ -279,7 +279,8 @@ struct ActionButton_Previews: PreviewProvider {
                     expiresAt: nil,
                     deliveryMethod: .pickup,
                     quantityAvailable: 1,
-                    quantitySold: 0
+                    quantitySold: 0,
+                    acceptsOffers: false
                 ),
                 isOwnListing: false,
                 isContactingLoading: false,

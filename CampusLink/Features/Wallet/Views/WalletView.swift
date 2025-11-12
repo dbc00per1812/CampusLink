@@ -8,6 +8,7 @@ struct WalletView: View {
     @State private var selectedTransaction: PaymentTransaction?
     @State private var selectedOrder: Order?
     @State private var selectedOffer: UserOffer?
+    @State private var selectedPendingTransaction: PendingTransaction?
     @State private var showingOfferAcceptance = false
     @State private var isProcessingOffer = false
     @State private var offerError: String?
@@ -23,10 +24,8 @@ struct WalletView: View {
                     // Action Buttons
                     actionButtons
                     
-                    // Pending Offers (if seeking mode enabled)
-                    if AppConfig.enableSeekMode {
-                        pendingOffers
-                    }
+                    // Pending Transactions (Unified)
+                    pendingTransactionsSection
                     
                     // Transaction History
                     transactionHistory
@@ -74,11 +73,13 @@ struct WalletView: View {
             if AppConfig.enableSeekMode {
                 await viewModel.loadPendingOffers()
             }
+            await viewModel.loadPendingTransactions()
         }
         .sheet(isPresented: $viewModel.showPayoutRequestSheet, onDismiss: { viewModel.showPayoutRequestSheet = false }) { 
-            if let wallet = viewModel.wallet {
+            // ✅ Pass STRIPE balance (source of truth), not database wallet
                 PayoutRequestView(
-                    availableBalance: wallet.availableCents,
+                availableBalance: viewModel.stripeBalance?.availableStandard ?? 0,
+                pendingBalance: viewModel.stripeBalance?.pending ?? 0,
                     onPayoutRequested: { payout in
                         viewModel.showPayoutRequestSheet = false
                         // Refresh wallet data after payout request
@@ -90,7 +91,6 @@ struct WalletView: View {
                         viewModel.showPayoutRequestSheet = false
                     }
                 )
-            }
         }
         .sheet(isPresented: $viewModel.showPayoutHistorySheet, onDismiss: { viewModel.showPayoutHistorySheet = false }) {
             if let userId = authManager.session?.user.id.uuidString {
@@ -117,6 +117,10 @@ struct WalletView: View {
                     onDismiss: { showingOfferAcceptance = false }
                 )
             }
+        }
+        .sheet(item: $selectedPendingTransaction) { transaction in
+            PendingTransactionDetailView(transaction: transaction)
+                .environmentObject(authManager)
         }
         .alert("Wallet", isPresented: $viewModel.isShowingError) {
             Button("OK") { viewModel.errorMessage = nil }
@@ -232,31 +236,31 @@ struct WalletView: View {
         }
     }
     
-    // MARK: - Pending Offers
-    private var pendingOffers: some View {
+    // MARK: - Pending Transactions Section
+    private var pendingTransactionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Pending Offers")
+                Text("Pending Transactions")
                     .font(.headline)
                 Spacer()
-                if viewModel.pendingOffers.count > 3 {
-                    NavigationLink(destination: AllOffersView()) {
+                    NavigationLink(destination: AllPendingTransactionsView(
+                        transactions: viewModel.pendingTransactions
+                    ).environmentObject(authManager)) {
                         Text("See All")
                             .font(.subheadline)
                             .foregroundColor(Color("ThemeColor"))
-                    }
                 }
             }
             
-            if viewModel.isLoadingOffers {
+            if viewModel.isLoadingPendingTransactions {
                 HStack {
                     Spacer()
                     ProgressView()
                         .padding()
                     Spacer()
                 }
-            } else if viewModel.pendingOffers.isEmpty {
-                Text("No pending offers")
+            } else if viewModel.pendingTransactions.isEmpty {
+                Text("No pending transactions")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
@@ -265,8 +269,8 @@ struct WalletView: View {
                     .cornerRadius(12)
             } else {
                 VStack(spacing: 8) {
-                    ForEach(viewModel.pendingOffers.prefix(3)) { offer in
-                        offerRow(offer)
+                    ForEach(viewModel.pendingTransactions.prefix(5)) { transaction in
+                        pendingTransactionRow(transaction)
                     }
                 }
             }
@@ -283,48 +287,83 @@ struct WalletView: View {
         .animation(.easeInOut(duration: 0.3), value: shouldHighlightOffers)
     }
     
-    // MARK: - Offer Row
-    private func offerRow(_ offer: UserOffer) -> some View {
+    // MARK: - Pending Transaction Row
+    private func pendingTransactionRow(_ transaction: PendingTransaction) -> some View {
         Button(action: {
-            selectedOffer = offer
-            showingOfferAcceptance = true
+            // Navigate to appropriate detail view based on transaction type
+            if let order = transaction.order {
+                // Navigate to order detail
+                selectedOrder = order
+            } else if transaction.offer != nil || transaction.payout != nil {
+                // Show pending transaction detail for offers and payouts
+                selectedPendingTransaction = transaction
+            }
         }) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(offer.seekListingTitle)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Type tag
+                    HStack(spacing: 4) {
+                        Image(systemName: transaction.typeIcon)
+                            .font(.caption)
+                        Text(transaction.typeTag)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(transaction.typeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(transaction.typeColor.opacity(0.15))
+                    .cornerRadius(6)
+                    
+                    // Title
+                    Text(transaction.title)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                        .lineLimit(1)
                         .foregroundColor(.primary)
+                        .lineLimit(1)
                     
-                    HStack(spacing: 4) {
-                        Text("From:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text(offer.sellerName)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
+                    // Amount
+                    Text(transaction.amount)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(Color("ThemeColor"))
+                    
+                    // From/To info
+                    if let fromUser = transaction.fromUser {
+                        HStack(spacing: 4) {
+                            Text("From:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(fromUser)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                        }
                     }
                 }
                 
                 Spacer()
                 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(offer.formattedPrice ?? "$0.00")
-                        .font(.headline)
-                        .foregroundColor(Color("ThemeColor"))
+                VStack(alignment: .trailing, spacing: 6) {
+                    // Status badge
+                    Text(transaction.status)
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(transaction.statusColor.opacity(0.15))
+                        .foregroundColor(transaction.statusColor)
+                        .cornerRadius(6)
                     
-                    if offer.canAccept {
-                        Text("Accept")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .background(Color.green)
-                            .cornerRadius(8)
-                    }
+                    // Time
+                    Text(transaction.createdAt, style: .relative)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    // Arrow
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
             .padding()

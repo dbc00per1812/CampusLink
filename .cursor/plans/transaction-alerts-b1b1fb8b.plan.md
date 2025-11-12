@@ -97,3 +97,14 @@ orderStatus == .sellerConfirmed && paymentStatus == .requiresCapture
 ### To-dos
 
 - [x] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+- [x] Create ActiveOrderMonitor service for background polling and repeated notifications
+- [x] Add flashing 'Active Post' button to HomeTabView header that shows when orders need attention
+- [x] Add red badge icon with count in MyTransactionsView toolbar when orders require user action
+- [x] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+- [x] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+- [x] Create ActiveOrderMonitor service for background polling and repeated notifications
+- [x] Add flashing 'Active Post' button to HomeTabView header that shows when orders need attention
+- [x] Add red badge icon with count in MyTransactionsView toolbar when orders require user action
+- [x] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+- [x] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+- [x] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process

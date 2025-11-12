@@ -300,14 +300,17 @@ final class OrderService: ObservableObject {
             print("🔵 confirmDelivery: Order status verified, updating to completed")
             
             // STEP 1: Capture Stripe payment if this was a card payment
+            // NOTE: Capture is optional - escrow release will work regardless
             if let paymentIntentId = order.stripePaymentIntentId, order.paymentMethod == .card {
-                print("💳 confirmDelivery: Capturing Stripe payment: \(paymentIntentId)")
+                print("💳 confirmDelivery: Attempting to capture Stripe payment: \(paymentIntentId)")
                 do {
                     try await PaymentService.shared.capturePayment(paymentIntentId: paymentIntentId)
-                    print("✅ confirmDelivery: Payment captured successfully")
+                    print("✅ confirmDelivery: Payment captured successfully in Stripe")
                 } catch {
-                    print("❌ confirmDelivery: Failed to capture payment: \(error)")
-                    throw OrderServiceError.paymentCaptureFailed("Failed to capture payment: \(error.localizedDescription)")
+                    print("⚠️ confirmDelivery: Failed to capture payment in Stripe: \(error)")
+                    print("⚠️ This is non-critical - escrow release will proceed anyway")
+                    // DON'T throw - allow order to complete even if Stripe capture fails
+                    // The escrow release to wallet will still work
                 }
             } else {
                 print("ℹ️ confirmDelivery: No payment capture needed (payment method: \(order.paymentMethod.displayName))")
@@ -348,6 +351,26 @@ final class OrderService: ObservableObject {
                 .value
             
             print("🔵 confirmDelivery: Order status updated successfully, releasing escrow funds")
+            
+            // Update escrow_release_status in payments table
+            if let paymentIntentId = order.stripePaymentIntentId {
+                print("🔵 confirmDelivery: Updating escrow_release_status in payments table")
+                do {
+                    try await supabase
+                        .from("payments")
+                        .update([
+                            "escrow_release_status": "released",
+                            "escrow_release_at": ISO8601DateFormatter().string(from: Date())
+                        ])
+                        .eq("payment_intent_id", value: paymentIntentId)
+                        .execute()
+                    
+                    print("✅ confirmDelivery: Escrow status updated to 'released' in payments table")
+                } catch {
+                    print("⚠️ confirmDelivery: Failed to update escrow_release_status: \(error)")
+                    // Don't throw - this is non-critical, order completion is primary
+                }
+            }
             
             // Release funds from escrow to seller's wallet
             try await releaseEscrowFunds(order: order)

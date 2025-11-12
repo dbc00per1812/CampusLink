@@ -47,12 +47,59 @@ serve(async (req) => {
     const userId = user.id;
     console.log(`💳 Creating payment intent for user: ${userId}`);
 
-    // Parse request body
-    const { listing_id } = await req.json();
-    if (!listing_id) {
-      throw new Error("listing_id is required");
-    }
+    // Parse request body - support BOTH listing_id (new purchase) and order_id (accepted offer)
+    const { listing_id, order_id } = await req.json();
+    
+    let sellerUserId: string;
+    let sellerPriceCents: number;
+    let buyerPriceCents: number;
+    let listingId: string;
+    let listingTitle: string;
+    
+    if (order_id) {
+      // PAYING FOR EXISTING ORDER (accepted offer)
+      console.log(`💳 Payment for existing order: ${order_id}`);
+      
+      const { data: order, error: orderError } = await supabaseAdmin
+        .from("orders")
+        .select("id, buyer_id, seller_id, buyer_price_cents, seller_price_cents, listing_id, payment_status")
+        .eq("id", order_id)
+        .single();
 
+      if (orderError || !order) {
+        console.error("Order fetch error:", orderError);
+        throw new Error("Order not found");
+      }
+
+      // Verify current user is the buyer
+      if (order.buyer_id !== userId) {
+        throw new Error("Unauthorized - you are not the buyer of this order");
+      }
+
+      // Verify order is unpaid
+      if (order.payment_status !== 'pending') {
+        throw new Error("Order already paid");
+      }
+
+      sellerUserId = order.seller_id;
+      sellerPriceCents = order.seller_price_cents;
+      buyerPriceCents = order.buyer_price_cents;
+      listingId = order.listing_id;
+      
+      // Get listing title separately
+      const { data: listing } = await supabaseAdmin
+        .from("listings")
+        .select("title")
+        .eq("id", order.listing_id)
+        .single();
+      
+      listingTitle = listing?.title || "Order";
+      
+      console.log(`📦 Order: ${listingTitle}, Buyer Price: $${buyerPriceCents / 100}`);
+      console.log(`👤 Seller ID: ${sellerUserId}`);
+      
+    } else if (listing_id) {
+      // EXISTING FLOW: New purchase
     console.log(`📦 Listing ID: ${listing_id}`);
 
     // Get listing details including seller info
@@ -78,6 +125,16 @@ serve(async (req) => {
     // Verify buyer is not the seller
     if (listing.user_id === userId) {
       throw new Error("Cannot purchase your own listing");
+      }
+      
+      sellerUserId = listing.user_id;
+      listingId = listing.id;
+      listingTitle = listing.title;
+      
+      // Calculate prices (will be set below in existing code flow)
+      
+    } else {
+      throw new Error("Either listing_id or order_id is required");
     }
 
     // Initialize Stripe (needed for capability checks)
@@ -89,7 +146,7 @@ serve(async (req) => {
     const { data: sellerProfile, error: sellerError } = await supabaseAdmin
       .from("users")
       .select("stripe_connect_id")
-      .eq("id", listing.user_id)
+      .eq("id", sellerUserId)
       .single();
 
     if (sellerError || !sellerProfile) {
@@ -130,8 +187,20 @@ serve(async (req) => {
       }
     }
 
-    // Calculate pricing breakdown using your round-up fee model
-    const sellerPriceCents = Math.round(listing.price * 100);
+    // Calculate pricing breakdown (only for new listings, order already has prices)
+    if (listing_id && !order_id) {
+      // NEW PURCHASE: Calculate prices from listing
+      const { data: listing, error: listingError } = await supabaseAdmin
+        .from("listings")
+        .select("price")
+        .eq("id", listing_id)
+        .single();
+      
+      if (listingError || !listing) {
+        throw new Error("Listing not found for price calculation");
+      }
+      
+      sellerPriceCents = Math.round(listing.price * 100);
     
     // Calculate Stripe processing fee (2.9% + $0.30)
     const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
@@ -140,13 +209,16 @@ serve(async (req) => {
     const subtotalCents = sellerPriceCents + stripeFeeCents;
     
     // Round UP to next dollar - this is what buyer pays
-    const buyerPriceCents = Math.ceil(subtotalCents / 100) * 100;
+      buyerPriceCents = Math.ceil(subtotalCents / 100) * 100;
+    }
+    // For order_id case, prices are already set from the order query above
     
-    // Your cut is the rounded-up amount (used for escrow mode)
+    // Calculate platform cut and application fee
+    const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
+    const subtotalCents = sellerPriceCents + stripeFeeCents;
     const campusLinkCutCents = buyerPriceCents - subtotalCents;
     
     // For destination charges: application fee = everything except seller's listing price
-    // This ensures seller receives exactly their listing price, platform gets the rest + covers Stripe fee
     const applicationFeeCents = buyerPriceCents - sellerPriceCents;
 
     console.log("💰 Pricing breakdown:");
@@ -172,13 +244,14 @@ serve(async (req) => {
         enabled: true,
       },
       metadata: {
-        listing_id: listing_id,
+        listing_id: listingId,
         buyer_id: userId,
-        seller_id: listing.user_id,
+        seller_id: sellerUserId,
         seller_price_cents: sellerPriceCents.toString(),
         buyer_price_cents: buyerPriceCents.toString(),
         stripe_fee_cents: stripeFeeCents.toString(),
         campuslink_cut_cents: campusLinkCutCents.toString(),
+        ...(order_id ? { order_id: order_id } : {}),  // Include order_id if paying for existing order
         application_fee_cents: applicationFeeCents.toString(),
         seller_receives_cents: sellerReceivesCents.toString(),
       },

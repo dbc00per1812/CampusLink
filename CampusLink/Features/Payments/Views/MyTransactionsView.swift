@@ -227,14 +227,7 @@ struct MyTransactionsView: View {
     
     @ViewBuilder
     private var loadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .scaleEffect(1.2)
-            Text("Loading your transactions...")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        TransactionListSkeleton(count: 5)
     }
     
     @ViewBuilder
@@ -363,7 +356,30 @@ struct MyTransactionsView: View {
     private func loadData() async {
         guard let currentUserId = authManager.session?.user.id else { return }
         
-        await MainActor.run { isLoading = true; errorMessage = nil }
+        // Check cache first (INSTANT LOADING)
+        if let cachedPurchases = DataCacheManager.shared.getOrders(forKey: "purchases") {
+            await MainActor.run {
+                self.purchases = cachedPurchases
+                self.isLoading = false
+            }
+        }
+        
+        if let cachedSales = DataCacheManager.shared.getOrders(forKey: "sales") {
+            await MainActor.run {
+                self.sales = cachedSales
+                self.isLoading = false
+            }
+        }
+        
+        // If we had cached data, don't show loading state
+        let hadCachedData = DataCacheManager.shared.getOrders(forKey: "purchases") != nil ||
+                            DataCacheManager.shared.getOrders(forKey: "sales") != nil
+        
+        if !hadCachedData {
+            await MainActor.run { isLoading = true }
+        }
+        
+        await MainActor.run { errorMessage = nil }
         
         do {
             let purchaseResults: [Order] = try await supabase
@@ -392,6 +408,10 @@ struct MyTransactionsView: View {
                 .execute()
                 .value
 
+            // Cache the fresh data (1 minute TTL for up-to-date transactions)
+            DataCacheManager.shared.cacheOrders(purchaseResults, forKey: "purchases", ttl: 60)
+            DataCacheManager.shared.cacheOrders(saleResults, forKey: "sales", ttl: 60)
+
             await MainActor.run {
                 self.purchases = purchaseResults
                 self.sales = saleResults
@@ -407,6 +427,10 @@ struct MyTransactionsView: View {
     
     private func refreshData() async {
         await MainActor.run { isRefreshing = true }
+        
+        // Invalidate cache on manual refresh to force fresh data
+        DataCacheManager.shared.invalidateOrders()
+        
         await loadData()
         await MainActor.run { isRefreshing = false }
     }
@@ -427,6 +451,10 @@ struct MyTransactionsView: View {
         }
         do {
             try await OrderService.shared.updateOrderStatus(order.id, status: .completed)
+            
+            // Invalidate order cache since order status changed
+            DataCacheManager.shared.invalidateOrders()
+            
             await MainActor.run {
                 successToastMessage = order.listing?.listingType == .service 
                     ? "Service marked as completed! ✅"
@@ -453,6 +481,10 @@ struct MyTransactionsView: View {
         }
         do {
             try await OrderService.shared.markDelivered(order.id, deliveryPhotoUrl: photoURL)
+            
+            // Invalidate order cache since order status changed
+            DataCacheManager.shared.invalidateOrders()
+            
             await MainActor.run {
                 successToastMessage = order.listing?.listingType == .service
                     ? "Service marked as delivered! ✅"

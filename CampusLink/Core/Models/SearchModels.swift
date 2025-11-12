@@ -227,7 +227,8 @@ struct SearchListing: Codable, Identifiable {
             expiresAt: nil, // Not in current search results
             deliveryMethod: nil, // Not in current search results
             quantityAvailable: 1, // Default quantity
-            quantitySold: 0 // Default sold count
+            quantitySold: 0, // Default sold count
+            acceptsOffers: false // Default
         )
     }
 }

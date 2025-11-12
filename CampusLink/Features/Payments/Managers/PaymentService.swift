@@ -44,6 +44,63 @@ final class PaymentService: ObservableObject {
 
     // MARK: - Public API
 
+    /// Calls the `create_payment_intent` Edge Function to prepare payment for an existing order (from accepted offer).
+    /// - Parameter orderId: The identifier of the unpaid order
+    /// - Returns: Tuple containing client secret and fee information
+    func preparePaymentSheetForOrder(orderId: String) async throws -> (clientSecret: String, baseAmountCents: Int, stripeFeeCents: Int, totalAmountCents: Int) {
+        #if DEBUG
+        print("🔍 PaymentService: Calling create_payment_intent for order \(orderId)")
+        #endif
+        
+        let url = try functionsURL(appendingPath: "create_payment_intent")
+
+        struct RequestBody: Encodable { let order_id: String }
+        
+        struct ResponseBodyWithPricing: Decodable {
+            let client_secret: String
+            let seller_price_cents: Int
+            let buyer_price_cents: Int
+            let stripe_fee_cents: Int
+            let campuslink_cut_cents: Int?
+        }
+
+        let token = try await currentAccessToken()
+        let request = try makeRequest(url: url, token: token, body: RequestBody(order_id: orderId))
+
+        #if DEBUG
+        print("🌐 Making request to: \(url.absoluteString)")
+        #endif
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        #if DEBUG
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📥 Response status: \(httpResponse.statusCode)")
+            print("📥 Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+        }
+        #endif
+        
+        // Check for errors before decoding
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            let errorString = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("❌ Edge function error: \(errorString)")
+            throw NSError(domain: "PaymentService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(errorString)"])
+        }
+        
+        try ensureSuccess(response: response, data: data)
+        
+        let decoded = try JSONDecoder().decode(ResponseBodyWithPricing.self, from: data)
+        
+        #if DEBUG
+        print("✅ Decoded payment intent for order")
+        print("   Seller price: $\(Double(decoded.seller_price_cents)/100)")
+        print("   Buyer price: $\(Double(decoded.buyer_price_cents)/100)")
+        print("   Stripe fee: $\(Double(decoded.stripe_fee_cents)/100)")
+        #endif
+        
+        return (decoded.client_secret, decoded.seller_price_cents, decoded.stripe_fee_cents, decoded.buyer_price_cents)
+    }
+
     /// Calls the `create_payment_intent` Edge Function to prepare a Stripe PaymentIntent.
     /// - Parameter listingId: The identifier of the listing that the user intends to purchase.
     /// - Returns: Tuple containing client secret and fee information
@@ -162,6 +219,47 @@ final class PaymentService: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         try ensureSuccess(response: response, data: data)
         _ = data // no-op; server returns status JSON which we do not currently need
+    }
+    
+    /// Prepares and configures the Stripe PaymentSheet for paying an existing order (from accepted offer).
+    /// - Parameter orderId: The identifier of the unpaid order
+    /// - Returns: Fee information for display
+    func configurePaymentSheetForOrder(_ orderId: String) async throws -> (baseAmountCents: Int, stripeFeeCents: Int, totalAmountCents: Int) {
+        // Get the client secret and fee info from our Edge Function
+        let (clientSecret, baseAmountCents, stripeFeeCents, totalAmountCents) = try await preparePaymentSheetForOrder(orderId: orderId)
+        
+        #if DEBUG
+        print("🔍 PaymentService: Configuring PaymentSheet for order")
+        print("   Order ID: \(orderId)")
+        print("   Client Secret: \(clientSecret.prefix(20))...")
+        print("   Base Amount: $\(Double(baseAmountCents)/100)")
+        print("   Stripe Fee: $\(Double(stripeFeeCents)/100)")
+        print("   Total Amount: $\(Double(totalAmountCents)/100)")
+        #endif
+        
+        // Configure the PaymentSheet
+        var configuration = PaymentSheet.Configuration()
+        configuration.merchantDisplayName = "CampusLink"
+        configuration.allowsDelayedPaymentMethods = false
+        
+        // Enable Apple Pay
+        configuration.applePay = .init(merchantId: "merchant.campuslink.com.campuslink", merchantCountryCode: "US")
+        
+        #if DEBUG
+        print("✅ Apple Pay enabled")
+        #endif
+        
+        // Initialize PaymentSheet
+        self.paymentSheet = PaymentSheet(
+            paymentIntentClientSecret: clientSecret,
+            configuration: configuration
+        )
+        
+        #if DEBUG
+        print("✅ PaymentService: PaymentSheet configured for order")
+        #endif
+        
+        return (baseAmountCents, stripeFeeCents, totalAmountCents)
     }
     
     /// Prepares and configures the Stripe PaymentSheet for a listing purchase.

@@ -125,7 +125,8 @@ extension Conversation {
             expiresAt: listing.expiresAt,
             deliveryMethod: listing.deliveryMethod,
             quantityAvailable: listing.quantityAvailable,
-            quantitySold: nil
+            quantitySold: nil,
+            acceptsOffers: listing.acceptsOffers
         )
     }
 }

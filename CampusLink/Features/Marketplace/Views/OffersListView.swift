@@ -173,23 +173,22 @@ struct OffersListView: View {
         }
         
         do {
-            // Fetch offers for this seek listing where current user is the seeker
+            // Use unified offer fields - filter by listing_id and user role
+            // Current user should be offer_to_user_id (they're receiving offers on their listing)
+            // Only show pending and accepted offers (not declined/withdrawn)
             let response: [OfferWithDetails] = try await supabase
                 .from("offers")
-                .select("""
-                    *,
-                    offer_listing:listings!offers_offer_listing_id_fkey(*,user:users(*)),
-                    seller:users!offers_seller_id_fkey(*)
-                """)
-                .eq("seek_listing_id", value: seekListing.id.uuidString)
-                .eq("seeker_id", value: currentUserId)
+                .select("*")
+                .eq("listing_id", value: seekListing.id.uuidString)
+                .eq("offer_to_user_id", value: currentUserId)
+                .in("status", values: ["pending", "accepted"])
                 .order("created_at", ascending: false)
                 .execute()
                 .value
             
             await MainActor.run {
                 // Convert to simple Offer models
-                self.offers = response.map { $0.toOffer() }
+                self.offers = response.map { $0.toOffer(listingType: seekListing.intent == .seek ? .seek : .regular) }
                 isLoading = false
             }
             
@@ -220,36 +219,67 @@ struct OffersListView: View {
     }
     
     private func acceptOffer(_ offer: Offer) async {
-        print("🔄 acceptOffer called for offer: \(offer.id)")
-        print("🔄 Offer has orderId: \(offer.orderId?.uuidString ?? "nil")")
+        guard let currentUserId = authManager.currentUserId else {
+            await MainActor.run {
+                errorMessage = "You must be logged in to accept offers"
+            }
+            return
+        }
         
-        // Check if offer already has an associated order (shouldn't happen in new flow)
+        print("🔄 acceptOffer called for offer: \(offer.id)")
+        
+        // Check if offer already has an associated order
         if let orderId = offer.orderId {
             // Offer was already paid for, just navigate to the order
             await MainActor.run {
                 selectedOrderId = orderId
                 showOrderDetail = true
             }
-            print("📊 Analytics: Navigating to existing order for accepted offer - Order: \(orderId)")
-        } else {
-            // Normal flow: offer needs payment before acceptance
-            print("🔄 Setting selectedOffer and showing payment sheet")
+            print("📊 Navigating to existing order: \(orderId)")
+            return
+        }
+        
+        do {
+            // Call UnifiedOfferService to create the order
+            let offerService = UnifiedOfferService.shared
+            let order = try await offerService.acceptOffer(offerId: offer.id, currentUserId: currentUserId)
             
-            // Set both selectedOffer and offerForPayment
+            print("✅ Order created: \(order.id)")
+            
+            // Determine if current user is the buyer (who needs to pay)
+            let isBuyer: Bool
+            if offer.listingType == .seek {
+                // On seek listings: offer_to_user is the buyer
+                isBuyer = (currentUserId == offer.offerToUserId)
+        } else {
+                // On regular listings: offer_from_user is the buyer
+                isBuyer = (currentUserId == offer.offerFromUserId)
+            }
+            
+            if isBuyer {
+                // Current user is the buyer - they need to complete payment
+                print("💳 Current user is buyer, showing payment sheet")
             await MainActor.run {
                 selectedOffer = offer
                 offerForPayment = offer
             }
-            
-            // Load wallet balance
             await loadWalletBalance()
-            
-            // Then show the payment sheet
             await MainActor.run {
                 showPaymentMethodSheet = true
-                print("🔄 showPaymentMethodSheet set to: \(showPaymentMethodSheet)")
-                print("🔄 selectedOffer set to: \(selectedOffer?.id.uuidString ?? "nil")")
-                print("🔄 offerForPayment set to: \(offerForPayment?.id.uuidString ?? "nil")")
+                }
+            } else {
+                // Current user is the seller - order created, buyer will be notified
+                print("✅ Seller accepted offer. Buyer will be notified to pay.")
+                await MainActor.run {
+                    errorMessage = "Offer accepted! The buyer will be notified to complete payment."
+                }
+                // Reload offers to show updated status
+                await loadOffers()
+            }
+        } catch {
+            print("❌ Failed to accept offer: \(error)")
+            await MainActor.run {
+                errorMessage = "Failed to accept offer: \(error.localizedDescription)"
             }
         }
     }
@@ -309,9 +339,9 @@ struct OffersListView: View {
         let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
         
         let orderCreate = OrderCreate(
-            listingId: offer.seekListingId, // Use seek listing as reference
+            listingId: offer.listingId, // Use listing as reference
             buyerId: currentUserId, // Seeker pays when accepting the offer
-            sellerId: UUID(uuidString: offer.sellerId) ?? UUID(), // Offer maker provides service/product
+            sellerId: UUID(uuidString: offer.offerFromUserId) ?? UUID(), // Offer maker provides service/product
             priceCents: sellerPriceCents,
             sellerPriceCents: sellerPriceCents,
             buyerPriceCents: buyerPriceCents,
@@ -531,9 +561,9 @@ struct OffersListView: View {
                 let buyerPriceCents = FeeCalculationService.shared.calculateBuyerPrice(sellerPriceCents: sellerPriceCents)
                 
                 let orderCreate = OrderCreate(
-                    listingId: offer.seekListingId,
+                    listingId: offer.listingId,
                     buyerId: currentUserId,
-                    sellerId: UUID(uuidString: offer.sellerId) ?? UUID(),
+                    sellerId: UUID(uuidString: offer.offerFromUserId) ?? UUID(),
                     priceCents: sellerPriceCents,
                     sellerPriceCents: sellerPriceCents,
                     buyerPriceCents: buyerPriceCents,
@@ -586,22 +616,25 @@ struct OffersListView: View {
     }
     
     private func declineOffer(_ offer: Offer) async {
+        guard let currentUserId = authManager.currentUserId else {
+            await MainActor.run {
+                errorMessage = "You must be logged in to decline offers"
+            }
+            return
+        }
+        
         do {
-            try await OfferService.shared.declineOffer(offer.id)
+            // Use UnifiedOfferService instead of old OfferService
+            try await UnifiedOfferService.shared.rejectOffer(offerId: offer.id, currentUserId: currentUserId)
             
-            print("📊 Analytics: Offer declined - Seek: \(seekListing.id), Offer: \(offer.id)")
+            print("✅ Offer declined: \(offer.id)")
             
-            // Refresh offers list
+            // Refresh offers list to remove the declined offer
             await loadOffers()
             
         } catch {
             await MainActor.run {
-                let errorDesc = error.localizedDescription
-                if errorDesc.contains("function") || errorDesc.contains("decline_offer") {
-                    errorMessage = "Database setup required. Please run the offers migration script in Supabase first."
-                } else {
-                    errorMessage = "Failed to decline offer: \(errorDesc)"
-                }
+                errorMessage = "Failed to decline offer: \(error.localizedDescription)"
             }
             print("❌ Failed to decline offer: \(error)")
         }
@@ -613,7 +646,7 @@ struct OffersListView: View {
     private func createVirtualListing(from offer: Offer) -> ListingWithUser {
         // Create a virtual seller user from the offer seller ID
         let virtualSeller = User(
-            id: offer.sellerId,
+            id: offer.offerFromUserId,
             name: "Seller", // Will be loaded dynamically in UI
             bio: nil,
             profilePic: nil,
@@ -633,7 +666,7 @@ struct OffersListView: View {
         )
         
         return ListingWithUser(
-            id: offer.seekListingId,
+            id: offer.seekListingId ?? offer.listingId,
             title: seekListing.title + " (Accepted Offer)",
             description: "Accepted offer for \(seekListing.title)",
             price: offer.price,
@@ -654,7 +687,8 @@ struct OffersListView: View {
             expiresAt: nil,
             deliveryMethod: seekListing.deliveryMethod,
             quantityAvailable: 1,
-            quantitySold: 0
+            quantitySold: 0,
+            acceptsOffers: false
         )
     }
 }
@@ -735,7 +769,7 @@ struct PaymentMethodSheetWrapper: View {
     private func createVirtualListing(from offer: Offer) -> ListingWithUser {
         // Create a virtual seller user from the offer seller ID
         let virtualSeller = User(
-            id: offer.sellerId,
+            id: offer.offerFromUserId,
             name: "Seller",
             bio: nil,
             profilePic: nil,
@@ -755,7 +789,7 @@ struct PaymentMethodSheetWrapper: View {
         )
         
         return ListingWithUser(
-            id: offer.seekListingId,
+            id: offer.seekListingId ?? offer.listingId,
             title: "Accepted Offer",
             description: "Accepted offer",
             price: offer.price,
@@ -776,7 +810,8 @@ struct PaymentMethodSheetWrapper: View {
             expiresAt: nil,
             deliveryMethod: nil,
             quantityAvailable: 1,
-            quantitySold: 0
+            quantitySold: 0,
+            acceptsOffers: false
         )
     }
 }
@@ -785,11 +820,20 @@ struct OfferRowView: View {
     let offer: Offer
     let onAction: (OfferAction) -> Void
     
-    @State private var sellerName: String = "Loading..."
+    @State private var offererName: String = "Loading..."
     @StateObject private var feeService = FeeCalculationService.shared
     
     private var isClickableAcceptedOffer: Bool {
         offer.status == "accepted" && offer.orderId != nil
+    }
+    
+    // Determine the role label based on listing type
+    private var offererRoleLabel: String {
+        if offer.listingType == .seek {
+            return "Seller"  // On seek listings, offers come from sellers
+        } else {
+            return "Buyer"   // On regular listings, offers come from buyers
+        }
     }
     
     // Calculate fees for pending offers
@@ -801,8 +845,13 @@ struct OfferRowView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Offer from \(sellerName)")
+                    Text("Offer from \(offererRoleLabel)")
                     .font(.headline)
+                    .lineLimit(1)
+                    
+                    Text(offererName)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                     .lineLimit(1)
                     
                     // Show offer amount
@@ -863,63 +912,8 @@ struct OfferRowView: View {
             }
             }
             
-            // Fee breakdown for pending offers - Show buyer what they'll pay
-            if offer.status == "pending" || offer.status == "paid_pending_acceptance" {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                        Text("Payment Breakdown")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .fontWeight(.medium)
-                    }
-                    
-                    VStack(spacing: 6) {
-                        HStack {
-                            Text("Offer Amount")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(feeService.formatTotal(totalCents: offerPriceCents))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
-                        
-                        HStack {
-                            Text("Stripe Processing Fee")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(feeService.formatFee(feeCents: stripeFee))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(.orange)
-                        }
-                        
-                        Divider()
-                        
-                        HStack {
-                            Text("Total You Pay")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                            Spacer()
-                            Text(feeService.formatTotal(totalCents: totalYouPay))
-                                .font(.subheadline)
-                                .fontWeight(.bold)
-                                .foregroundColor(Color("ThemeColor"))
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.blue.opacity(0.05))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
-                    )
-                }
-            }
+            // Note: Sellers see the offer amount they'll receive (no fees shown)
+            // Fees are calculated when buyer completes payment
             
             // Action buttons for pending offers (including paid pending)
             if offer.status == "pending" || offer.status == "paid_pending_acceptance" {
@@ -996,26 +990,26 @@ struct OfferRowView: View {
             }
         }
         .task {
-            await loadSellerName()
+            await loadOffererName()
         }
     }
     
-    private func loadSellerName() async {
+    private func loadOffererName() async {
         do {
-            let seller: User = try await supabase
+            let user: User = try await supabase
                 .from("users")
                 .select("name")
-                .eq("id", value: offer.sellerId)
+                .eq("id", value: offer.offerFromUserId)
                 .single()
                 .execute()
                 .value
             
             await MainActor.run {
-                sellerName = (seller.name ?? "Unknown Seller").formattedName
+                offererName = (user.name ?? "Unknown User").formattedName
             }
         } catch {
             await MainActor.run {
-                sellerName = "Seller"
+                offererName = "Unknown User"
             }
         }
     }
@@ -1043,13 +1037,15 @@ extension Offer {
     }
 }
 
-// Helper model for fetching offers with details
+// Helper model for fetching offers with details (Unified Model)
 struct OfferWithDetails: Codable {
     let id: UUID
-    let seekListingId: UUID
+    let listingId: UUID
+    let listingType: String
     let offerListingId: UUID?
-    let seekerId: String
-    let sellerId: String
+    let offerFromUserId: String
+    let offerToUserId: String
+    let parentOfferId: UUID?
     let message: String?
     let status: String
     let priceCents: Int?
@@ -1057,30 +1053,40 @@ struct OfferWithDetails: Codable {
     let createdAt: Date
     let updatedAt: Date
     
-    // Joined data
-    let offerListing: ListingWithUser?
-    let seller: User?
+    // Legacy fields for backward compatibility
+    let seekListingId: UUID?
+    let seekerId: String?
+    let sellerId: String?
     
     enum CodingKeys: String, CodingKey {
         case id
-        case seekListingId = "seek_listing_id"
+        case listingId = "listing_id"
+        case listingType = "listing_type"
         case offerListingId = "offer_listing_id"
-        case seekerId = "seeker_id"
-        case sellerId = "seller_id"
+        case offerFromUserId = "offer_from_user_id"
+        case offerToUserId = "offer_to_user_id"
+        case parentOfferId = "parent_offer_id"
         case message, status
         case priceCents = "price_cents"
         case orderId = "order_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
-        case offerListing = "offer_listing"
-        case seller
+        // Legacy
+        case seekListingId = "seek_listing_id"
+        case seekerId = "seeker_id"
+        case sellerId = "seller_id"
     }
     
-    func toOffer() -> Offer {
+    func toOffer(listingType: OfferListingType) -> Offer {
         return Offer(
             id: id,
-            seekListingId: seekListingId,
+            listingId: listingId,
+            listingType: listingType,
             offerListingId: offerListingId,
+            offerFromUserId: offerFromUserId,
+            offerToUserId: offerToUserId,
+            parentOfferId: parentOfferId,
+            seekListingId: seekListingId,
             seekerId: seekerId,
             sellerId: sellerId,
             message: message,

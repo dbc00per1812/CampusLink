@@ -81,6 +81,7 @@ struct MainTabView: View {
                     Image(systemName: AppTab.wallet.systemImage)
                         .responsiveFontSize(24)
                 }
+                .badge(activeOrderMonitor.ordersRequiringAction > 0 ? "●" : nil)
                 .tag(AppTab.wallet)
                 
                 // Profile Tab - Show guest profile or authenticated profile
@@ -137,6 +138,12 @@ struct MainTabView: View {
             if shouldReset {
                 homeNavigationPath = NavigationPath()
                 tabCoordinator.resetHomeNavigationFlag()
+            }
+        }
+        .onChange(of: activeOrderMonitor.ordersRequiringAction) { _, _ in
+            // Refresh wallet badge when active orders change
+            Task {
+                await loadWalletBadge()
             }
         }
     }

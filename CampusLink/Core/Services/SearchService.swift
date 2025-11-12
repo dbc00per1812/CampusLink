@@ -12,7 +12,12 @@ final class SearchService: ObservableObject {
     
     /// Apply campus filtering to search listings
     private func applyCampusFilter(_ listings: [SearchListing]) async -> [SearchListing] {
-        guard AppConfig.enableCampusFilter else { return listings }
+        guard AppConfig.enableCampusFilter else {
+            print("🔍 Search Campus Filter: DISABLED in AppConfig")
+            return listings
+        }
+        
+        print("🔍 Search Campus Filter: ENABLED, filtering \(listings.count) results...")
         
         // Get current user's campus from their profile
         guard let session = try? await supabase.auth.session else {
@@ -24,7 +29,12 @@ final class SearchService: ObservableObject {
         
         // Fetch current user's campus
         do {
-            let currentUser: User = try await supabase
+            struct UserCampus: Codable {
+                let id: String
+                let campus: String?
+            }
+            
+            let currentUser: UserCampus = try await supabase
                 .from("users")
                 .select("id, campus")
                 .eq("id", value: currentUserId)
@@ -143,9 +153,10 @@ final class SearchService: ObservableObject {
                 offset_count: offset
             )
             
-            // Call the search_listings PostgreSQL function
+            // Call the search function (hybrid or keyword-only based on feature flag)
+            let rpcName = AppConfig.enableHybridSearch ? "hybrid_search_listings" : "search_listings"
             let searchResponse: [SearchListing] = try await supabase
-                .rpc("search_listings", params: params)
+                .rpc(rpcName, params: params)
                 .execute()
                 .value
             
@@ -160,11 +171,23 @@ final class SearchService: ObservableObject {
             }
             #endif
             
+            #if DEBUG
+            print("📱 SearchService: Before campus filter: \(searchResponse.count) results")
+            #endif
+            
             // Apply campus filtering to search results
             var filteredListings = await applyCampusFilter(searchResponse)
             
+            #if DEBUG
+            print("📱 SearchService: After campus filter: \(filteredListings.count) results")
+            #endif
+            
             // Apply blocked users filtering
             filteredListings = await applyBlockedUsersFilter(filteredListings)
+            
+            #if DEBUG
+            print("📱 SearchService: After blocked users filter: \(filteredListings.count) results")
+            #endif
             
             // Parse the response
             let listings = filteredListings

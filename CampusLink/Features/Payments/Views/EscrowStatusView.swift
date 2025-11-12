@@ -6,6 +6,20 @@ struct EscrowStatusView: View {
     let escrowStatus: EscrowStatus
     let onReleaseRequest: (() -> Void)?
     
+    private var statusColor: Color {
+        switch escrowStatus.displayStatus {
+        case "Funds Released":
+            return .green
+        case "Held in Escrow":
+            return .blue
+        case "Disputed":
+            return .red
+        case "Ready to Release":
+            return .orange
+        default:
+            return .gray
+        }
+    }
     
     var body: some View {
         VStack(spacing: 16) {
@@ -70,22 +84,10 @@ struct EscrowStatusView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     Spacer()
-                    if escrowStatus.orderStatus == .completed {
-                        Text("Funds Released")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.green)
-                    } else if escrowStatus.canBeReleased {
-                        Text("Ready to Release")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.orange)
-                    } else {
-                        Text("Held in Escrow")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.blue)
-                    }
+                    Text(escrowStatus.displayStatus)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(statusColor)
                 }
             }
             .padding(.horizontal, 16)
@@ -130,7 +132,8 @@ struct EscrowStatusView_Previews: PreviewProvider {
                         escrowAccountId: "escrow_123456789",
                         paymentIntentId: "pi_123456789",
                         orderStatus: .placed,
-                        paymentStatus: .succeeded
+                        paymentStatus: .succeeded,
+                        escrowReleaseStatus: "held"
                     ),
                     onReleaseRequest: nil
                 )
@@ -142,7 +145,8 @@ struct EscrowStatusView_Previews: PreviewProvider {
                         escrowAccountId: "escrow_123456789",
                         paymentIntentId: "pi_123456789",
                         orderStatus: .completed,
-                        paymentStatus: .succeeded
+                        paymentStatus: .succeeded,
+                        escrowReleaseStatus: "released"
                     ),
                     onReleaseRequest: nil
                 )

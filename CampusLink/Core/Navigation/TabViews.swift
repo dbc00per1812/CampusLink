@@ -58,6 +58,9 @@ struct PostView: View {
     // Quantity for products
     @State private var quantity: Int = 1
     
+    // Accept offers toggle
+    @State private var acceptsOffers: Bool = false
+    
     // Add focus state for keyboard dismissal
     @FocusState private var isTextFieldFocused: Bool
     
@@ -123,7 +126,7 @@ struct PostView: View {
     // Helper for button text
     private func getButtonText() -> String {
         if AppConfig.enableSeekMode && selectedIntent == .seek {
-            return "Post Buying"
+            return "Post Wanted"
         } else {
             return "Post Listing"
         }
@@ -454,6 +457,26 @@ struct PostView: View {
                                         .padding(.top, 8)
                                 }
                                 }
+                            }
+                            
+                            // Accept Offers Toggle (only for sell mode)
+                            if selectedIntent == .offer {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Accept Offers")
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        Text("Allow buyers to negotiate")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: $acceptsOffers)
+                                        .labelsHidden()
+                                }
+                                .padding()
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(12)
                             }
                             
                             // Show ticket guarantee info when Tickets category is selected
@@ -1056,7 +1079,8 @@ struct PostView: View {
                 budgetMax: selectedIntent == .seek ? (budgetMax.isEmpty ? nil : Double(budgetMax)) : nil,
                 expiresAt: expirationDate,
                 deliveryMethod: selectedListingType == .product ? selectedDeliveryMethod : nil,
-                quantityAvailable: selectedListingType == .product ? quantity : nil
+                quantityAvailable: selectedListingType == .product ? quantity : nil,
+                acceptsOffers: selectedIntent == .offer ? acceptsOffers : nil
             )
             
             try await supabase
@@ -1285,7 +1309,8 @@ struct PaymentsView: View {
                         expiresAt: listing.expiresAt,
                         deliveryMethod: listing.deliveryMethod,
                         quantityAvailable: listing.quantityAvailable,
-                        quantitySold: listing.quantitySold
+                        quantitySold: listing.quantitySold,
+                        acceptsOffers: listing.acceptsOffers
                     )
                 }
             }

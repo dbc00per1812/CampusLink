@@ -96,12 +96,41 @@ final class EscrowService: ObservableObject {
                 .execute()
                 .value
             
+            // Try to fetch escrow_release_status from payments table
+            var escrowReleaseStatus: String? = nil
+            if let paymentIntentId = order.stripePaymentIntentId {
+                do {
+                    struct PaymentEscrowStatus: Decodable {
+                        let escrowReleaseStatus: String?
+                        
+                        enum CodingKeys: String, CodingKey {
+                            case escrowReleaseStatus = "escrow_release_status"
+                        }
+                    }
+                    
+                    let payment: PaymentEscrowStatus = try await supabase
+                        .from("payments")
+                        .select("escrow_release_status")
+                        .eq("payment_intent_id", value: paymentIntentId)
+                        .single()
+                        .execute()
+                        .value
+                    
+                    escrowReleaseStatus = payment.escrowReleaseStatus
+                    print("✅ Fetched escrow_release_status from payments table: \(escrowReleaseStatus ?? "nil")")
+                } catch {
+                    print("⚠️ Could not fetch escrow_release_status from payments table: \(error)")
+                    // Non-critical - will fall back to computed status
+                }
+            }
+            
             return EscrowStatus(
                 orderId: orderId,
                 escrowAccountId: order.stripeEscrowAccountId,
                 paymentIntentId: order.stripePaymentIntentId,
                 orderStatus: order.orderStatus,
-                paymentStatus: order.paymentStatus
+                paymentStatus: order.paymentStatus,
+                escrowReleaseStatus: escrowReleaseStatus
             )
             
         } catch {
@@ -209,8 +238,13 @@ struct EscrowStatus {
     let paymentIntentId: String?
     let orderStatus: OrderStatus
     let paymentStatus: PaymentStatus
+    let escrowReleaseStatus: String? // From payments table: 'held', 'released', or 'disputed'
     
     var isEscrowActive: Bool {
+        // Check actual escrow_release_status if available, otherwise compute from order status
+        if let releaseStatus = escrowReleaseStatus {
+            return releaseStatus == "held" && escrowAccountId != nil
+        }
         return escrowAccountId != nil && 
                [.placed, .sellerConfirmed, .inProgress].contains(orderStatus) &&
                paymentStatus == .succeeded
@@ -219,6 +253,31 @@ struct EscrowStatus {
     var canBeReleased: Bool {
         // Only show release button for completed orders (funds should already be released)
         return orderStatus == .completed
+    }
+    
+    var displayStatus: String {
+        // Use actual escrow_release_status if available
+        if let releaseStatus = escrowReleaseStatus {
+            switch releaseStatus {
+            case "held":
+                return "Held in Escrow"
+            case "released":
+                return "Funds Released"
+            case "disputed":
+                return "Disputed"
+            default:
+                return "Unknown"
+            }
+        }
+        
+        // Fall back to computed status
+        if orderStatus == .completed {
+            return "Funds Released"
+        } else if isEscrowActive {
+            return "Held in Escrow"
+        } else {
+            return "Inactive"
+        }
     }
     
 }

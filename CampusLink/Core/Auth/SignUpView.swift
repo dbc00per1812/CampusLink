@@ -70,14 +70,14 @@ struct SignUpView: View {
                                 .keyboardType(.emailAddress)
                                 .autocapitalization(.none)
                             
-                            // Warning about school email
+                            // Requirement for .edu email
                             HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.orange)
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundColor(.blue)
                                     .font(.caption)
-                                Text("Please use a personal email address, not your school email")
+                                Text("Please use your .edu email address to sign up")
                                     .font(.caption)
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(.blue)
                                     .multilineTextAlignment(.leading)
                                 Spacer()
                             }
@@ -315,6 +315,15 @@ struct SignUpView: View {
             return
         }
         
+        // Validate .edu email requirement
+        guard email.lowercased().hasSuffix(".edu") else {
+            await MainActor.run {
+                alertMessage = "Please use your .edu email address to sign up."
+                showingAlert = true
+            }
+            return
+        }
+        
         guard password == confirmPassword else {
             await MainActor.run {
                 alertMessage = "Passwords do not match. Please try again."
@@ -351,7 +360,7 @@ struct SignUpView: View {
     private func handle(_ error: AuthManager.AuthError) {
         switch error {
         case .invalidEmail:
-            alertMessage = "Please enter a valid email address."
+            alertMessage = "Please use your .edu email address to sign up."
         case .signUpFailed(let underlyingError):
             alertMessage = "Sign up failed: \(underlyingError.localizedDescription)"
         case .profileUpdateFailed(let underlyingError):

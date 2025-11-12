@@ -15,6 +15,7 @@ private struct ListingUpdate: Codable {
     let serviceAvailability: String?
     let deliveryMethod: DeliveryMethod?
     let quantityAvailable: Int?
+    let acceptsOffers: Bool?
 
     enum CodingKeys: String, CodingKey {
         case title, description, price, category, photo, photos
@@ -24,6 +25,7 @@ private struct ListingUpdate: Codable {
         case serviceAvailability = "service_availability"
         case deliveryMethod = "delivery_method"
         case quantityAvailable = "quantity_available"
+        case acceptsOffers = "accepts_offers"
     }
 }
 
@@ -49,6 +51,7 @@ struct EditListingView: View {
     @State private var imageToCrop: UIImage?
     @State private var cropperIndex: Int = 0
     @State private var quantity: Int
+    @State private var acceptsOffers: Bool
 
     // Product categories
     private let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
@@ -74,6 +77,7 @@ struct EditListingView: View {
         _serviceAvailability = State(initialValue: listing.serviceAvailability ?? "")
         _deliveryMethod = State(initialValue: listing.deliveryMethod ?? .pickup)
         _quantity = State(initialValue: listing.quantityAvailable ?? 1)
+        _acceptsOffers = State(initialValue: listing.acceptsOffers ?? false)
     }
 
     var body: some View {
@@ -249,6 +253,25 @@ struct EditListingView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 4)
+                            }
+                        }
+                        
+                        // Accept Offers Toggle (only for regular listings with intent='offer')
+                        if listing.intent == .offer {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Toggle(isOn: $acceptsOffers) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Accept Offers")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        Text("Let buyers negotiate the price with you")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .padding()
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(10)
                             }
                         }
 
@@ -474,7 +497,8 @@ struct EditListingView: View {
                 serviceLocation: listingType == .service ? serviceLocation : nil,
                 serviceAvailability: listingType == .service ? (serviceAvailability.isEmpty ? nil : serviceAvailability) : nil,
                 deliveryMethod: listingType == .product ? deliveryMethod : nil,
-                quantityAvailable: listingType == .product ? quantity : nil
+                quantityAvailable: listingType == .product ? quantity : nil,
+                acceptsOffers: listing.intent == .offer ? acceptsOffers : nil
             )
 
             do {

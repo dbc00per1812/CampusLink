@@ -56,8 +56,53 @@ class ActiveOrderMonitor: ObservableObject {
     /// Check for active orders requiring user action
     func checkActiveOrders(userId: UUID) async {
         do {
-            // Check orders where user is buyer and needs to confirm receipt
-            let buyerOrders: [Order] = try await supabase
+            // First, let's check ALL orders for this user to debug
+            let allBuyerOrders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("buyer_id", value: userId.uuidString)
+                .execute()
+                .value
+            
+            let allSellerOrders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("seller_id", value: userId.uuidString)
+                .execute()
+                .value
+            
+            print("📊 ActiveOrderMonitor: Total orders - Buyer: \(allBuyerOrders.count), Seller: \(allSellerOrders.count)")
+            
+            // Log all orders with their statuses
+            for order in allBuyerOrders {
+                print("   Buyer Order \(order.id): status=\(order.orderStatus.rawValue), payment=\(order.paymentStatus.rawValue)")
+            }
+            for order in allSellerOrders {
+                print("   Seller Order \(order.id): status=\(order.orderStatus.rawValue), payment=\(order.paymentStatus.rawValue)")
+            }
+            
+            // Check orders where user is buyer and needs to take action
+            // 1. Buyer needs to PAY (order_status=placed, payment_status=pending)
+            // 2. Buyer needs to CONFIRM RECEIPT (order_status=seller_confirmed, payment_status=requires_capture)
+            let buyerOrdersNeedPay: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("buyer_id", value: userId.uuidString)
+                .eq("order_status", value: "placed")
+                .eq("payment_status", value: "pending")
+                .execute()
+                .value
+            
+            let buyerOrdersNeedConfirm: [Order] = try await supabase
                 .from("orders")
                 .select("""
                     *,
@@ -66,12 +111,16 @@ class ActiveOrderMonitor: ObservableObject {
                 .eq("buyer_id", value: userId.uuidString)
                 .eq("order_status", value: "seller_confirmed")
                 .eq("payment_status", value: "requires_capture")
-                .neq("order_status", value: "cancelled")
-                .neq("order_status", value: "completed")
                 .execute()
                 .value
             
+            let buyerOrders = buyerOrdersNeedPay + buyerOrdersNeedConfirm
+            
+            print("📊 ActiveOrderMonitor: Buyer breakdown - \(buyerOrdersNeedPay.count) need payment, \(buyerOrdersNeedConfirm.count) need confirmation")
+            
             // Check orders where user is seller and needs to deliver
+            // ONLY when payment is completed (payment_status = succeeded OR requires_capture)
+            // NOT when payment is still pending (buyer hasn't paid yet)
             let sellerOrders: [Order] = try await supabase
                 .from("orders")
                 .select("""
@@ -80,10 +129,22 @@ class ActiveOrderMonitor: ObservableObject {
                 """)
                 .eq("seller_id", value: userId.uuidString)
                 .`in`("order_status", values: ["placed", "in_progress"])
-                .neq("order_status", value: "cancelled")
-                .neq("order_status", value: "completed")
+                .`in`("payment_status", values: ["succeeded", "requires_capture"])
                 .execute()
                 .value
+            
+            print("📊 ActiveOrderMonitor: Seller breakdown - \(sellerOrders.count) need delivery (payment completed)")
+            
+            // Log which specific orders are being counted
+            for order in buyerOrdersNeedPay {
+                print("   📍 BUYER NEEDS TO PAY: Order \(order.id)")
+            }
+            for order in buyerOrdersNeedConfirm {
+                print("   📍 BUYER NEEDS TO CONFIRM: Order \(order.id)")
+            }
+            for order in sellerOrders {
+                print("   📍 SELLER NEEDS TO DELIVER: Order \(order.id)")
+            }
             
             await MainActor.run {
                 self.buyerPendingCount = buyerOrders.count
@@ -91,7 +152,7 @@ class ActiveOrderMonitor: ObservableObject {
                 self.ordersRequiringAction = buyerOrders.count + sellerOrders.count
             }
             
-            print("📊 ActiveOrderMonitor: Found \(buyerOrders.count) buyer orders, \(sellerOrders.count) seller orders")
+            print("📊 ActiveOrderMonitor: TOTAL requiring action = \(buyerOrders.count + sellerOrders.count)")
             
             // Send notifications for orders waiting too long
             await sendRemindersIfNeeded(buyerOrders: buyerOrders, sellerOrders: sellerOrders)

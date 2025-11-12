@@ -57,7 +57,7 @@ final class OfferService: ObservableObject {
                 let priceFormatted = String(format: "%.2f", Double(offer.priceCents ?? 0) / 100.0)
                 await NotificationService.shared.createNotification(
                     NotificationCreate(
-                        userId: offer.sellerId,
+                        userId: offer.offerFromUserId,
                         type: .marketplaceActivity,
                         title: "Offer Accepted!",
                         body: "Your offer of $\(priceFormatted) was accepted. Complete payment to proceed.",
@@ -65,8 +65,8 @@ final class OfferService: ObservableObject {
                         scheduledFor: nil,
                         orderId: nil,
                         messageId: nil,
-                        listingId: offer.seekListingId,
-                        relatedUserId: offer.seekerId
+                        listingId: offer.listingId,
+                        relatedUserId: offer.offerToUserId
                     )
                 )
                 return true
@@ -118,7 +118,7 @@ final class OfferService: ObservableObject {
         let bodyText = reason != nil ? "Your offer of $\(priceFormatted) was declined. Reason: \(reason!)" : "Your offer of $\(priceFormatted) was declined."
         await NotificationService.shared.createNotification(
             NotificationCreate(
-                userId: offer.sellerId,
+                userId: offer.offerFromUserId,
                 type: .marketplaceActivity,
                 title: "Offer Declined",
                 body: bodyText,
@@ -126,8 +126,8 @@ final class OfferService: ObservableObject {
                 scheduledFor: nil,
                 orderId: nil,
                 messageId: nil,
-                listingId: offer.seekListingId,
-                relatedUserId: offer.seekerId
+                listingId: offer.listingId,
+                relatedUserId: offer.offerToUserId
             )
         )
     }

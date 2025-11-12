@@ -198,9 +198,9 @@ struct ListingDetailView: View {
             }
         }
         
-        // Offer Compose Sheet
+        // Make Offer Sheet (works for both seek and regular listings)
         .sheet(isPresented: $showingOfferCompose) {
-            OfferComposeView(seekListing: listing)
+            MakeOfferSheet(listing: listing)
                 .environmentObject(authManager)
         }
         
@@ -719,9 +719,9 @@ struct ListingDetailView: View {
                             .foregroundColor(listing.listingType == .product ? .blue : .green)
                             .responsiveCornerRadius(8)
                         
-                        // SEEKING badge for buy posts
+                        // WANTED badge for buy posts
                         if AppConfig.enableSeekMode && listing.intent == .seek {
-                            Text("SEEKING")
+                            Text("WANTED")
                                 .responsiveFont(.subheadline, weight: .bold)
                                 .responsiveHorizontalSpacing(12)
                                 .responsiveSpacing(6)
@@ -992,6 +992,105 @@ struct ListingDetailView: View {
             }
         } else {
             // Regular offer post actions
+            if isOwnListing && (listing.acceptsOffers ?? false) {
+                // Owner of listing that accepts offers
+                VStack(spacing: 12) {
+                    Button(action: handleViewOffers) {
+                        HStack {
+                            Image(systemName: "envelope.badge")
+                            Text("View Offers")
+                        }
+                        .responsiveFont(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .responsiveSpacing(12)
+                        .responsiveHorizontalSpacing(12)
+                        .background(Color("ThemeColor"))
+                        .responsiveCornerRadius(12)
+                    }
+                    
+                    HStack(spacing: 12) {
+                        Button(action: handleEditListing) {
+                            Text("Edit")
+                                .responsiveFont(.headline)
+                                .foregroundColor(Color("ThemeColor"))
+                                .frame(maxWidth: .infinity)
+                                .responsiveSpacing(12)
+                                .responsiveHorizontalSpacing(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color("ThemeColor"), lineWidth: 2)
+                                )
+                        }
+                        
+                        Button(action: handleDeleteListing) {
+                            Text("Delete")
+                                .responsiveFont(.headline)
+                                .foregroundColor(.facebookBlue)
+                                .frame(maxWidth: .infinity)
+                                .responsiveSpacing(12)
+                                .responsiveHorizontalSpacing(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.facebookBlue, lineWidth: 2)
+                                )
+                        }
+                    }
+                }
+            } else if !isOwnListing && (listing.acceptsOffers ?? false) {
+                // Buyer viewing listing that accepts offers - show both options
+                VStack(spacing: 12) {
+                    // Primary: Buy at listed price
+                    Button(action: handlePrimaryAction) {
+                        HStack {
+                            Image(systemName: listing.listingType == .product ? "cart.fill" : "calendar.badge.checkmark")
+                            Text(listing.listingType == .product ? "Buy Now" : "Book Now")
+                        }
+                        .responsiveFont(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .responsiveSpacing(12)
+                        .responsiveHorizontalSpacing(12)
+                        .background(Color.green)
+                        .responsiveCornerRadius(12)
+                    }
+                    .disabled(isPrimaryActionLoading)
+                    
+                    // Secondary: Make an offer
+                    Button(action: handleOfferMyItem) {
+                        HStack {
+                            Image(systemName: "dollarsign.circle.fill")
+                            Text("Make Offer")
+                        }
+                        .responsiveFont(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .responsiveSpacing(12)
+                        .responsiveHorizontalSpacing(12)
+                        .background(Color("ThemeColor"))
+                        .responsiveCornerRadius(12)
+                    }
+                    
+                    // Tertiary: Contact seller
+                    Button(action: handleContactSeller) {
+                        HStack {
+                            Image(systemName: "message.fill")
+                            Text("Contact Seller")
+                        }
+                        .responsiveFont(.headline)
+                        .foregroundColor(Color("ThemeColor"))
+                        .frame(maxWidth: .infinity)
+                        .responsiveSpacing(12)
+                        .responsiveHorizontalSpacing(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color("ThemeColor"), lineWidth: 2)
+                        )
+                    }
+                    .disabled(isContactingSeller)
+                }
+            } else {
+                // Standard buy/sell flow
             ActionButtonRow(
                 listing: listing,
                 isOwnListing: isOwnListing,
@@ -1002,6 +1101,7 @@ struct ListingDetailView: View {
                 onEditListing: isOwnListing ? { handleEditListing() } : nil,
                 onDeleteListing: isOwnListing ? { handleDeleteListing() } : nil
             )
+            }
         }
     }
     

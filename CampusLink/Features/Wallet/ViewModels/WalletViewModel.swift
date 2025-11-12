@@ -2,9 +2,19 @@ import Foundation
 import SwiftUI
 import Supabase
 
+// Stripe balance from actual Stripe API - THE ONLY SOURCE OF TRUTH
+struct StripeBalance {
+    let availableStandard: Int  // Can withdraw now (standard payout)
+    let availableInstant: Int    // Can withdraw instantly (if debit card)
+    let pending: Int             // Coming soon (2-7 days)
+    let total: Int               // Total in Stripe
+}
+
 @MainActor
 class WalletViewModel: ObservableObject {
     @Published var wallet: Wallet?
+    @Published var stripeBalance: StripeBalance?  // ✅ Real balance from Stripe
+    @Published var isLoadingStripeBalance = false
     @Published var transactions: [PaymentTransaction] = []
     @Published var isLoading = false
     @Published var errorMessage: String? { didSet { isShowingError = errorMessage != nil } }
@@ -20,11 +30,15 @@ class WalletViewModel: ObservableObject {
     @Published var orderCache: [UUID: Order] = [:]
     
     // Offers
-    @Published var pendingOffers: [UserOffer] = []
+    @Published var pendingOffers: [Offer] = []
     @Published var isLoadingOffers = false
     
+    // Pending Transactions (Unified)
+    @Published var pendingTransactions: [PendingTransaction] = []
+    @Published var isLoadingPendingTransactions = false
+    
     private let walletService = WalletService.shared
-    private let offerService = OfferService.shared
+    private let offerService = UnifiedOfferService.shared
     
     func loadWalletData() async {
         isLoading = true
@@ -63,6 +77,9 @@ class WalletViewModel: ObservableObject {
         
         // Stripe check happens in background, don't wait for it
         await stripeCheck
+        
+        // ✅ Load REAL Stripe balance (source of truth for payouts)
+        await loadStripeBalance()
         
         isLoading = false
     }
@@ -105,8 +122,11 @@ class WalletViewModel: ObservableObject {
             wallet = try await walletService.fetchBalance()
             let rawTransactions = try await walletService.getTransactionHistory(limit: 50)
             
-            // Deduplicate transactions by listing_id (keep most recent)
-            transactions = deduplicateTransactions(rawTransactions)
+            // Show all transactions - no deduplication
+            // Each payment/order should be shown separately even for the same listing
+            transactions = rawTransactions
+            
+            print("🔵 WalletViewModel: Loaded \(transactions.count) transactions")
             
             // Preload order data for accurate status display
             await preloadOrderData()
@@ -115,28 +135,6 @@ class WalletViewModel: ObservableObject {
         } catch {
             return .failure(error)
         }
-    }
-    
-    // Deduplicate transactions to prevent showing the same order multiple times
-    private func deduplicateTransactions(_ transactions: [PaymentTransaction]) -> [PaymentTransaction] {
-        var seenListingIds: Set<UUID> = []
-        var uniqueTransactions: [PaymentTransaction] = []
-        
-        // Transactions are already sorted by created_at DESC, so we keep the first (most recent) one
-        for transaction in transactions {
-            if let listingId = transaction.listingId {
-                if !seenListingIds.contains(listingId) {
-                    seenListingIds.insert(listingId)
-                    uniqueTransactions.append(transaction)
-                }
-            } else {
-                // Keep transactions without a listing_id (shouldn't normally happen)
-                uniqueTransactions.append(transaction)
-            }
-        }
-        
-        print("🔵 WalletViewModel: Deduplicated \(transactions.count) transactions down to \(uniqueTransactions.count) unique transactions")
-        return uniqueTransactions
     }
     
     // OPTIMIZATION: Check Stripe status in background (non-blocking)
@@ -148,9 +146,46 @@ class WalletViewModel: ObservableObject {
     
     func refreshData() async { 
         await loadWalletData()
+        await loadStripeBalance()  // ✅ Load real Stripe balance
         if AppConfig.enableSeekMode {
             await loadPendingOffers()
         }
+        await loadPendingTransactions()
+    }
+    
+    // ✅ STRIPE-FIRST: Load actual balance from Stripe API
+    func loadStripeBalance() async {
+        isLoadingStripeBalance = true
+        
+        do {
+            struct StripeBalanceResponse: Decodable {
+                let available_for_standard_cents: Int
+                let available_for_instant_cents: Int
+                let pending_cents: Int
+                let total_cents: Int
+            }
+            
+            let response: StripeBalanceResponse = try await supabase.functions.invoke(
+                "get-stripe-balance",
+                options: FunctionInvokeOptions(method: .post)
+            )
+            
+            stripeBalance = StripeBalance(
+                availableStandard: response.available_for_standard_cents,
+                availableInstant: response.available_for_instant_cents,
+                pending: response.pending_cents,
+                total: response.total_cents
+            )
+            
+            print("✅ Loaded Stripe balance: $\(Double(response.available_for_standard_cents)/100) available, $\(Double(response.pending_cents)/100) pending")
+            
+        } catch {
+            print("❌ Failed to load Stripe balance: \(error)")
+            // Don't show error to user - fallback to showing nothing
+            stripeBalance = nil
+        }
+        
+        isLoadingStripeBalance = false
     }
     
 
@@ -330,19 +365,110 @@ class WalletViewModel: ObservableObject {
     
     // MARK: - Offers Management
     func loadPendingOffers() async {
+        guard let currentUserId = try? await supabase.auth.session.user.id.uuidString else {
+            isLoadingOffers = false
+            return
+        }
+        
         isLoadingOffers = true
         
         do {
-            // Get offers where you are BOTH seeker (receiving offers) AND seller (making offers)
-            pendingOffers = try await offerService.getUserOffers(role: .both)
-                .filter { $0.status == "pending" }
-            print("✅ WalletViewModel: Loaded \(pendingOffers.count) pending offers")
+            // Get only RECEIVED offers for wallet (offers where you're the seller)
+            let (_, received) = try await offerService.getMyOffers(currentUserId: currentUserId)
+            
+            // Filter to only pending received offers
+            pendingOffers = received.filter { $0.status == "pending" }
+            
+            print("✅ WalletViewModel: Loaded \(pendingOffers.count) pending received offers")
         } catch {
             print("❌ WalletViewModel: Failed to load offers: \(error)")
             // Don't show error for offers - it's not critical
+            await MainActor.run {
+                pendingOffers = []
+            }
         }
         
         isLoadingOffers = false
+    }
+    
+    // MARK: - Pending Transactions Management
+    func loadPendingTransactions() async {
+        guard let currentUserId = try? await supabase.auth.session.user.id else {
+            isLoadingPendingTransactions = false
+            return
+        }
+        
+        isLoadingPendingTransactions = true
+        
+        var allPendingTransactions: [PendingTransaction] = []
+        
+        // 1. Load pending offers (both sent and received)
+        do {
+            let (sent, received) = try await offerService.getMyOffers(currentUserId: currentUserId.uuidString)
+            
+            // Include BOTH sent offers (buyer's offers) and received offers (seller's offers)
+            let pendingSentOffers = sent.filter { $0.status == "pending" }
+            let pendingReceivedOffers = received.filter { $0.status == "pending" }
+            
+            // Combine both types
+            let allPendingOffers = pendingSentOffers + pendingReceivedOffers
+            let offerTransactions = allPendingOffers.map { PendingTransaction.fromOffer($0) }
+            allPendingTransactions.append(contentsOf: offerTransactions)
+            
+            print("✅ WalletViewModel: Found \(pendingSentOffers.count) pending sent offers, \(pendingReceivedOffers.count) pending received offers")
+        } catch {
+            print("❌ WalletViewModel: Failed to load pending offers: \(error)")
+        }
+        
+        // 2. Load pending orders (not in final state)
+        do {
+            let orders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .or("buyer_id.eq.\(currentUserId.uuidString),seller_id.eq.\(currentUserId.uuidString)")
+                .in("order_status", values: ["placed", "seller_confirmed", "in_progress", "disputed"])
+                .order("created_at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+            
+            let orderTransactions = orders.map { PendingTransaction.fromOrder($0, currentUserId: currentUserId) }
+            allPendingTransactions.append(contentsOf: orderTransactions)
+            
+            print("✅ WalletViewModel: Found \(orders.count) pending orders")
+        } catch {
+            print("❌ WalletViewModel: Failed to load pending orders: \(error)")
+        }
+        
+        // 3. Load pending payouts
+        do {
+            let payouts: [Payout] = try await supabase
+                .from("payouts")
+                .select("*")
+                .eq("user_id", value: currentUserId.uuidString)
+                .in("status", values: ["pending", "processing", "in_transit"])
+                .order("created_at", ascending: false)
+                .limit(10)
+                .execute()
+                .value
+            
+            let payoutTransactions = payouts.map { PendingTransaction.fromPayout($0) }
+            allPendingTransactions.append(contentsOf: payoutTransactions)
+            
+            print("✅ WalletViewModel: Found \(payouts.count) pending payouts")
+        } catch {
+            print("❌ WalletViewModel: Failed to load pending payouts: \(error)")
+        }
+        
+        // Sort all transactions by date (newest first)
+        pendingTransactions = allPendingTransactions.sorted { $0.createdAt > $1.createdAt }
+        
+        print("✅ WalletViewModel: Loaded \(pendingTransactions.count) total pending transactions")
+        
+        isLoadingPendingTransactions = false
     }
 }
 

@@ -22,16 +22,26 @@ struct ProfileTabView: View {
         NavigationView {
         ScrollView {
                 VStack(spacing: 0) {
-                    // Header with username and menu
-                    headerView
-                    
-                    // Profile info section (top quarter)
-                    profileInfoSection
-                    
-                    // Posts grid (bottom three quarters)
-                    postsGridSection
-                    
-                    Spacer()
+                    if isLoading && userProfile == nil {
+                        // Show skeleton on first load
+                        VStack {
+                            headerView
+                            ProfileSkeleton()
+                            Divider()
+                            ProfileListingsSkeleton()
+                        }
+                    } else {
+                        // Header with username and menu
+                        headerView
+                        
+                        // Profile info section (top quarter)
+                        profileInfoSection
+                        
+                        // Posts grid (bottom three quarters)
+                        postsGridSection
+                        
+                        Spacer()
+                    }
                 }
             }
             .navigationBarHidden(true)
@@ -131,6 +141,22 @@ extension ProfileTabView {
             }
             .responsiveHorizontalSpacing(40)
             .accessibleButton("Edit profile")
+            
+            // My Offers Navigation
+            NavigationLink(destination: AllMyOffersView().environmentObject(authManager)) {
+                HStack {
+                    Image(systemName: "envelope.badge")
+                    Text("My Offers")
+                }
+                .responsiveFont(.subheadline, weight: .medium)
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .responsiveSpacing(8)
+                .background(Color(UIColor.systemGray6))
+                .responsiveCornerRadius(8)
+            }
+            .responsiveHorizontalSpacing(40)
+            .accessibleButton("View my offers")
             
             if AppConfig.enableRatings {
                 NavigationLink(destination: RatingsHistoryView(userId: authManager.currentUserId ?? "")) {
@@ -251,9 +277,9 @@ extension ProfileTabView {
                     }
                     
                     HStack(spacing: 8) {
-                        // Show "Buying" badge for seek posts
+                        // Show "Wanted" badge for seek posts
                         if AppConfig.enableSeekMode && listing.intent == .seek {
-                            StatusBadge(text: "Buying", color: .orange)
+                            StatusBadge(text: "Wanted", color: .orange)
                         }
                         
                         // Status badge - assuming listing has status
@@ -344,6 +370,18 @@ extension ProfileTabView {
     private func loadUser() async {
         guard let userId = authManager.session?.user.id.uuidString else { return }
         
+        // Check cache first (INSTANT LOADING)
+        if let cachedUser = DataCacheManager.shared.getUser(userId: userId) {
+            await MainActor.run {
+                self.userProfile = cachedUser
+                self.isLoading = false
+            }
+            
+            if let profilePicURL = cachedUser.profilePic {
+                await loadProfileImage(from: profilePicURL)
+            }
+        }
+        
         do {
             let response: [User] = try await supabase
                 .from("users")
@@ -353,6 +391,9 @@ extension ProfileTabView {
                 .value
             
             if let profile = response.first {
+                // Cache the fresh user data (10 minute TTL)
+                DataCacheManager.shared.cacheUser(profile, userId: userId, ttl: 600)
+                
                 await MainActor.run {
                     self.userProfile = profile
                 }
@@ -369,6 +410,15 @@ extension ProfileTabView {
     private func loadUserListings() async {
         guard let userId = authManager.session?.user.id.uuidString else { return }
         
+        // Check cache first (INSTANT LOADING)
+        if let cachedListings = DataCacheManager.shared.getUserListings(userId: userId) {
+            await MainActor.run {
+                self.userListings = cachedListings
+                self.postsCount = cachedListings.count
+                self.isLoading = false
+            }
+        }
+        
         do {
             let response: [ListingWithUser] = try await supabase
                 .from("listings")
@@ -380,6 +430,9 @@ extension ProfileTabView {
                 .limit(20)
                 .execute()
                 .value
+            
+            // Cache the fresh listings (5 minute TTL)
+            DataCacheManager.shared.cacheUserListings(response, userId: userId, ttl: 300)
             
             await MainActor.run {
                 self.userListings = response

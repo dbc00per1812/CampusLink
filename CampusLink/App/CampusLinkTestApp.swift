@@ -25,7 +25,12 @@ struct CampusLinkTestApp: App {
             ContentView()
                 .environmentObject(authManager)
                 .environmentObject(notificationManager)
+                .overlay(environmentBanner, alignment: .top)
                 .task {
+                    // Print environment info on launch
+                    print("🌍 CampusLink Environment: \(Secrets.currentEnvironmentName)")
+                    print("📍 Supabase URL: \(Secrets.supabaseURL)")
+                    
                     // Initialize notification manager when app launches
                     await notificationManager.initialize()
                     notificationManager.setupNotificationCategories()
@@ -64,6 +69,30 @@ struct CampusLinkTestApp: App {
                         }
                     }
                 }
+        }
+    }
+    
+    // MARK: - Environment Banner
+    
+    @ViewBuilder
+    private var environmentBanner: some View {
+        if Secrets.isPreview {
+            VStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "flask.fill")
+                        .font(.caption2)
+                    Text("PREVIEW BRANCH")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.orange)
+                .cornerRadius(8)
+                .padding(.top, 8)
+                Spacer()
+            }
         }
     }
 }

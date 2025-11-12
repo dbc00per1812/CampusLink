@@ -64,6 +64,8 @@ CREATE TABLE public.listings (
   delivery_method text CHECK (delivery_method IS NULL OR (delivery_method = ANY (ARRAY['pickup'::text, 'delivery'::text]))),
   quantity_available integer DEFAULT 1 CHECK (quantity_available >= 0),
   quantity_sold integer DEFAULT 0,
+  embedding USER-DEFINED,
+  accepts_offers boolean DEFAULT false,
   CONSTRAINT listings_pkey PRIMARY KEY (id),
   CONSTRAINT listings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
@@ -107,21 +109,30 @@ CREATE TABLE public.notifications (
 );
 CREATE TABLE public.offers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  seek_listing_id uuid NOT NULL,
+  seek_listing_id uuid,
   offer_listing_id uuid,
-  seeker_id uuid NOT NULL,
-  seller_id uuid NOT NULL,
+  seeker_id uuid,
+  seller_id uuid,
   message text,
   status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'withdrawn'::text, 'expired'::text, 'paid_pending_acceptance'::text])),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   price_cents integer,
   order_id uuid,
+  listing_type text CHECK (listing_type = ANY (ARRAY['seek'::text, 'regular'::text])),
+  offer_from_user_id uuid,
+  offer_to_user_id uuid,
+  parent_offer_id uuid,
+  listing_id uuid NOT NULL,
   CONSTRAINT offers_pkey PRIMARY KEY (id),
   CONSTRAINT offers_seek_listing_id_fkey FOREIGN KEY (seek_listing_id) REFERENCES public.listings(id),
   CONSTRAINT offers_offer_listing_id_fkey FOREIGN KEY (offer_listing_id) REFERENCES public.listings(id),
   CONSTRAINT offers_seeker_id_fkey FOREIGN KEY (seeker_id) REFERENCES public.users(id),
-  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT offers_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
+  CONSTRAINT offers_offer_from_user_id_fkey FOREIGN KEY (offer_from_user_id) REFERENCES public.users(id),
+  CONSTRAINT offers_offer_to_user_id_fkey FOREIGN KEY (offer_to_user_id) REFERENCES public.users(id),
+  CONSTRAINT offers_parent_offer_id_fkey FOREIGN KEY (parent_offer_id) REFERENCES public.offers(id)
 );
 CREATE TABLE public.orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

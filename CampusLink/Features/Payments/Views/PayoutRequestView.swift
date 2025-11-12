@@ -2,8 +2,10 @@ import SwiftUI
 
 /// View for requesting payouts from Campus Wallet to external accounts
 /// Provides options for standard vs instant payouts with different methods
+/// ✅ NOW USES REAL STRIPE BALANCE (not database)
 struct PayoutRequestView: View {
-    let availableBalance: Int
+    let availableBalance: Int      // From Stripe API (available now)
+    let pendingBalance: Int         // From Stripe API (coming in 2-7 days)
     let onPayoutRequested: (Payout) -> Void
     let onDismiss: () -> Void
     
@@ -100,7 +102,7 @@ struct PayoutRequestView: View {
     
     private var balanceSection: some View {
         VStack(spacing: 12) {
-            Text("Available Balance")
+            Text("Available to Withdraw Now")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
@@ -108,6 +110,16 @@ struct PayoutRequestView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .foregroundColor(Color("ThemeColor"))
+            
+            // Show pending balance if exists
+            if pendingBalance > 0 {
+                Text("+ \(formatAmount(pendingBalance)) pending")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                Text("(available in 2-7 days)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -573,6 +585,7 @@ struct PayoutRequestView_Previews: PreviewProvider {
     static var previews: some View {
         PayoutRequestView(
             availableBalance: 5000, // $50.00
+            pendingBalance: 2000,   // $20.00
             onPayoutRequested: { _ in },
             onDismiss: {}
         )

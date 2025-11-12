@@ -123,23 +123,59 @@ final class WalletService: ObservableObject {
     }
     
     // Get transaction history for specific user (production-ready)
+    // Fetches from orders table to match MyTransactionsView behavior
     func getTransactionHistoryForUser(_ userId: UUID, limit: Int = 50) async throws -> [PaymentTransaction] {
         do {
             let userIdString = userId.uuidString
             
-            let transactions: [PaymentTransaction] = try await supabase
-                .from("payments")
+            // Fetch from orders table (same as MyTransactionsView)
+            let orders: [Order] = try await supabase
+                .from("orders")
                 .select("""
                     *,
                     listing:listings(*)
                 """)
                 .or("buyer_id.eq.\(userIdString),seller_id.eq.\(userIdString)")
-                .neq("status", value: "failed")
-                .neq("status", value: "cancelled")
+                .neq("order_status", value: "cancelled")
+                .neq("payment_status", value: "failed")
                 .order("created_at", ascending: false)
                 .limit(limit)
                 .execute()
                 .value
+            
+            print("🔵 WalletService: Fetched \(orders.count) orders for user")
+            
+            // Convert orders to PaymentTransaction format for compatibility
+            // Show role-specific pricing (buyer sees what they paid, seller sees what they receive)
+            let transactions: [PaymentTransaction] = orders.map { order in
+                // Determine which price to show based on user's role
+                let displayPrice: Double
+                if order.buyerId == userId {
+                    // User is buyer - show what they paid (includes fees)
+                    displayPrice = Double(order.buyerPriceCents ?? order.priceCents) / 100.0
+                } else {
+                    // User is seller - show what they receive
+                    displayPrice = Double(order.sellerPriceCents ?? order.priceCents) / 100.0
+                }
+                
+                return PaymentTransaction(
+                    id: order.id,
+                    listingId: order.listingId,
+                    buyerId: order.buyerId.uuidString,
+                    sellerId: order.sellerId.uuidString,
+                    paymentIntentId: order.stripePaymentIntentId,
+                    amount: displayPrice,
+                    status: order.paymentStatus.rawValue,
+                    createdAt: order.createdAt,
+                    escrowReleaseAt: nil,
+                    deliveredAt: order.sellerConfirmedAt,
+                    buyerConfirmedAt: order.completedAt,  // Order.completedAt = when buyer confirmed receipt
+                    disputeStatus: order.orderStatus == .disputed ? .open : .none,
+                    disputeReason: nil,
+                    disputeNotes: nil,
+                    listing: order.listing
+                )
+            }
             
             return transactions
         } catch {

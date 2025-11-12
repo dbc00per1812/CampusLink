@@ -1,35 +1,68 @@
-# Simple Instructions - Get Everything Working
+# Simple Instructions - Smart Recommendations
 
-## Step 1: Restore Message Notifications
+## Step 1: Add File to Xcode ⚠️ REQUIRED
 
-Run `RESTORE_TO_WORKING_STATE_FINAL.sql`
+**In Xcode:**
+1. Right-click `CampusLink/Core/Services/` folder
+2. Click "Add Files to CampusLink..."
+3. Select `RecommendationService.swift`
+4. ✅ Check "Add to targets: CampusLink"
+5. Click "Add"
 
-This restores message notifications to the exact code that was working before.
+**Or drag-and-drop:**
+- Drag `RecommendationService.swift` from Finder into Xcode's `Core/Services/` folder
 
-**Test**: Send a message via the app. Check if notification appears.
-
----
-
-## Step 2: Add Order Notifications (After Step 1 Works)
-
-Run `ADD_ORDER_NOTIFICATIONS_SEPARATE.sql`
-
-This ONLY touches the orders table. Never touches messages.
-
-**Test**: Place an order. Check if seller gets notification.
+**This fixes the error you saw.**
 
 ---
 
-## That's It
+## Step 2: Run Database Migration
 
-Two simple scripts. No complexity. No debugging.
+**BEFORE you run anything:**
+1. Supabase Dashboard → Project Settings → AI
+2. Enable "Database Functions"
+3. Wait 30 seconds
 
-If Step 1 doesn't work, then something else changed in your database (not just the trigger).
+**Then:**
+1. Open Supabase SQL Editor
+2. Copy/paste entire content of `MASTER_MIGRATION_ALL_IN_ONE.sql`
+3. Click "Run"
+4. Wait 2-5 minutes
 
-If Step 1 works, then Step 2 will work too.
+**If it says "X listings still need embeddings":**
+- Just run the same file again
+- Keep running until it says "MIGRATION COMPLETE"
 
 ---
 
-**Run Step 1 now and tell me if message notifications work.**
+## Step 3: Build & Run
 
+Build and run your app. Done!
 
+---
+
+## What You'll Get
+
+✅ **Diversified home feed** - Variety of categories in first 4 listings  
+✅ **Hybrid search** - Smarter search that understands meaning  
+✅ **Similar items** - Foundation for recommendations
+
+---
+
+## If Something Fails
+
+**Don't panic.** Just tell me the error and I'll help you fix it.
+
+Every query has rollback instructions at the bottom of `MASTER_MIGRATION_ALL_IN_ONE.sql`.
+
+---
+
+## Minimum to Get Started
+
+**Just want diversification without database changes?**
+
+1. Add `RecommendationService.swift` to Xcode
+2. Build and run
+3. Skip Step 2 entirely
+
+The diversified home feed works WITHOUT any database changes!

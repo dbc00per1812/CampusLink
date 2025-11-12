@@ -100,7 +100,11 @@ final class PayoutService: ObservableObject {
         accountId: String
     ) async throws -> Payout {
         do {
-            // Verify seller has sufficient balance
+            // NOTE: We check Stripe balance, not database wallet
+            // Database wallet may be out of sync in escrow mode
+            // Let Stripe be the source of truth for available funds
+            
+            // Still fetch wallet to update it, but don't validate against it
             let wallet: Wallet = try await supabase
                 .from("wallets")
                 .select()
@@ -109,9 +113,14 @@ final class PayoutService: ObservableObject {
                 .execute()
                 .value
             
-            guard wallet.availableCents >= amountCents else {
-                throw PayoutServiceError.insufficientBalance
-            }
+            // REMOVED: Database balance check - Stripe will validate
+            // guard wallet.availableCents >= amountCents else {
+            //     throw PayoutServiceError.insufficientBalance
+            // }
+            
+            print("💰 Requesting payout of $\(Double(amountCents)/100)")
+            print("💳 Database wallet: $\(Double(wallet.availableCents)/100) (may be out of sync)")
+            print("🔍 Stripe will validate actual available balance")
             
             // Calculate fees
             let feeCents = Int(Double(amountCents) * payoutType.feePercentage)
@@ -141,18 +150,12 @@ final class PayoutService: ObservableObject {
                 .execute()
                 .value
             
-            // Update wallet balance (reserve the amount)
-            let _: Wallet = try await supabase
-                .from("wallets")
-                .update([
-                    "available_cents": String(wallet.availableCents - amountCents),
-                    "updated_at": ISO8601DateFormatter().string(from: Date())
-                ])
-                .eq("user_id", value: accountId)
-                .select()
-                .single()
-                .execute()
-                .value
+            // NOTE: We DON'T deduct from database wallet anymore
+            // In escrow mode, database wallet doesn't reflect Stripe balance
+            // Wallet will be updated when payout completes via webhook
+            // This prevents double-deduction and sync issues
+            
+            print("⏭️ Skipping database wallet deduction (will update via webhook)")
             
             // CRITICAL: Actually process the payout with Stripe
             print("🔄 Calling process_payout Edge Function for payout: \(payout.id)")

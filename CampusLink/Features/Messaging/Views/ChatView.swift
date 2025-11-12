@@ -47,9 +47,7 @@ struct ChatView: View {
             
             // Messages list
             if viewModel.isLoading && viewModel.messages.isEmpty {
-                Spacer()
-                ProgressView("Loading messages...")
-                Spacer()
+                ChatSkeleton(messageCount: 8)
             } else {
                 messagesList
             }

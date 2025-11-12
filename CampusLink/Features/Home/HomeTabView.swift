@@ -15,6 +15,9 @@ struct HomeTabView: View {
     @State private var currentPage = 0
     @State private var userCampus: String?
     
+    // Diversification for recommendations
+    @State private var useDiversification = false
+    
     // Unified filter selection
     @State private var selectedFilter: ListingFilter = .forYou
     // Ratings trust filter (Phase 3)
@@ -38,7 +41,10 @@ struct HomeTabView: View {
     
     // Active transactions
     @State private var showingMyTransactions = false
-    @State private var flashingAnimation = false
+    
+    // Active order banner
+    @State private var firstActiveOrder: Order?
+    @State private var showingActiveOrderDetail = false
     
     // Debug states for visual debugging
     
@@ -49,7 +55,7 @@ struct HomeTabView: View {
         case forYou = "For you"
         case all = "All"
         case forSale = "Selling"
-        case wanted = "Buying"
+        case wanted = "Wanted"
         case more = "More"
         
         var icon: String? {
@@ -75,6 +81,12 @@ struct HomeTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerView()
+            
+            // Active order banner (shows when there's an active order)
+            if activeOrderMonitor.ordersRequiringAction > 0 {
+                activeOrderBanner()
+            }
+            
             if AppConfig.enableSeekMode {
                 filterView()
             }
@@ -91,9 +103,17 @@ struct HomeTabView: View {
         .onAppear {
             PaymentService.shared.paymentResult = nil
             PaymentService.shared.paymentSheet  = nil
+            // Enable diversification for initial load (For You tab by default)
+            useDiversification = true
             Task {
                 await loadUserCampus()
                 await loadAllListings()
+                
+                // Force refresh active order count on appear
+                if let userId = authManager.session?.user.id {
+                    print("🔄 Forcing active order monitor refresh on appear")
+                    await activeOrderMonitor.checkActiveOrders(userId: userId)
+                }
             }
         }
         .sheet(isPresented: $showingSellerDashboard) {
@@ -154,10 +174,54 @@ struct HomeTabView: View {
                     }
             }
         }
-        .onAppear {
-            // Start flashing animation
-            withAnimation(Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                flashingAnimation = true
+        .sheet(isPresented: $showingActiveOrderDetail) {
+            NavigationView {
+                if let order = firstActiveOrder {
+                    OrderDetailView(order: order)
+                        .environmentObject(authManager)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Done") {
+                                    showingActiveOrderDetail = false
+                                }
+                            }
+                        }
+                } else {
+                    // Show error/loading state if no order found
+                    VStack(spacing: 20) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 60))
+                            .foregroundColor(.orange)
+                        
+                        Text("Unable to Load Order")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Text("The active order could not be loaded. It may have been completed or cancelled.")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 40)
+                        
+                        Button("Close") {
+                            showingActiveOrderDetail = false
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showingActiveOrderDetail = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: activeOrderMonitor.ordersRequiringAction) { _, newCount in
+            // Load first active order when count changes
+            print("📊 Active order count changed to: \(newCount)")
+            Task {
+                await loadFirstActiveOrder()
             }
         }
     }
@@ -202,6 +266,9 @@ extension HomeTabView {
                         currentPage = 0
                         hasMorePages = true
                         listings = []  // Clear existing listings to prevent duplicates
+                        
+                        // Enable diversification for For You, All, and Selling tabs
+                        useDiversification = (filter == .forYou || filter == .all || filter == .forSale)
                         
                         if filter == .more {
                             // Show category browser sheet
@@ -275,37 +342,6 @@ extension HomeTabView {
                 }
                 .accessibleButton("View transaction guide")
                 
-                // Active Post button - shows when orders need attention
-                if activeOrderMonitor.ordersRequiringAction > 0 {
-                    Button(action: {
-                        showingMyTransactions = true
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .responsiveFontSize(16)
-                            Text("Active Post")
-                                .responsiveFont(.subheadline, weight: .bold)
-                            if activeOrderMonitor.ordersRequiringAction > 0 {
-                                Text("\(activeOrderMonitor.ordersRequiringAction)")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(minWidth: 18, minHeight: 18)
-                                    .background(Color.white.opacity(0.3))
-                                    .clipShape(Circle())
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .responsiveHorizontalSpacing(12)
-                        .responsiveSpacing(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.red)
-                                .opacity(flashingAnimation ? 1.0 : 0.7)
-                        )
-                    }
-                    .accessibleButton("View active transactions requiring action")
-                }
-                
                 Button(action: {
                     showingSellerDashboard = true
                 }) {
@@ -343,6 +379,61 @@ extension HomeTabView {
         .responsiveHorizontalSpacing(16)
         .responsiveSpacing(4)
     }
+    
+    @ViewBuilder
+    private func activeOrderBanner() -> some View {
+        Button(action: {
+            print("🔘 Active order banner tapped - Count: \(activeOrderMonitor.ordersRequiringAction)")
+            Task {
+                await loadFirstActiveOrder()
+                // Always show sheet - it will display error if order not found
+                await MainActor.run {
+                    showingActiveOrderDetail = true
+                }
+                if firstActiveOrder == nil {
+                    print("⚠️ Active order banner: No order loaded, showing error view")
+                } else {
+                    print("✅ Active order banner: Order loaded successfully, showing detail")
+                }
+            }
+        }) {
+            HStack(spacing: 12) {
+                // Red circle icon
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Active Order")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text("You have \(activeOrderMonitor.ordersRequiringAction) order\(activeOrderMonitor.ordersRequiringAction == 1 ? "" : "s") requiring action")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.red.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                    )
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
 
     @ViewBuilder
     private func contentView() -> some View {
@@ -361,9 +452,9 @@ extension HomeTabView {
 
     @ViewBuilder
     private func loadingView() -> some View {
-        Spacer()
-        ProgressView("Loading listings...")
-        Spacer()
+        ScrollView {
+            ListingGridSkeleton(count: 6)
+        }
     }
 
     @ViewBuilder
@@ -446,9 +537,40 @@ extension HomeTabView {
         Spacer()
     }
 
+    // Helper to get display listings with diversification applied
+    private func getDisplayListings() -> [ListingWithUser] {
+        let baseListings = isSearchActive ? searchResults : listings
+        
+        #if DEBUG
+        print("🔍 Diversification check:")
+        print("   useDiversification: \(useDiversification)")
+        print("   isSearchActive: \(isSearchActive)")
+        print("   currentPage: \(currentPage)")
+        print("   baseListings.count: \(baseListings.count)")
+        #endif
+        
+        // Apply diversification for first page on specific tabs
+        if useDiversification && !isSearchActive && currentPage == 0 && baseListings.count > 4 {
+            #if DEBUG
+            print("✅ Applying diversification...")
+            #endif
+            // Show diversified first 4, then the rest
+            let diversified = RecommendationService.shared.diversifyListings(baseListings, count: 4)
+            let remaining = baseListings.filter { listing in
+                !diversified.contains { $0.id == listing.id }
+            }
+            return diversified + remaining
+        } else {
+            #if DEBUG
+            print("⏭️  Skipping diversification (conditions not met)")
+            #endif
+            return baseListings
+        }
+    }
+    
     @ViewBuilder
     private func listView() -> some View {
-        let displayListings = isSearchActive ? searchResults : listings
+        let displayListings = getDisplayListings()
         
         ScrollView {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
@@ -658,6 +780,34 @@ extension HomeTabView {
                 .execute()
                 .value
             
+            // Generate cache key
+            let cacheKey = DataCacheManager.homeListingsKey(
+                page: currentPage,
+                filter: "all",
+                campus: enableCampusFilter ? currentUser.campus : nil
+            )
+            
+            // Check cache first (INSTANT LOADING)
+            if let cachedListings = DataCacheManager.shared.getListings(forKey: cacheKey) {
+                await MainActor.run {
+                    if currentPage == 0 {
+                        self.listings = cachedListings
+                    } else {
+                        // Append cached page, avoiding duplicates
+                        let existingIds = Set(listings.map { $0.id })
+                        let newListings = cachedListings.filter { !existingIds.contains($0.id) }
+                        self.listings.append(contentsOf: newListings)
+                    }
+                    self.isLoading = false
+                    
+                    // Prefetch images for cached listings
+                    prefetchImages(for: cachedListings)
+                }
+                
+                // Still fetch fresh data in background to update cache
+                // But don't block the UI
+            }
+            
             // Calculate pagination offset
             let offset = currentPage * pageSize
             
@@ -717,6 +867,9 @@ extension HomeTabView {
                 filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
             }
             
+            // Cache the fresh data
+            DataCacheManager.shared.cacheListings(filteredResult, forKey: cacheKey, ttl: 300)
+            
             await MainActor.run {
                 if currentPage == 0 {
                     // First page - replace listings
@@ -759,6 +912,28 @@ extension HomeTabView {
                 .single()
                 .execute()
                 .value
+            
+            // Generate cache key
+            let cacheKey = DataCacheManager.homeListingsKey(
+                page: currentPage,
+                filter: "offer",
+                campus: enableCampusFilter ? currentUser.campus : nil
+            )
+            
+            // Check cache first (INSTANT LOADING)
+            if let cachedListings = DataCacheManager.shared.getListings(forKey: cacheKey) {
+                await MainActor.run {
+                    if currentPage == 0 {
+                        self.listings = cachedListings
+                    } else {
+                        let existingIds = Set(listings.map { $0.id })
+                        let newListings = cachedListings.filter { !existingIds.contains($0.id) }
+                        self.listings.append(contentsOf: newListings)
+                    }
+                    self.isLoading = false
+                    prefetchImages(for: cachedListings)
+                }
+            }
             
             // Calculate pagination offset
             let offset = currentPage * pageSize
@@ -821,6 +996,9 @@ extension HomeTabView {
                 filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
             }
             
+            // Cache the fresh data
+            DataCacheManager.shared.cacheListings(filteredResult, forKey: cacheKey, ttl: 300)
+            
             await MainActor.run {
                 if currentPage == 0 {
                     listings = filteredResult
@@ -861,6 +1039,28 @@ extension HomeTabView {
                 .single()
                 .execute()
                 .value
+            
+            // Generate cache key
+            let cacheKey = DataCacheManager.homeListingsKey(
+                page: currentPage,
+                filter: "seek",
+                campus: enableCampusFilter ? currentUser.campus : nil
+            )
+            
+            // Check cache first (INSTANT LOADING)
+            if let cachedListings = DataCacheManager.shared.getListings(forKey: cacheKey) {
+                await MainActor.run {
+                    if currentPage == 0 {
+                        self.listings = cachedListings
+                    } else {
+                        let existingIds = Set(listings.map { $0.id })
+                        let newListings = cachedListings.filter { !existingIds.contains($0.id) }
+                        self.listings.append(contentsOf: newListings)
+                    }
+                    self.isLoading = false
+                    prefetchImages(for: cachedListings)
+                }
+            }
             
             // Calculate pagination offset
             let offset = currentPage * pageSize
@@ -923,6 +1123,9 @@ extension HomeTabView {
                 filteredResult = await applyBlockedUsersFilter(filteredResult, currentUserId: currentUserId)
             }
             
+            // Cache the fresh data
+            DataCacheManager.shared.cacheListings(filteredResult, forKey: cacheKey, ttl: 300)
+            
             await MainActor.run {
                 if currentPage == 0 {
                     listings = filteredResult
@@ -963,6 +1166,28 @@ extension HomeTabView {
                 .single()
                 .execute()
                 .value
+            
+            // Generate cache key
+            let cacheKey = DataCacheManager.categoryListingsKey(
+                category: category,
+                type: type.rawValue,
+                page: currentPage
+            )
+            
+            // Check cache first (INSTANT LOADING)
+            if let cachedListings = DataCacheManager.shared.getListings(forKey: cacheKey) {
+                await MainActor.run {
+                    if currentPage == 0 {
+                        self.listings = cachedListings
+                    } else {
+                        let existingIds = Set(listings.map { $0.id })
+                        let newListings = cachedListings.filter { !existingIds.contains($0.id) }
+                        self.listings.append(contentsOf: newListings)
+                    }
+                    self.isLoading = false
+                    prefetchImages(for: cachedListings)
+                }
+            }
             
             // Calculate pagination offset
             let offset = currentPage * pageSize
@@ -1014,6 +1239,9 @@ extension HomeTabView {
                 .value
             
             print("🔍 Category Filter: Found \(result.count) \(category) listings for campus \(currentCampus) (page \(currentPage))")
+            
+            // Cache the fresh data
+            DataCacheManager.shared.cacheListings(result, forKey: cacheKey, ttl: 300)
             
             await MainActor.run {
                 if currentPage == 0 {
@@ -1087,6 +1315,129 @@ extension HomeTabView {
             }
         } catch {
             print("❌ Error loading user campus: \(error)")
+        }
+    }
+    
+    /// Load the first active order for banner navigation
+    private func loadFirstActiveOrder() async {
+        guard let userId = authManager.session?.user.id else {
+            print("❌ No user ID found - cannot load active order")
+            return
+        }
+        
+        print("🔍 Loading first active order for user: \(userId)")
+        print("🔍 Active order count from monitor: \(activeOrderMonitor.ordersRequiringAction)")
+        
+        do {
+            // Try to fetch buyer orders first
+            // 1. Buyer needs to PAY (order_status=placed, payment_status=pending)
+            print("🔍 Checking buyer orders needing payment...")
+            let buyerOrdersNeedPay: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("buyer_id", value: userId.uuidString)
+                .eq("order_status", value: "placed")
+                .eq("payment_status", value: "pending")
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            print("🔍 Found \(buyerOrdersNeedPay.count) buyer orders needing payment")
+            
+            if let firstOrder = buyerOrdersNeedPay.first {
+                await MainActor.run {
+                    self.firstActiveOrder = firstOrder
+                }
+                print("✅ Loaded buyer order needing payment: \(firstOrder.id)")
+                print("   - Status: \(firstOrder.orderStatus.rawValue)")
+                print("   - Payment: \(firstOrder.paymentStatus.rawValue)")
+                return
+            }
+            
+            // 2. Buyer needs to CONFIRM RECEIPT (order_status=seller_confirmed, payment_status=requires_capture)
+            print("🔍 Checking buyer orders needing confirmation...")
+            let buyerOrdersNeedConfirm: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("buyer_id", value: userId.uuidString)
+                .eq("order_status", value: "seller_confirmed")
+                .eq("payment_status", value: "requires_capture")
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            print("🔍 Found \(buyerOrdersNeedConfirm.count) buyer orders needing confirmation")
+            
+            if let firstOrder = buyerOrdersNeedConfirm.first {
+                await MainActor.run {
+                    self.firstActiveOrder = firstOrder
+                }
+                print("✅ Loaded buyer order needing confirmation: \(firstOrder.id)")
+                print("   - Status: \(firstOrder.orderStatus.rawValue)")
+                print("   - Payment: \(firstOrder.paymentStatus.rawValue)")
+                return
+            }
+            
+            // If no buyer orders, try seller orders (orders where user needs to deliver)
+            // ONLY when payment is completed (not when payment is pending)
+            print("🔍 Checking seller orders needing delivery...")
+            let sellerOrders: [Order] = try await supabase
+                .from("orders")
+                .select("""
+                    *,
+                    listing:listings(*)
+                """)
+                .eq("seller_id", value: userId.uuidString)
+                .`in`("order_status", values: ["placed", "in_progress"])
+                .`in`("payment_status", values: ["succeeded", "requires_capture"])
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            print("🔍 Found \(sellerOrders.count) seller orders needing delivery")
+            
+            if let firstOrder = sellerOrders.first {
+                await MainActor.run {
+                    self.firstActiveOrder = firstOrder
+                }
+                print("✅ Loaded seller order needing delivery: \(firstOrder.id)")
+                print("   - Status: \(firstOrder.orderStatus.rawValue)")
+                print("   - Payment: \(firstOrder.paymentStatus.rawValue)")
+            } else {
+                await MainActor.run {
+                    self.firstActiveOrder = nil
+                }
+                print("⚠️ No active orders found despite monitor count being \(activeOrderMonitor.ordersRequiringAction)")
+            }
+        } catch {
+            print("❌ Error loading first active order: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .keyNotFound(let key, let context):
+                    print("❌ Missing key: \(key), context: \(context)")
+                case .typeMismatch(let type, let context):
+                    print("❌ Type mismatch: \(type), context: \(context)")
+                case .valueNotFound(let type, let context):
+                    print("❌ Value not found: \(type), context: \(context)")
+                case .dataCorrupted(let context):
+                    print("❌ Data corrupted: \(context)")
+                @unknown default:
+                    print("❌ Unknown decoding error")
+                }
+            }
+            await MainActor.run {
+                self.firstActiveOrder = nil
+            }
         }
     }
     
@@ -1219,9 +1570,9 @@ struct ListingCard: View {
                         VStack {
                             Spacer()
                             HStack {
-                                // SEEKING badge (bottom-left)
+                                // WANTED badge (bottom-left)
                                 if AppConfig.enableSeekMode && listing.intent == .seek {
-                                    Text("SEEKING")
+                                    Text("WANTED")
                                         .font(.system(size: 11, weight: .bold))
                                         .foregroundColor(.white)
                                         .padding(.horizontal, 8)
@@ -1247,9 +1598,9 @@ struct ListingCard: View {
                             VStack {
                                 Spacer()
                                 HStack {
-                                    // SEEKING badge (bottom-left)
+                                    // WANTED badge (bottom-left)
                                     if AppConfig.enableSeekMode && listing.intent == .seek {
-                                        Text("SEEKING")
+                                        Text("WANTED")
                                             .font(.system(size: 11, weight: .bold))
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 8)
@@ -1306,10 +1657,10 @@ struct ListingCard: View {
                                     .padding(6)
                                 }
                                 Spacer()
-                                // SEEKING badge (bottom-left)
+                                // WANTED badge (bottom-left)
                                 if AppConfig.enableSeekMode && listing.intent == .seek {
                                     HStack {
-                                        Text("SEEKING")
+                                        Text("WANTED")
                                             .font(.system(size: 11, weight: .bold))
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 8)
