@@ -179,9 +179,18 @@ Made the view refresh listing data after edits:
 ✅ All listing edits refresh immediately in the detail view
 ✅ Debug logging added for future troubleshooting
 
-### Next Steps
-1. Test the fix in the app
-2. Verify accepts_offers persists after edit
+### Additional Issue Found & Fixed 🔧
+
+**Problem:** After editing a listing to disable "Accept Offers", it appeared correct on the seller side but buyers still saw the "Make Offer" button.
+
+**Root Cause:** Our initial fix only refreshed the listing after the owner edited it. Buyers viewing the listing from the home feed still had the old cached data.
+
+**Solution:** Added `.onAppear` modifier (line 268-274) to `ListingDetailView` that refreshes the listing data whenever the view appears, ensuring both sellers AND buyers always see the latest data.
+
+### Final Result
+✅ Seller edits refresh immediately for the seller
+✅ Buyer views always show fresh data (accepts_offers, price, description, etc.)
+✅ No more stale cached data in detail views
 
 ---
 

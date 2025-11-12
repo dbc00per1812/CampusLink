@@ -265,6 +265,13 @@ struct ListingDetailView: View {
                 loadWalletBalance()
             }
         }
+        .onAppear {
+            // Refresh listing data when view appears to ensure we have latest data
+            // This is especially important for accepts_offers and other editable fields
+            Task {
+                await reloadListing()
+            }
+        }
         .onDisappear {
             // Clear to prevent re-triggering elsewhere
             paymentService.paymentResult = nil
