@@ -221,6 +221,21 @@ final class PaymentService: ObservableObject {
         _ = data // no-op; server returns status JSON which we do not currently need
     }
     
+    /// Calls the `cancel_payment` Edge Function to void/cancel a previously authorized PaymentIntent.
+    /// - Parameter paymentIntentId: The Stripe PaymentIntent identifier to cancel.
+    func cancelPayment(paymentIntentId: String) async throws {
+        let url = try functionsURL(appendingPath: "cancel_payment")
+
+        struct RequestBody: Encodable { let payment_intent_id: String }
+
+        let token = try await currentAccessToken()
+        let request = try makeRequest(url: url, token: token, body: RequestBody(payment_intent_id: paymentIntentId))
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try ensureSuccess(response: response, data: data)
+        _ = data // no-op; server returns status JSON which we do not currently need
+    }
+    
     /// Prepares and configures the Stripe PaymentSheet for paying an existing order (from accepted offer).
     /// - Parameter orderId: The identifier of the unpaid order
     /// - Returns: Fee information for display

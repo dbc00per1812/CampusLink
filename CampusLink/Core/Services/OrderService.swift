@@ -793,7 +793,30 @@ final class OrderService: ObservableObject {
     /// - Parameter order: The order to refund
     private func refundBuyer(order: Order) async throws {
         print("🔵 refundBuyer: Starting refund for order \(order.id)")
-        print("🔵 refundBuyer: Buyer: \(order.buyerId), Amount: \(order.priceCents) cents")
+        print("🔵 refundBuyer: Payment Method: \(order.paymentMethod.displayName)")
+        
+        // CRITICAL FIX: Handle Card Payments correctly (void authorization instead of wallet credit)
+        if order.paymentMethod == .card {
+            if let paymentIntentId = order.stripePaymentIntentId {
+                print("💳 refundBuyer: Voiding Stripe authorization for card payment: \(paymentIntentId)")
+                do {
+                    try await PaymentService.shared.cancelPayment(paymentIntentId: paymentIntentId)
+                    print("✅ refundBuyer: Stripe authorization voided successfully")
+                } catch {
+                    print("❌ refundBuyer: Failed to void Stripe authorization: \(error)")
+                    // If voiding fails, we should probably alert but maybe not block if it's just a network issue?
+                    // For now, let's rethrow so the user knows refund didn't process cleanly.
+                    throw OrderServiceError.paymentCaptureFailed("Failed to void card authorization: \(error.localizedDescription)")
+                }
+            } else {
+                print("⚠️ refundBuyer: Card payment but no payment intent ID found. Cannot void authorization.")
+                // Nothing to void, no money taken.
+            }
+            return
+        }
+        
+        // Handle Wallet Payments (Credit back to internal wallet)
+        print("🔵 refundBuyer: Processing wallet refund for buyer: \(order.buyerId), Amount: \(order.priceCents) cents")
         
         // Get or create buyer's wallet
         var buyerWallet: Wallet
@@ -837,6 +860,7 @@ final class OrderService: ObservableObject {
         }
         
         // Calculate refund amount (full order price for buyer)
+        // Use buyerPriceCents if available (includes fees/rounding), otherwise fallback to priceCents
         let refundAmountCents = order.buyerPriceCents ?? order.priceCents
         print("🔵 refundBuyer: Refund amount: \(refundAmountCents) cents")
         print("🔵 refundBuyer: Current wallet balance: \(buyerWallet.availableCents)")
