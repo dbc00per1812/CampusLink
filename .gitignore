@@ -1,9 +1,4 @@
-# Xcode
-.DS_Store
-/build
-*.xcodeproj
-*.xcworkspace
-xcuserdata/
+
 
 # Swift
 .swiftpm/

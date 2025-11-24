@@ -1,0 +1,654 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		32006C052E592DB300729E1B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 32006C042E592D1B00729E1B /* PrivacyInfo.xcprivacy */; };
+		329646D22E3AF8E700E625AA /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 329646D12E3AF8E700E625AA /* Auth */; };
+		329646D42E3AF8E700E625AA /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = 329646D32E3AF8E700E625AA /* Functions */; };
+		329646D62E3AF8E700E625AA /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 329646D52E3AF8E700E625AA /* PostgREST */; };
+		329646D82E3AF8E700E625AA /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 329646D72E3AF8E700E625AA /* Realtime */; };
+		329646DA2E3AF8E700E625AA /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 329646D92E3AF8E700E625AA /* Storage */; };
+		329646DC2E3AF8E700E625AA /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 329646DB2E3AF8E700E625AA /* Supabase */; };
+		32B003522E45C950006DCE77 /* Stripe in Frameworks */ = {isa = PBXBuildFile; productRef = 32B003512E45C950006DCE77 /* Stripe */; };
+		32B003542E45C950006DCE77 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = 32B003532E45C950006DCE77 /* StripeApplePay */; };
+		32B003562E45C950006DCE77 /* StripeCardScan in Frameworks */ = {isa = PBXBuildFile; productRef = 32B003552E45C950006DCE77 /* StripeCardScan */; };
+		32B003582E45C950006DCE77 /* StripeConnect in Frameworks */ = {isa = PBXBuildFile; productRef = 32B003572E45C950006DCE77 /* StripeConnect */; };
+		32B0035A2E45C950006DCE77 /* StripeFinancialConnections in Frameworks */ = {isa = PBXBuildFile; productRef = 32B003592E45C950006DCE77 /* StripeFinancialConnections */; };
+		32B0035C2E45C950006DCE77 /* StripeIdentity in Frameworks */ = {isa = PBXBuildFile; productRef = 32B0035B2E45C950006DCE77 /* StripeIdentity */; };
+		32B0035E2E45C950006DCE77 /* StripePayments in Frameworks */ = {isa = PBXBuildFile; productRef = 32B0035D2E45C950006DCE77 /* StripePayments */; };
+		32B003602E45C950006DCE77 /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = 32B0035F2E45C950006DCE77 /* StripePaymentSheet */; };
+		32B003622E45C950006DCE77 /* StripePaymentsUI in Frameworks */ = {isa = PBXBuildFile; productRef = 32B003612E45C950006DCE77 /* StripePaymentsUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		32006E1E2E64BEE100729E1B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3296467D2E3AF4E800E625AA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 329646842E3AF4E800E625AA;
+			remoteInfo = CampusLink;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		32006C042E592D1B00729E1B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		32006E182E64BEE000729E1B /* CampusLinkUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CampusLinkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		329646852E3AF4E800E625AA /* CampusLink.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CampusLink.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		32F4D9462EBFCA89009357EB /* Exceptions for "CampusLink" folder in "CampusLink" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 329646842E3AF4E800E625AA /* CampusLink */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		32006E192E64BEE000729E1B /* CampusLinkUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CampusLinkUITests;
+			sourceTree = "<group>";
+		};
+		329646872E3AF4E800E625AA /* CampusLink */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				32F4D9462EBFCA89009357EB /* Exceptions for "CampusLink" folder in "CampusLink" target */,
+			);
+			path = CampusLink;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		32006E152E64BEE000729E1B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		329646822E3AF4E800E625AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				32B003562E45C950006DCE77 /* StripeCardScan in Frameworks */,
+				32B003522E45C950006DCE77 /* Stripe in Frameworks */,
+				32B003542E45C950006DCE77 /* StripeApplePay in Frameworks */,
+				32B003622E45C950006DCE77 /* StripePaymentsUI in Frameworks */,
+				32B0035C2E45C950006DCE77 /* StripeIdentity in Frameworks */,
+				32B003602E45C950006DCE77 /* StripePaymentSheet in Frameworks */,
+				32B0035A2E45C950006DCE77 /* StripeFinancialConnections in Frameworks */,
+				329646D62E3AF8E700E625AA /* PostgREST in Frameworks */,
+				32B003582E45C950006DCE77 /* StripeConnect in Frameworks */,
+				329646D42E3AF8E700E625AA /* Functions in Frameworks */,
+				329646DC2E3AF8E700E625AA /* Supabase in Frameworks */,
+				329646D22E3AF8E700E625AA /* Auth in Frameworks */,
+				329646DA2E3AF8E700E625AA /* Storage in Frameworks */,
+				32B0035E2E45C950006DCE77 /* StripePayments in Frameworks */,
+				329646D82E3AF8E700E625AA /* Realtime in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3296467C2E3AF4E800E625AA = {
+			isa = PBXGroup;
+			children = (
+				329646872E3AF4E800E625AA /* CampusLink */,
+				32006E192E64BEE000729E1B /* CampusLinkUITests */,
+				329646D02E3AF8E700E625AA /* Frameworks */,
+				329646862E3AF4E800E625AA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		329646862E3AF4E800E625AA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				329646852E3AF4E800E625AA /* CampusLink.app */,
+				32006E182E64BEE000729E1B /* CampusLinkUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		329646D02E3AF8E700E625AA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				32006C042E592D1B00729E1B /* PrivacyInfo.xcprivacy */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		32006E172E64BEE000729E1B /* CampusLinkUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 32006E222E64BEE100729E1B /* Build configuration list for PBXNativeTarget "CampusLinkUITests" */;
+			buildPhases = (
+				32006E142E64BEE000729E1B /* Sources */,
+				32006E152E64BEE000729E1B /* Frameworks */,
+				32006E162E64BEE000729E1B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				32006E1F2E64BEE100729E1B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				32006E192E64BEE000729E1B /* CampusLinkUITests */,
+			);
+			name = CampusLinkUITests;
+			packageProductDependencies = (
+			);
+			productName = CampusLinkUITests;
+			productReference = 32006E182E64BEE000729E1B /* CampusLinkUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		329646842E3AF4E800E625AA /* CampusLink */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 329646932E3AF4E900E625AA /* Build configuration list for PBXNativeTarget "CampusLink" */;
+			buildPhases = (
+				329646812E3AF4E800E625AA /* Sources */,
+				329646822E3AF4E800E625AA /* Frameworks */,
+				329646832E3AF4E800E625AA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				329646872E3AF4E800E625AA /* CampusLink */,
+			);
+			name = CampusLink;
+			packageProductDependencies = (
+				329646D12E3AF8E700E625AA /* Auth */,
+				329646D32E3AF8E700E625AA /* Functions */,
+				329646D52E3AF8E700E625AA /* PostgREST */,
+				329646D72E3AF8E700E625AA /* Realtime */,
+				329646D92E3AF8E700E625AA /* Storage */,
+				329646DB2E3AF8E700E625AA /* Supabase */,
+				32B003512E45C950006DCE77 /* Stripe */,
+				32B003532E45C950006DCE77 /* StripeApplePay */,
+				32B003552E45C950006DCE77 /* StripeCardScan */,
+				32B003572E45C950006DCE77 /* StripeConnect */,
+				32B003592E45C950006DCE77 /* StripeFinancialConnections */,
+				32B0035B2E45C950006DCE77 /* StripeIdentity */,
+				32B0035D2E45C950006DCE77 /* StripePayments */,
+				32B0035F2E45C950006DCE77 /* StripePaymentSheet */,
+				32B003612E45C950006DCE77 /* StripePaymentsUI */,
+			);
+			productName = CampusLink;
+			productReference = 329646852E3AF4E800E625AA /* CampusLink.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3296467D2E3AF4E800E625AA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {
+					32006E172E64BEE000729E1B = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = 329646842E3AF4E800E625AA;
+					};
+					329646842E3AF4E800E625AA = {
+						CreatedOnToolsVersion = 16.2;
+					};
+				};
+			};
+			buildConfigurationList = 329646802E3AF4E800E625AA /* Build configuration list for PBXProject "CampusLink" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3296467C2E3AF4E800E625AA;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */,
+				32CB02BB2E82007100F6029F /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 329646862E3AF4E800E625AA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				329646842E3AF4E800E625AA /* CampusLink */,
+				32006E172E64BEE000729E1B /* CampusLinkUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		32006E162E64BEE000729E1B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		329646832E3AF4E800E625AA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				32006C052E592DB300729E1B /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		32006E142E64BEE000729E1B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		329646812E3AF4E800E625AA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		32006E1F2E64BEE100729E1B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 329646842E3AF4E800E625AA /* CampusLink */;
+			targetProxy = 32006E1E2E64BEE100729E1B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		32006E202E64BEE100729E1B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = darragh.CampusLinkUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CampusLink;
+			};
+			name = Debug;
+		};
+		32006E212E64BEE100729E1B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = darragh.CampusLinkUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CampusLink;
+			};
+			name = Release;
+		};
+		329646912E3AF4E900E625AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		329646922E3AF4E900E625AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		329646942E3AF4E900E625AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CampusLink/CampusLink.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CampusLink/Preview Content\"";
+				DEVELOPMENT_TEAM = 57658NFUM9;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CampusLink/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "CampusLink needs camera access to let you take photos of items you want to sell and for your profile picture.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "CampusLink needs permission to save photos to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "CampusLink needs access to your photo library to let you select photos for your listings and profile picture.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = armv7;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = darragh.CampusLink;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		329646952E3AF4E900E625AA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CampusLink/CampusLink.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CampusLink/Preview Content\"";
+				DEVELOPMENT_TEAM = 57658NFUM9;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CampusLink/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "CampusLink needs camera access to let you take photos of items you want to sell and for your profile picture.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "CampusLink needs permission to save photos to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "CampusLink needs access to your photo library to let you select photos for your listings and profile picture.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = armv7;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = darragh.CampusLink;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		32006E222E64BEE100729E1B /* Build configuration list for PBXNativeTarget "CampusLinkUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				32006E202E64BEE100729E1B /* Debug */,
+				32006E212E64BEE100729E1B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		329646802E3AF4E800E625AA /* Build configuration list for PBXProject "CampusLink" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				329646912E3AF4E900E625AA /* Debug */,
+				329646922E3AF4E900E625AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		329646932E3AF4E900E625AA /* Build configuration list for PBXNativeTarget "CampusLink" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				329646942E3AF4E900E625AA /* Debug */,
+				329646952E3AF4E900E625AA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+		32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 24.19.0;
+			};
+		};
+		32CB02BB2E82007100F6029F /* XCRemoteSwiftPackageReference "OneSignal-XCFramework" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/OneSignal/OneSignal-XCFramework";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.2.14;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		329646D12E3AF8E700E625AA /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		329646D32E3AF8E700E625AA /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		329646D52E3AF8E700E625AA /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		329646D72E3AF8E700E625AA /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		329646D92E3AF8E700E625AA /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		329646DB2E3AF8E700E625AA /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 329646CF2E3AF8D300E625AA /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		32B003512E45C950006DCE77 /* Stripe */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = Stripe;
+		};
+		32B003532E45C950006DCE77 /* StripeApplePay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeApplePay;
+		};
+		32B003552E45C950006DCE77 /* StripeCardScan */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeCardScan;
+		};
+		32B003572E45C950006DCE77 /* StripeConnect */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeConnect;
+		};
+		32B003592E45C950006DCE77 /* StripeFinancialConnections */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeFinancialConnections;
+		};
+		32B0035B2E45C950006DCE77 /* StripeIdentity */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeIdentity;
+		};
+		32B0035D2E45C950006DCE77 /* StripePayments */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripePayments;
+		};
+		32B0035F2E45C950006DCE77 /* StripePaymentSheet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripePaymentSheet;
+		};
+		32B003612E45C950006DCE77 /* StripePaymentsUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32B003122E45C1AB006DCE77 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripePaymentsUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 3296467D2E3AF4E800E625AA /* Project object */;
+}
