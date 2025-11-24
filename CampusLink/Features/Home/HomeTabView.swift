@@ -175,7 +175,7 @@ struct HomeTabView: View {
             }
         }
         .sheet(isPresented: $showingActiveOrderDetail) {
-            NavigationView {
+                NavigationView {
                 if let order = firstActiveOrder {
                     OrderDetailView(order: order)
                         .environmentObject(authManager)
@@ -384,16 +384,24 @@ extension HomeTabView {
     private func activeOrderBanner() -> some View {
         Button(action: {
             print("🔘 Active order banner tapped - Count: \(activeOrderMonitor.ordersRequiringAction)")
+            
+            // If multiple orders, go to transactions view instead
+            if activeOrderMonitor.ordersRequiringAction > 1 {
+                print("🔀 Multiple active orders - navigating to transactions view")
+                showingMyTransactions = true
+            } else {
+                // Single order - load and show detail
             Task {
                 await loadFirstActiveOrder()
-                // Always show sheet - it will display error if order not found
-                await MainActor.run {
-                    showingActiveOrderDetail = true
-                }
-                if firstActiveOrder == nil {
-                    print("⚠️ Active order banner: No order loaded, showing error view")
-                } else {
-                    print("✅ Active order banner: Order loaded successfully, showing detail")
+                    // Always show sheet - it will display error if order not found
+                    await MainActor.run {
+                showingActiveOrderDetail = true
+                    }
+                    if firstActiveOrder == nil {
+                        print("⚠️ Active order banner: No order loaded, showing error view")
+                    } else {
+                        print("✅ Active order banner: Order loaded successfully, showing detail")
+                    }
                 }
             }
         }) {
@@ -404,11 +412,13 @@ extension HomeTabView {
                     .frame(width: 10, height: 10)
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Active Order")
+                Text(activeOrderMonitor.ordersRequiringAction == 1 ? "Active Order" : "Active Orders")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.primary)
                     
-                    Text("You have \(activeOrderMonitor.ordersRequiringAction) order\(activeOrderMonitor.ordersRequiringAction == 1 ? "" : "s") requiring action")
+                Text(activeOrderMonitor.ordersRequiringAction == 1 
+                     ? "You have 1 order requiring action" 
+                     : "Tap to view \(activeOrderMonitor.ordersRequiringAction) orders")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }
@@ -549,23 +559,12 @@ extension HomeTabView {
         print("   baseListings.count: \(baseListings.count)")
         #endif
         
-        // Apply diversification for first page on specific tabs
-        if useDiversification && !isSearchActive && currentPage == 0 && baseListings.count > 4 {
-            #if DEBUG
-            print("✅ Applying diversification...")
-            #endif
-            // Show diversified first 4, then the rest
-            let diversified = RecommendationService.shared.diversifyListings(baseListings, count: 4)
-            let remaining = baseListings.filter { listing in
-                !diversified.contains { $0.id == listing.id }
-            }
-            return diversified + remaining
-        } else {
-            #if DEBUG
-            print("⏭️  Skipping diversification (conditions not met)")
-            #endif
-            return baseListings
-        }
+        // SKIP diversification - interest prioritization already applied in loadAllListings()
+        // Diversification would reshuffle and undo the interest-based ordering
+        #if DEBUG
+        print("⏭️  Skipping diversification (using interest-based prioritization instead)")
+        #endif
+        return baseListings
     }
     
     @ViewBuilder
@@ -870,14 +869,21 @@ extension HomeTabView {
             // Cache the fresh data
             DataCacheManager.shared.cacheListings(filteredResult, forKey: cacheKey, ttl: 300)
             
+            // Apply interest-based prioritization for "For You" tab on first page
+            var finalListings = filteredResult
+            if selectedFilter == .forYou && currentPage == 0, let userId = authManager.session?.user.id.uuidString {
+                finalListings = await UserInterestService.shared.prioritizeListings(filteredResult, userId: userId)
+                print("🎯 Applied interest-based prioritization to \(finalListings.count) listings")
+            }
+            
             await MainActor.run {
                 if currentPage == 0 {
                     // First page - replace listings
-                    listings = filteredResult
+                    listings = finalListings
                 } else {
                     // Subsequent pages - append to existing listings, avoiding duplicates
                     let existingIds = Set(listings.map { $0.id })
-                    let newListings = filteredResult.filter { !existingIds.contains($0.id) }
+                    let newListings = finalListings.filter { !existingIds.contains($0.id) }
                     listings.append(contentsOf: newListings)
                 }
                 // If we got fewer than pageSize results, we've reached the end
@@ -885,7 +891,7 @@ extension HomeTabView {
                 isLoading = false
                 
                 // Prefetch images for newly loaded listings
-                prefetchImages(for: filteredResult)
+                prefetchImages(for: finalListings)
             }
         } catch {
             print("❌ Error loading listings: \(error)")
@@ -1332,12 +1338,11 @@ extension HomeTabView {
             // Try to fetch buyer orders first
             // 1. Buyer needs to PAY (order_status=placed, payment_status=pending)
             print("🔍 Checking buyer orders needing payment...")
+            
+            // First try WITHOUT listing join in case listing was archived
             let buyerOrdersNeedPay: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("buyer_id", value: userId.uuidString)
                 .eq("order_status", value: "placed")
                 .eq("payment_status", value: "pending")
@@ -1347,6 +1352,10 @@ extension HomeTabView {
                 .value
             
             print("🔍 Found \(buyerOrdersNeedPay.count) buyer orders needing payment")
+            
+            if !buyerOrdersNeedPay.isEmpty {
+                print("🔍 Buyer order IDs needing payment: \(buyerOrdersNeedPay.map { $0.id })")
+            }
             
             if let firstOrder = buyerOrdersNeedPay.first {
                 await MainActor.run {
@@ -1358,23 +1367,24 @@ extension HomeTabView {
                 return
             }
             
-            // 2. Buyer needs to CONFIRM RECEIPT (order_status=seller_confirmed, payment_status=requires_capture)
+            // 2. Buyer needs to CONFIRM RECEIPT (order_status=seller_confirmed, payment in succeeded or requires_capture)
             print("🔍 Checking buyer orders needing confirmation...")
             let buyerOrdersNeedConfirm: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("buyer_id", value: userId.uuidString)
                 .eq("order_status", value: "seller_confirmed")
-                .eq("payment_status", value: "requires_capture")
+                .`in`("payment_status", values: ["requires_capture", "succeeded"])
                 .order("created_at", ascending: false)
                 .limit(1)
                 .execute()
                 .value
             
             print("🔍 Found \(buyerOrdersNeedConfirm.count) buyer orders needing confirmation")
+            
+            if !buyerOrdersNeedConfirm.isEmpty {
+                print("🔍 Buyer order IDs needing confirmation: \(buyerOrdersNeedConfirm.map { $0.id })")
+            }
             
             if let firstOrder = buyerOrdersNeedConfirm.first {
                 await MainActor.run {
@@ -1391,10 +1401,7 @@ extension HomeTabView {
             print("🔍 Checking seller orders needing delivery...")
             let sellerOrders: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("seller_id", value: userId.uuidString)
                 .`in`("order_status", values: ["placed", "in_progress"])
                 .`in`("payment_status", values: ["succeeded", "requires_capture"])
@@ -1404,6 +1411,10 @@ extension HomeTabView {
                 .value
             
             print("🔍 Found \(sellerOrders.count) seller orders needing delivery")
+            
+            if !sellerOrders.isEmpty {
+                print("🔍 Seller order IDs needing delivery: \(sellerOrders.map { $0.id })")
+            }
             
             if let firstOrder = sellerOrders.first {
                 await MainActor.run {
@@ -1421,20 +1432,37 @@ extension HomeTabView {
         } catch {
             print("❌ Error loading first active order: \(error)")
             print("❌ Error details: \(error.localizedDescription)")
+            print("❌ Error type: \(type(of: error))")
+            
+            // Check for specific error types
             if let decodingError = error as? DecodingError {
                 switch decodingError {
                 case .keyNotFound(let key, let context):
-                    print("❌ Missing key: \(key), context: \(context)")
+                    print("❌ Missing key: \(key.stringValue)")
+                    print("❌ Coding path: \(context.codingPath)")
+                    print("❌ Debug description: \(context.debugDescription)")
                 case .typeMismatch(let type, let context):
-                    print("❌ Type mismatch: \(type), context: \(context)")
+                    print("❌ Type mismatch: expected \(type)")
+                    print("❌ Coding path: \(context.codingPath)")
+                    print("❌ Debug description: \(context.debugDescription)")
                 case .valueNotFound(let type, let context):
-                    print("❌ Value not found: \(type), context: \(context)")
+                    print("❌ Value not found: expected \(type)")
+                    print("❌ Coding path: \(context.codingPath)")
+                    print("❌ Debug description: \(context.debugDescription)")
                 case .dataCorrupted(let context):
-                    print("❌ Data corrupted: \(context)")
+                    print("❌ Data corrupted")
+                    print("❌ Coding path: \(context.codingPath)")
+                    print("❌ Debug description: \(context.debugDescription)")
                 @unknown default:
                     print("❌ Unknown decoding error")
                 }
             }
+            
+            // Try to get raw data if possible
+            if let postgrestError = error as? PostgrestError {
+                print("❌ Postgrest error: \(postgrestError)")
+            }
+            
             await MainActor.run {
                 self.firstActiveOrder = nil
             }

@@ -11,6 +11,7 @@ struct OrderDetailView: View {
     @State private var showDisputeSheet = false
     @State private var showContactSheet = false
     @State private var activeConversation: Conversation?
+    @State private var isLoadingConversation = false
     @State private var showSuccessView = false
     @State private var successMessage = ""
     @State private var currentOrder: Order
@@ -114,7 +115,9 @@ struct OrderDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Contact") {
-                    showContactSheet = true
+                    Task {
+                        await openContactSheet()
+                    }
                 }
                 .foregroundColor(Color("ThemeColor"))
             }
@@ -501,14 +504,21 @@ struct OrderDetailView: View {
                         
                         // Contact Buyer button
                         Button(action: {
-                            showContactSheet = true
+                            Task {
+                                await openContactSheet()
+                            }
                         }) {
                             HStack(spacing: 8) {
+                                if isLoadingConversation {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
                                 Image(systemName: "message.fill")
                                     .font(.headline)
                                 Text("Contact Buyer")
                                     .font(.headline)
                                     .fontWeight(.semibold)
+                                }
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -516,6 +526,7 @@ struct OrderDetailView: View {
                             .background(Color.blue)
                             .cornerRadius(12)
                         }
+                        .disabled(isLoadingConversation)
                     }
                 }
                 
@@ -532,14 +543,21 @@ struct OrderDetailView: View {
                 // Contact Seller button for buyers (show for active orders)
                 if isBuyer && currentOrder.orderStatus != .completed && currentOrder.orderStatus != .cancelled {
                     Button(action: {
-                        showContactSheet = true
+                        Task {
+                            await openContactSheet()
+                        }
                     }) {
                         HStack(spacing: 8) {
+                            if isLoadingConversation {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
                             Image(systemName: "message.fill")
                                 .font(.headline)
                             Text("Coordinate with Seller")
                                 .font(.headline)
                                 .fontWeight(.semibold)
+                            }
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -547,20 +565,28 @@ struct OrderDetailView: View {
                         .background(Color.blue)
                         .cornerRadius(12)
                     }
+                    .disabled(isLoadingConversation)
                 }
                 
                 // Contact Buyer button for sellers (show for ALL active orders not already handled above)
                 if isSeller && currentOrder.orderStatus != .completed && currentOrder.orderStatus != .cancelled &&
                    !(currentOrder.paymentStatus == .pending && currentOrder.orderStatus == .placed) {
                     Button(action: {
-                        showContactSheet = true
+                        Task {
+                            await openContactSheet()
+                        }
                     }) {
                         HStack(spacing: 8) {
+                            if isLoadingConversation {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
                             Image(systemName: "message.fill")
                                 .font(.headline)
                             Text("Coordinate with Buyer")
                                 .font(.headline)
                                 .fontWeight(.semibold)
+                            }
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -568,6 +594,7 @@ struct OrderDetailView: View {
                         .background(Color.blue)
                         .cornerRadius(12)
                     }
+                    .disabled(isLoadingConversation)
                 }
                 
                 // PRIMARY ACTION BUTTONS
@@ -1316,29 +1343,68 @@ struct OrderDetailView: View {
         await loadConversation()
     }
     
+    private func openContactSheet() async {
+        // If conversation already loaded, just show the sheet
+        if activeConversation != nil {
+            await MainActor.run {
+                showContactSheet = true
+            }
+            return
+        }
+        
+        // Otherwise, load the conversation first
+        await MainActor.run {
+            isLoadingConversation = true
+        }
+        
+        await loadConversation()
+        
+        await MainActor.run {
+            isLoadingConversation = false
+            
+            // Only show sheet if conversation was successfully loaded
+            if activeConversation != nil {
+                showContactSheet = true
+            } else {
+                errorMessage = "Failed to load conversation. Please try again."
+            }
+        }
+    }
+    
     private func loadConversation() async {
         guard let currentUserId = authManager.session?.user.id else { return }
         
         let otherUserId = isBuyer ? currentOrder.sellerId : currentOrder.buyerId
         
         do {
-            // Find existing conversation
+            // Find existing conversation - check BOTH directions
+            // Conversation could have current user as buyer OR seller
+            // IMPORTANT: Include buyer and seller user profiles for proper display names
             let existing: [Conversation] = try await supabase
                 .from("conversations")
-                .select("*")
-                .eq("buyer_id", value: currentUserId.uuidString)
-                .eq("seller_id", value: otherUserId.uuidString)
+                .select("""
+                    *,
+                    buyer:buyer_id(*),
+                    seller:seller_id(*),
+                    listing:listing_id(*)
+                """)
                 .eq("listing_id", value: currentOrder.listingId.uuidString)
+                .or("and(buyer_id.eq.\(currentUserId.uuidString),seller_id.eq.\(otherUserId.uuidString)),and(buyer_id.eq.\(otherUserId.uuidString),seller_id.eq.\(currentUserId.uuidString))")
                 .limit(1)
                 .execute()
                 .value
             
             if let conversation = existing.first {
+                print("✅ Found existing conversation: \(conversation.id)")
+                print("   Buyer: \(conversation.buyer?.name ?? "nil")")
+                print("   Seller: \(conversation.seller?.name ?? "nil")")
                 await MainActor.run {
                     activeConversation = conversation
                 }
                 return
             }
+            
+            print("📝 Creating new conversation for order: \(currentOrder.id)")
             
             // Create new conversation if none exists
             struct ConversationInsert: Encodable {
@@ -1356,16 +1422,25 @@ struct OrderDetailView: View {
                     listing_id: currentOrder.listingId.uuidString,
                     order_id: currentOrder.id.uuidString
                 ))
-                .select("*")
+                .select("""
+                    *,
+                    buyer:buyer_id(*),
+                    seller:seller_id(*),
+                    listing:listing_id(*)
+                """)
                 .single()
                 .execute()
                 .value
+            
+            print("✅ Created new conversation: \(created.id)")
+            print("   Buyer: \(created.buyer?.name ?? "nil")")
+            print("   Seller: \(created.seller?.name ?? "nil")")
             
             await MainActor.run {
                 activeConversation = created
             }
         } catch {
-            print("Error loading conversation: \(error)")
+            print("❌ Error loading conversation: \(error)")
         }
     }
     

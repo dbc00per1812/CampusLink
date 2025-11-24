@@ -9,7 +9,7 @@ struct OTPEmailConfirmationView: View {
     @State private var isConfirming = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
-    @State private var isSuccessful = false
+    @State private var showingInterestSelection = false
     
     @EnvironmentObject private var authManager: AuthManager
     @Environment(\.presentationMode) var presentationMode
@@ -113,14 +113,20 @@ struct OTPEmailConfirmationView: View {
             print("🎯 Email: \(email)")
             print("🎯 Name: \(name)")
         }
-        .alert("Email Confirmation", isPresented: $showingAlert) {
-            Button("OK") {
-                if isSuccessful {
-                    presentationMode.wrappedValue.dismiss()
-                }
-            }
+        .alert("Error", isPresented: $showingAlert) {
+            Button("OK", role: .cancel) { }
         } message: {
             Text(alertMessage)
+        }
+        .fullScreenCover(isPresented: $showingInterestSelection) {
+            InterestSelectionView(onComplete: {
+                // Interest selection complete - session is now activated
+                // Navigate to home tab
+                TabCoordinator.shared.navigateToTab(.home)
+                // Dismiss the entire sign-up flow
+                presentationMode.wrappedValue.dismiss()
+            })
+            .environmentObject(authManager)
         }
     }
     
@@ -150,11 +156,12 @@ struct OTPEmailConfirmationView: View {
             
             switch result {
             case .success:
-                alertMessage = "Email confirmed successfully! Welcome to CampusLink!"
-                isSuccessful = true
-                showingAlert = true
+                // Directly show interest selection on success (no alert needed)
+                print("✅ Email confirmed! Showing interest selection...")
+                showingInterestSelection = true
                 
             case .failure(let error):
+                // Only show alert on error
                 switch error {
                 case .emailConfirmationFailed(let underlyingError):
                     alertMessage = "Failed to confirm email: \(underlyingError.localizedDescription)"
@@ -176,7 +183,7 @@ struct OTPEmailConfirmationView: View {
         
         await MainActor.run {
             switch result {
-            case .success:
+            case .success(_):
                 alertMessage = "Verification code resent to \(email)"
                 showingAlert = true
             case .failure(let error):

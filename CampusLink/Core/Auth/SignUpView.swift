@@ -12,6 +12,7 @@ struct SignUpView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var showingOTPConfirmation = false
+    @State private var showingInterestSelection = false
     
     // Legal acceptance
     @State private var acceptedTerms = false
@@ -181,55 +182,97 @@ struct SignUpView: View {
                                     .foregroundColor(acceptedTerms ? Color("ThemeColor") : .gray)
                             }
                             
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("I accept the ")
-                                    .font(.footnote)
-                                    .foregroundColor(.primary)
-                                +
-                                Text("Terms of Service")
-                                    .font(.footnote)
-                                    .foregroundColor(Color("ThemeColor"))
-                                    .underline()
-                                +
-                                Text(", ")
-                                    .font(.footnote)
-                                    .foregroundColor(.primary)
-                                +
-                                Text("Privacy Policy")
-                                    .font(.footnote)
-                                    .foregroundColor(Color("ThemeColor"))
-                                    .underline()
-                                +
-                                Text(", and ")
-                                    .font(.footnote)
-                                    .foregroundColor(.primary)
-                                +
-                                Text("Community Guidelines")
-                                    .font(.footnote)
-                                    .foregroundColor(Color("ThemeColor"))
-                                    .underline()
-                                
-                                // Individual links
-                                HStack(spacing: 16) {
-                                    Button("Terms") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                // Tappable legal text
+                                HStack(spacing: 0) {
+                                    Text("I accept the ")
+                                        .font(.footnote)
+                                        .foregroundColor(.primary)
+                                    
+                                    Button(action: {
                                         showTermsOfService = true
+                                    }) {
+                                        Text("Terms of Service")
+                                            .font(.footnote)
+                                            .foregroundColor(Color("ThemeColor"))
+                                            .underline()
                                     }
-                                    .font(.caption)
-                                    .foregroundColor(Color("ThemeColor"))
                                     
-                                    Button("Privacy") {
+                                    Text(", ")
+                                        .font(.footnote)
+                                        .foregroundColor(.primary)
+                                    
+                                    Button(action: {
                                         showPrivacyPolicy = true
+                                    }) {
+                                        Text("Privacy Policy")
+                                            .font(.footnote)
+                                            .foregroundColor(Color("ThemeColor"))
+                                            .underline()
                                     }
-                                    .font(.caption)
-                                    .foregroundColor(Color("ThemeColor"))
                                     
-                                    Button("Guidelines") {
+                                    Text(", and ")
+                                        .font(.footnote)
+                                        .foregroundColor(.primary)
+                                    
+                                    Button(action: {
                                         showCommunityGuidelines = true
+                                    }) {
+                                        Text("Community Guidelines")
+                                            .font(.footnote)
+                                            .foregroundColor(Color("ThemeColor"))
+                                            .underline()
                                     }
-                                    .font(.caption)
-                                    .foregroundColor(Color("ThemeColor"))
                                 }
-                                .padding(.top, 4)
+                                .fixedSize(horizontal: false, vertical: true)
+                                
+                                // Larger button links for easier tapping
+                                HStack(spacing: 20) {
+                                    Button(action: {
+                                        showTermsOfService = true
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "doc.text")
+                                            Text("Terms")
+                                        }
+                                        .font(.caption)
+                                        .foregroundColor(Color("ThemeColor"))
+                                        .padding(.vertical, 6)
+                                        .padding(.horizontal, 10)
+                                        .background(Color("ThemeColor").opacity(0.1))
+                                        .cornerRadius(6)
+                                    }
+                                    
+                                    Button(action: {
+                                        showPrivacyPolicy = true
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "lock.shield")
+                                            Text("Privacy")
+                                        }
+                                        .font(.caption)
+                                        .foregroundColor(Color("ThemeColor"))
+                                        .padding(.vertical, 6)
+                                        .padding(.horizontal, 10)
+                                        .background(Color("ThemeColor").opacity(0.1))
+                                        .cornerRadius(6)
+                                    }
+                                    
+                                    Button(action: {
+                                        showCommunityGuidelines = true
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "person.2")
+                                            Text("Guidelines")
+                                        }
+                                        .font(.caption)
+                                        .foregroundColor(Color("ThemeColor"))
+                                        .padding(.vertical, 6)
+                                        .padding(.horizontal, 10)
+                                        .background(Color("ThemeColor").opacity(0.1))
+                                        .cornerRadius(6)
+                                    }
+                                }
                             }
                             
                             Spacer()
@@ -292,6 +335,19 @@ struct SignUpView: View {
                     content: LegalContent.communityGuidelines
                 )
             }
+            .fullScreenCover(isPresented: $showingInterestSelection) {
+                InterestSelectionView(onComplete: {
+                    print("✅ Interest selection completed, dismissing sign-up")
+                    // Navigate to home tab
+                    TabCoordinator.shared.navigateToTab(.home)
+                    // When interest selection completes, dismiss the entire sign-up flow
+                    presentationMode.wrappedValue.dismiss()
+                })
+                .environmentObject(authManager)
+            }
+            .onChange(of: showingInterestSelection) { oldValue, newValue in
+                print("🔔 showingInterestSelection changed from \(oldValue) to \(newValue)")
+            }
         }
     }
     
@@ -343,13 +399,20 @@ struct SignUpView: View {
         let result = await authManager.signUpWithEmailConfirmation(email: email, password: password, name: fullName, campus: campus.rawValue)
         
         switch result {
-        case .success:
-            print("✅ Sign-up successful! Email confirmation required.")
+        case .success(let needsOTP):
+            print("✅ Sign-up successful!")
+            
+            // FOR NOW: Always show interest selection, skip OTP entirely
+            // TODO: Re-enable OTP flow when email confirmation is turned back on
             await MainActor.run {
-                // Show OTP screen immediately - no alert needed
-                showingOTPConfirmation = true
-                print("📱 Showing OTP confirmation screen")
+                print("📧 Showing interest selection directly (OTP disabled for now)")
+                print("📧 Current showingInterestSelection value: \(showingInterestSelection)")
+                showingInterestSelection = true
+                print("📧 Set showingInterestSelection to: \(showingInterestSelection)")
             }
+            
+            // Small delay to ensure view is ready
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             
         case .failure(let error):
             print("❌ Sign-up failed: \(error)")

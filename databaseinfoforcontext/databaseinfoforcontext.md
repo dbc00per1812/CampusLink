@@ -315,6 +315,15 @@ CREATE TABLE public.trigger_debug_log (
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT trigger_debug_log_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.user_interests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  category text NOT NULL,
+  listing_type text NOT NULL CHECK (listing_type = ANY (ARRAY['product'::text, 'service'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_interests_pkey PRIMARY KEY (id),
+  CONSTRAINT user_interests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.user_notification_preferences (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE,

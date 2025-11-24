@@ -30,6 +30,7 @@ struct ListingDetailView: View {
     @State private var purchaseQuantity: Int = 1
     @State private var isUserBlocked = false
     @State private var currentListing: ListingWithUser?
+    @State private var showingShareSheet = false
 
     // Use currentListing if available, otherwise fall back to the initial listing
     private var displayedListing: ListingWithUser {
@@ -57,6 +58,15 @@ struct ListingDetailView: View {
         print("🔍 Auth Session User: \(authManager.session?.user.id.uuidString ?? "nil")")
         
         return isOwner
+    }
+    
+    private func formatPrice() -> String {
+        if let budgetMin = listing.budgetMin, let budgetMax = listing.budgetMax {
+            return "Budget: $\(String(format: "%.0f", budgetMin)) - $\(String(format: "%.0f", budgetMax))"
+        } else if let price = listing.price {
+            return "$\(String(format: "%.2f", price))"
+        }
+        return "Contact for price"
     }
 
     var body: some View {
@@ -88,6 +98,14 @@ struct ListingDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 16) {
+                    // Share button
+                    Button(action: {
+                        showingShareSheet = true
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundColor(.facebookBlue)
+                    }
+                    
                     if !isOwnListing && isAuthenticated {
                         Menu {
                             Button {
@@ -118,6 +136,16 @@ struct ListingDetailView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareListingSheet(
+                listingId: listing.id.uuidString,
+                listingTitle: listing.title,
+                listingDescription: listing.description,
+                listingPrice: formatPrice(),
+                listingImageURL: listing.photos.first,
+                isPresented: $showingShareSheet
+            )
         }
         .onAppear {
             Task {

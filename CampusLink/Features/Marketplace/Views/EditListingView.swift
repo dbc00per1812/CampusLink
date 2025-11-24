@@ -52,6 +52,7 @@ struct EditListingView: View {
     @State private var cropperIndex: Int = 0
     @State private var quantity: Int
     @State private var acceptsOffers: Bool
+    @State private var deletedPhotoURLs: Set<String> = []
 
     // Product categories
     private let productCategories = ["Electronics", "Books", "Furniture", "Clothing", "Sports", "Tickets", "Other"]
@@ -147,17 +148,31 @@ struct EditListingView: View {
                                 HStack(spacing: 12) {
                                     Spacer(minLength: 0)
                                     ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, photoURL in
-                                        if let url = URL(string: photoURL) {
-                                            AsyncImage(url: url) { image in
-                                                image
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fill)
-                                            } placeholder: {
-                                                Rectangle().fill(Color(UIColor.systemGray5))
+                                        if !deletedPhotoURLs.contains(photoURL) {
+                                            if let url = URL(string: photoURL) {
+                                                ZStack(alignment: .topTrailing) {
+                                                    AsyncImage(url: url) { image in
+                                                        image
+                                                            .resizable()
+                                                            .aspectRatio(contentMode: .fill)
+                                                    } placeholder: {
+                                                        Rectangle().fill(Color(UIColor.systemGray5))
+                                                    }
+                                                    .frame(width: 120, height: 120)
+                                                    .clipped()
+                                                    .cornerRadius(12)
+                                                    
+                                                    Button(action: {
+                                                        deletedPhotoURLs.insert(photoURL)
+                                                    }) {
+                                                        Image(systemName: "xmark.circle.fill")
+                                                            .foregroundColor(.facebookBlue)
+                                                            .background(Color.white)
+                                                            .clipShape(Circle())
+                                                    }
+                                                    .offset(x: 8, y: -8)
+                                                }
                                             }
-                                            .frame(width: 120, height: 120)
-                                            .clipped()
-                                            .cornerRadius(12)
                                         }
                                     }
                                     
@@ -175,20 +190,34 @@ struct EditListingView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.horizontal, 16)
                             }
-                        } else if let photoURL = listing.photo, let url = URL(string: photoURL) {
+                        } else if let photoURL = listing.photo, !deletedPhotoURLs.contains(photoURL), let url = URL(string: photoURL) {
                             // Fallback to single photo for backward compatibility
                             VStack(spacing: 12) {
-                                AsyncImage(url: url) { image in
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                } placeholder: {
-                                    Rectangle().fill(Color(UIColor.systemGray5))
+                                ZStack(alignment: .topTrailing) {
+                                    AsyncImage(url: url) { image in
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                    } placeholder: {
+                                        Rectangle().fill(Color(UIColor.systemGray5))
+                                    }
+                                    .frame(height: 200)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    
+                                    Button(action: {
+                                        if let photoURL = listing.photo {
+                                            deletedPhotoURLs.insert(photoURL)
+                                        }
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.facebookBlue)
+                                            .background(Color.white)
+                                            .clipShape(Circle())
+                                    }
+                                    .padding(8)
                                 }
-                                .frame(height: 200)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .clipped()
-                                .cornerRadius(12)
                                 
                                 MultiImagePickerButton(
                                     selectedImages: $newImages,
@@ -451,7 +480,13 @@ struct EditListingView: View {
             await MainActor.run { isSaving = true }
 
             var photoURL: String? = listing.photo
-            var photoURLs: [String] = listing.photos
+            // Filter out deleted photos from existing photos
+            var photoURLs: [String] = listing.photos.filter { !deletedPhotoURLs.contains($0) }
+            
+            // If the main photo was deleted, clear it or set it to the first remaining photo
+            if let mainPhoto = photoURL, deletedPhotoURLs.contains(mainPhoto) {
+                photoURL = photoURLs.first
+            }
             
             // Upload multiple photos if selected
             if !newImages.isEmpty {

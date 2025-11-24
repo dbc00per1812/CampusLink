@@ -137,7 +137,13 @@ struct LoginView: View {
         // Reset password reset state on successful login
         resetPasswordResetState()
         
-        if case .failure(let error) = result {
+        switch result {
+        case .success:
+            // Navigate to home tab after successful login
+            await MainActor.run {
+                TabCoordinator.shared.navigateToTab(.home)
+            }
+        case .failure(let error):
             if case .signInFailed(let underlyingError) = error {
                 alertMessage = "Sign in failed: \(underlyingError.localizedDescription)"
                 showingAlert = true

@@ -41,9 +41,11 @@ struct PostView: View {
     
     // Share sheet states
     @State private var showingShareSheet = false
+    @State private var sharedListingId = ""
     @State private var sharedListingTitle = ""
     @State private var sharedListingDescription = ""
     @State private var sharedListingPrice = ""
+    @State private var sharedListingImageURL: String? = nil
     @State private var userProfile: User? = nil
     @State private var isLoadingProfile = true
     @State private var shouldShowPayoutSetup = false
@@ -793,9 +795,11 @@ struct PostView: View {
         }
         .sheet(isPresented: $showingShareSheet) {
             ShareListingSheet(
+                listingId: sharedListingId,
                 listingTitle: sharedListingTitle,
                 listingDescription: sharedListingDescription,
                 listingPrice: sharedListingPrice,
+                listingImageURL: sharedListingImageURL,
                 isPresented: $showingShareSheet
             )
         }
@@ -1097,10 +1101,14 @@ struct PostView: View {
                 acceptsOffers: selectedIntent == .offer ? acceptsOffers : nil
             )
             
-            try await supabase
+            // Insert and retrieve the created listing to get its ID
+            let createdListing: Listing = try await supabase
                 .from("listings")
-                .insert(newListing, returning: .minimal)
+                .insert(newListing)
+                .select()
+                .single()
                 .execute()
+                .value
             
             await MainActor.run {
                 // Analytics: Track listing creation
@@ -1111,8 +1119,11 @@ struct PostView: View {
                 }
                 
                 // Prepare share sheet data
+                sharedListingId = createdListing.id.uuidString
                 sharedListingTitle = title
                 sharedListingDescription = description
+                sharedListingImageURL = photoURL // First photo from upload
+                
                 if selectedIntent == .seek {
                     if let min = newListing.budgetMin, let max = newListing.budgetMax {
                         sharedListingPrice = "Budget: $\(String(format: "%.0f", min)) - $\(String(format: "%.0f", max))"

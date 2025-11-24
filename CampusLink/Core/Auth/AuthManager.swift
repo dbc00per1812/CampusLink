@@ -26,6 +26,13 @@ class AuthManager: ObservableObject {
     }
 
     private var authTask: Task<Void, Never>? = nil
+    
+    // Temporary session storage for when email confirmation is disabled
+    // Will be activated after interest selection completes
+    private var pendingSession: Session? = nil
+    
+    // Flag to ignore auth state changes during signup
+    private var isSigningUp = false
 
     enum AuthError: Error {
         case invalidEmail
@@ -56,7 +63,12 @@ class AuthManager: ObservableObject {
         authTask = Task {
             for await (event, session) in supabase.auth.authStateChanges {
                 await MainActor.run {
-                    self.session = session
+                    // Don't set session during signup - wait for interest selection
+                    if !self.isSigningUp {
+                        self.session = session
+                    } else {
+                        print("🚫 Ignoring auth state change during signup (session will be set after interests)")
+                    }
                 }
                 
                 // Profile creation is now handled by database trigger automatically
@@ -69,6 +81,17 @@ class AuthManager: ObservableObject {
     
     deinit {
         authTask?.cancel()
+    }
+    
+    /// Activate pending session (call after interest selection completes)
+    func activatePendingSession() {
+        if let pending = pendingSession {
+            print("✅ Activating pending session")
+            self.session = pending
+            self.pendingSession = nil
+        }
+        // Re-enable auth state change listening
+        isSigningUp = false
     }
 
     func signUp(email: String, password: String, name: String) async -> Result<Void, AuthError> {
@@ -120,12 +143,16 @@ class AuthManager: ObservableObject {
     }
     
     /// Sign up with email confirmation required (OTP-based)
-    func signUpWithEmailConfirmation(email: String, password: String, name: String, campus: String) async -> Result<Void, AuthError> {
+    /// Returns success with a Bool indicating if OTP is needed (true = needs OTP, false = auto-confirmed)
+    func signUpWithEmailConfirmation(email: String, password: String, name: String, campus: String) async -> Result<Bool, AuthError> {
         // Validate .edu email requirement
         guard email.lowercased().hasSuffix(".edu") else {
             print("❌ Signup rejected: email does not end with .edu")
             return .failure(.invalidEmail)
         }
+        
+        // Set flag to ignore auth state changes during signup
+        isSigningUp = true
         
         do {
             print("🔄 Starting signup with email confirmation for \(email)")
@@ -148,6 +175,7 @@ class AuthManager: ObservableObject {
             // Check if email confirmation is required
             if authResponse.user.emailConfirmedAt == nil {
                 print("📧 Email confirmation required - user should receive verification email")
+                return .success(true) // true = needs OTP
             } else {
                 print("⚠️ User already confirmed - creating profile immediately")
                 
@@ -155,15 +183,15 @@ class AuthManager: ObservableObject {
                 let userId = authResponse.user.id.uuidString
                 await ensureUserProfileExists(userId: userId, email: email, name: name, campus: campus)
                 
-                // Update session if we have one
+                // DON'T set session yet - wait until after interest selection completes
+                // Store it temporarily for later activation
                 if let session = authResponse.session {
-                    await MainActor.run {
-                        self.session = session
-                    }
+                    self.pendingSession = session
+                    print("📝 Profile created, session pending activation until after interest selection")
                 }
+                
+                return .success(false) // false = auto-confirmed, skip OTP
             }
-            
-            return .success(())
             
         } catch {
             print("❌ Signup with email confirmation failed: \(error)")

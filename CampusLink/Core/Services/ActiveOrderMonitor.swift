@@ -59,60 +59,61 @@ class ActiveOrderMonitor: ObservableObject {
             // First, let's check ALL orders for this user to debug
             let allBuyerOrders: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("buyer_id", value: userId.uuidString)
                 .execute()
                 .value
             
             let allSellerOrders: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("seller_id", value: userId.uuidString)
                 .execute()
                 .value
             
             print("📊 ActiveOrderMonitor: Total orders - Buyer: \(allBuyerOrders.count), Seller: \(allSellerOrders.count)")
+            print("📊 ActiveOrderMonitor: Checking for user: \(userId)")
             
             // Log all orders with their statuses
             for order in allBuyerOrders {
-                print("   Buyer Order \(order.id): status=\(order.orderStatus.rawValue), payment=\(order.paymentStatus.rawValue)")
+                print("   📦 Buyer Order \(order.id):")
+                print("      - Status: \(order.orderStatus.rawValue)")
+                print("      - Payment: \(order.paymentStatus.rawValue)")
+                print("      - Seller confirmed at: \(order.sellerConfirmedAt?.description ?? "nil")")
             }
             for order in allSellerOrders {
-                print("   Seller Order \(order.id): status=\(order.orderStatus.rawValue), payment=\(order.paymentStatus.rawValue)")
+                print("   📦 Seller Order \(order.id):")
+                print("      - Status: \(order.orderStatus.rawValue)")
+                print("      - Payment: \(order.paymentStatus.rawValue)")
             }
             
             // Check orders where user is buyer and needs to take action
             // 1. Buyer needs to PAY (order_status=placed, payment_status=pending)
             // 2. Buyer needs to CONFIRM RECEIPT (order_status=seller_confirmed, payment_status=requires_capture)
+            // NOTE: We don't join listings because they may be archived when offer accepted
             let buyerOrdersNeedPay: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("buyer_id", value: userId.uuidString)
                 .eq("order_status", value: "placed")
                 .eq("payment_status", value: "pending")
                 .execute()
                 .value
             
+            print("🔍 Querying for buyer orders needing confirmation...")
+            print("   - buyer_id: \(userId.uuidString)")
+            print("   - Looking for: order_status='seller_confirmed' AND payment_status IN ('requires_capture', 'succeeded')")
+            
             let buyerOrdersNeedConfirm: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("buyer_id", value: userId.uuidString)
                 .eq("order_status", value: "seller_confirmed")
-                .eq("payment_status", value: "requires_capture")
+                .`in`("payment_status", values: ["requires_capture", "succeeded"])
                 .execute()
                 .value
+            
+            print("🔍 Query returned \(buyerOrdersNeedConfirm.count) orders needing confirmation")
             
             let buyerOrders = buyerOrdersNeedPay + buyerOrdersNeedConfirm
             
@@ -121,12 +122,10 @@ class ActiveOrderMonitor: ObservableObject {
             // Check orders where user is seller and needs to deliver
             // ONLY when payment is completed (payment_status = succeeded OR requires_capture)
             // NOT when payment is still pending (buyer hasn't paid yet)
+            // NOTE: We don't join listings because they may be archived when offer accepted
             let sellerOrders: [Order] = try await supabase
                 .from("orders")
-                .select("""
-                    *,
-                    listing:listings(*)
-                """)
+                .select("*")
                 .eq("seller_id", value: userId.uuidString)
                 .`in`("order_status", values: ["placed", "in_progress"])
                 .`in`("payment_status", values: ["succeeded", "requires_capture"])

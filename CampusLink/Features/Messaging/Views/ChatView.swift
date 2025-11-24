@@ -30,6 +30,23 @@ struct ChatView: View {
         conversation.otherParticipant(currentUserId: currentUserId)
     }
     
+    // Computed property that always provides a name
+    private var chatTitle: String {
+        if let other = otherUser {
+            // Try name first, then email, then fallback
+            if let name = other.name, !name.isEmpty {
+                return name.formattedName
+            }
+            if let email = other.email, !email.isEmpty {
+                // Show just the email username part (before @)
+                let username = email.components(separatedBy: "@").first ?? email
+                return username
+            }
+        }
+        // Ultimate fallback
+        return "Chat"
+    }
+    
     @ViewBuilder
     var body: some View {
         NavigationView {
@@ -55,7 +72,7 @@ struct ChatView: View {
             // Message input
             messageInputBar
         }
-        .navigationTitle(conversation.displayName(currentUserId: currentUserId))
+        .navigationTitle(chatTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

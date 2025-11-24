@@ -526,21 +526,33 @@ struct MyTransactionsView: View {
         let otherUserId = selection == .purchases ? order.sellerId : order.buyerId
         
         do {
-            // find existing
+            // Find existing conversation - check BOTH directions
+            // Conversation could have current user as buyer OR seller
+            // IMPORTANT: Include buyer and seller user profiles for proper display names
             let existing: [Conversation] = try await supabase
                 .from("conversations")
-                .select("*")
-                .eq("buyer_id", value: currentUserId.uuidString)
-                .eq("seller_id", value: otherUserId.uuidString)
+                .select("""
+                    *,
+                    buyer:buyer_id(*),
+                    seller:seller_id(*),
+                    listing:listing_id(*)
+                """)
                 .eq("listing_id", value: order.listingId.uuidString)
+                .or("and(buyer_id.eq.\(currentUserId.uuidString),seller_id.eq.\(otherUserId.uuidString)),and(buyer_id.eq.\(otherUserId.uuidString),seller_id.eq.\(currentUserId.uuidString))")
                 .limit(1)
                 .execute()
                 .value
             if let convo = existing.first {
+                print("✅ Found existing conversation: \(convo.id)")
+                print("   Buyer: \(convo.buyer?.name ?? "nil")")
+                print("   Seller: \(convo.seller?.name ?? "nil")")
                 await MainActor.run { activeConversation = convo }
                 return
             }
-            // create using an Encodable struct
+            
+            print("📝 Creating new conversation for order: \(order.id)")
+            
+            // Create using an Encodable struct
             struct ConversationInsert: Encodable {
                 let buyer_id: String
                 let seller_id: String
@@ -555,12 +567,23 @@ struct MyTransactionsView: View {
                     listing_id: order.listingId.uuidString,
                     order_id: order.id.uuidString
                 ))
-                .select("*")
+                .select("""
+                    *,
+                    buyer:buyer_id(*),
+                    seller:seller_id(*),
+                    listing:listing_id(*)
+                """)
                 .single()
                 .execute()
                 .value
+            
+            print("✅ Created new conversation: \(created.id)")
+            print("   Buyer: \(created.buyer?.name ?? "nil")")
+            print("   Seller: \(created.seller?.name ?? "nil")")
+            
             await MainActor.run { activeConversation = created }
         } catch {
+            print("❌ Error loading conversation: \(error)")
             await MainActor.run { errorMessage = "Unable to open chat: \(error.localizedDescription)" }
         }
     }
