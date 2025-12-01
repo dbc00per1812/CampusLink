@@ -187,7 +187,7 @@ serve(async (req) => {
       }
     }
 
-    // Calculate pricing breakdown (only for new listings, order already has prices)
+    // Calculate pricing - NO platform fee, only Stripe processing fee
     if (listing_id && !order_id) {
       // NEW PURCHASE: Calculate prices from listing
       const { data: listing, error: listingError } = await supabaseAdmin
@@ -202,35 +202,29 @@ serve(async (req) => {
       
       sellerPriceCents = Math.round(listing.price * 100);
     
-    // Calculate Stripe processing fee (2.9% + $0.30)
-    const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
+      // Calculate Stripe processing fee (2.9% + $0.30)
+      const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
     
-    // Calculate subtotal (seller price + Stripe fee)
-    const subtotalCents = sellerPriceCents + stripeFeeCents;
-    
-    // Round UP to next dollar - this is what buyer pays
-      buyerPriceCents = Math.ceil(subtotalCents / 100) * 100;
+      // Buyer pays exact amount: seller price + Stripe fee (no rounding, no platform fee)
+      buyerPriceCents = sellerPriceCents + stripeFeeCents;
     }
     // For order_id case, prices are already set from the order query above
     
-    // Calculate platform cut and application fee
+    // Calculate Stripe fee and set platform cut to $0 (no platform fee)
     const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
-    const subtotalCents = sellerPriceCents + stripeFeeCents;
-    const campusLinkCutCents = buyerPriceCents - subtotalCents;
+    const campusLinkCutCents = 0;  // No platform fee
     
-    // For destination charges: application fee = everything except seller's listing price
-    const applicationFeeCents = buyerPriceCents - sellerPriceCents;
+    // Application fee = only Stripe processing fee (no platform profit)
+    const applicationFeeCents = stripeFeeCents;
 
-    console.log("💰 Pricing breakdown:");
+    console.log("💰 Pricing breakdown (NO platform fee):");
     console.log(`   Seller price: $${sellerPriceCents / 100}`);
-    console.log(`   Stripe fee (estimated): $${stripeFeeCents / 100}`);
-    console.log(`   Subtotal: $${subtotalCents / 100}`);
+    console.log(`   Stripe processing fee: $${stripeFeeCents / 100}`);
     console.log(`   Buyer pays: $${buyerPriceCents / 100}`);
-    console.log(`   Platform round-up cut: $${campusLinkCutCents / 100}`);
-    console.log(`   Application fee (destination charges): $${applicationFeeCents / 100}`);
+    console.log(`   Platform cut: $0 (no platform fee)`);
+    console.log(`   Application fee (covers Stripe): $${applicationFeeCents / 100}`);
 
-    // With destination charges: seller receives exactly their listing price
-    // Platform's application fee covers the Stripe processing fee + round-up profit
+    // Seller receives exactly their listing price
     const sellerReceivesCents = sellerPriceCents;
 
     console.log(`💸 Seller will receive: $${sellerReceivesCents / 100}`);
@@ -268,10 +262,10 @@ serve(async (req) => {
       // This ensures seller gets exactly their listing price, platform covers Stripe fee + profit
       paymentIntentParams.application_fee_amount = applicationFeeCents;
       
-      console.log("✅ Using DESTINATION CHARGES:");
+      console.log("✅ Using DESTINATION CHARGES (no platform fee):");
       console.log(`   → Seller receives: $${sellerReceivesCents / 100} (their listing price)`);
-      console.log(`   → Application fee to platform: $${applicationFeeCents / 100}`);
-      console.log(`   → Platform net after Stripe fee: ~$${(applicationFeeCents - stripeFeeCents) / 100}`);
+      console.log(`   → Application fee (Stripe only): $${applicationFeeCents / 100}`);
+      console.log(`   → Platform profit: $0`);
     } else {
       console.log("⚠️ Using ESCROW MODE:");
       console.log(`   → Payment will be held by platform until seller completes onboarding`);
