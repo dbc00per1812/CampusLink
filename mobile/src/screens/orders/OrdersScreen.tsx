@@ -49,6 +49,14 @@ const OrdersScreen: React.FC = () => {
     try {
       const data = await getMyOrders();
       
+      // Debug: Log the first order to see what data we're getting
+      if (data.length > 0) {
+        console.log('📦 First order data:', JSON.stringify(data[0], null, 2));
+        console.log('📦 Listing data:', data[0].listing);
+        console.log('📦 Photo:', data[0].listing?.photo);
+        console.log('📦 Photos array:', data[0].listing?.photos);
+      }
+      
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user.id;
       
