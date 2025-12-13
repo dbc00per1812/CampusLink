@@ -1,5 +1,53 @@
 # CampusLink Development Log
 
+## December 12, 2025 - Fixed Missing Order Details (Listing & User Data) ✅
+
+### Problem
+OrderDetailScreen and OrdersScreen were not showing complete information:
+- Orders list showed "Unknown Item" instead of listing titles
+- Order details showed "Unknown" for item name and seller
+- No listing images were displayed
+- Missing buyer/seller information
+
+### Root Cause
+All order service functions were only fetching the order record itself with `select('*')`, without joining the related data:
+- `listing` data (title, photo, listing_type, etc.)
+- `buyer` user data (name, avatar, etc.)
+- `seller` user data (name, avatar, etc.)
+
+### Solution
+Updated all order service functions to include Supabase joins for related data:
+
+```typescript
+.select(`
+  *,
+  listing:listings(*),
+  buyer:users!orders_buyer_id_fkey(*),
+  seller:users!orders_seller_id_fkey(*)
+`)
+```
+
+This fetches the complete order with all related information in a single query.
+
+### Files Modified
+1. **`mobile/src/services/orderService.ts`**:
+   - Updated `getOrderDetails()` to include listing and user joins
+   - Updated `getUserOrders()` to include related data for orders list
+   - Updated `getBuyerOrders()` to include related data
+   - Updated `getSellerOrders()` to include related data
+   - All functions now use proper foreign key syntax for joins
+
+### Impact
+- ✅ Order details now show complete listing information
+- ✅ Listing titles and images display correctly
+- ✅ Buyer and seller names and avatars display correctly
+- ✅ All order-related screens have complete data
+- ✅ Single query per order (efficient joins instead of multiple requests)
+
+**Status**: ✅ COMPLETE - All order data now loads with complete details
+
+---
+
 ## December 12, 2025 - Fixed OrderDetailScreen Render Error ✅
 
 ### Problem

@@ -76,7 +76,12 @@ export const createOrder = async (orderCreate: OrderCreate): Promise<Order> => {
 export const getOrderDetails = async (orderId: string): Promise<Order> => {
   const { data, error } = await supabase
     .from('orders')
-    .select('*')
+    .select(`
+      *,
+      listing:listings(*),
+      buyer:users!orders_buyer_id_fkey(*),
+      seller:users!orders_seller_id_fkey(*)
+    `)
     .eq('id', orderId)
     .single();
 
@@ -93,7 +98,12 @@ export const getUserOrders = async (
 
   let query = supabase
     .from('orders')
-    .select('*')
+    .select(`
+      *,
+      listing:listings(*),
+      buyer:users!orders_buyer_id_fkey(*),
+      seller:users!orders_seller_id_fkey(*)
+    `)
     .or(`buyer_id.eq.${currentUserId},seller_id.eq.${currentUserId}`);
 
   if (status) {
@@ -114,7 +124,12 @@ export const getBuyerOrders = async (limit = 50): Promise<Order[]> => {
 
   const { data, error } = await supabase
     .from('orders')
-    .select('*')
+    .select(`
+      *,
+      listing:listings(*),
+      buyer:users!orders_buyer_id_fkey(*),
+      seller:users!orders_seller_id_fkey(*)
+    `)
     .eq('buyer_id', currentUserId)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -129,7 +144,12 @@ export const getSellerOrders = async (limit = 50): Promise<Order[]> => {
 
   const { data, error } = await supabase
     .from('orders')
-    .select('*')
+    .select(`
+      *,
+      listing:listings(*),
+      buyer:users!orders_buyer_id_fkey(*),
+      seller:users!orders_seller_id_fkey(*)
+    `)
     .eq('seller_id', currentUserId)
     .order('created_at', { ascending: false })
     .limit(limit);
