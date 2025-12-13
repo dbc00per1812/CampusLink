@@ -95,8 +95,11 @@ const OrdersScreen: React.FC = () => {
     >
       {/* Listing Image */}
       <View style={styles.orderImageContainer}>
-        {item.listing?.photo ? (
-          <Image source={{ uri: item.listing.photo }} style={styles.orderImage} />
+        {(item.listing?.photos?.[0] || item.listing?.photo) ? (
+          <Image 
+            source={{ uri: item.listing?.photos?.[0] || item.listing?.photo }} 
+            style={styles.orderImage} 
+          />
         ) : (
           <View style={styles.imagePlaceholder}>
             <Ionicons name="cube-outline" size={24} color={Colors.textTertiary} />

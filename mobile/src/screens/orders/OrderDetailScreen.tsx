@@ -331,8 +331,11 @@ const OrderDetailScreen: React.FC = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Item</Text>
           <View style={styles.listingCard}>
-            {order.listing?.photo && (
-              <Image source={{ uri: order.listing.photo }} style={styles.listingImage} />
+            {(order.listing?.photos?.[0] || order.listing?.photo) && (
+              <Image 
+                source={{ uri: order.listing?.photos?.[0] || order.listing?.photo }} 
+                style={styles.listingImage} 
+              />
             )}
             <View style={styles.listingInfo}>
               <Text style={styles.listingTitle}>{order.listing?.title || 'Unknown'}</Text>

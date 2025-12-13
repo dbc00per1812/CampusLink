@@ -1,5 +1,36 @@
 # CampusLink Development Log
 
+## December 12, 2025 - Fixed Order Listing Images Not Displaying ✅
+
+### Problem
+Listing images were not showing in OrdersScreen and OrderDetailScreen, even though the listing data was now being loaded correctly.
+
+### Root Cause
+The order screens were only checking `listing.photo` field, but listings can store images in two places:
+- `photos[]` array (primary, for multiple images)
+- `photo` string (fallback, for single image)
+
+The ListingCard component correctly checks `photos[0]` first, then falls back to `photo`, but the order screens were missing this logic.
+
+### Solution
+Updated both order screens to match ListingCard's image loading pattern:
+
+**Before**: `item.listing?.photo`
+**After**: `item.listing?.photos?.[0] || item.listing?.photo`
+
+This ensures images are loaded from the correct field, prioritizing the photos array.
+
+### Files Modified
+1. **`mobile/src/screens/orders/OrdersScreen.tsx`**:
+   - Updated image source to check `photos[0]` before `photo`
+   
+2. **`mobile/src/screens/orders/OrderDetailScreen.tsx`**:
+   - Updated image source to check `photos[0]` before `photo`
+
+**Status**: ✅ COMPLETE - Listing images now display correctly in all order screens
+
+---
+
 ## December 12, 2025 - Fixed Missing Order Details (Listing & User Data) ✅
 
 ### Problem
