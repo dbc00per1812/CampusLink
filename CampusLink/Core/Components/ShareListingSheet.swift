@@ -1,4 +1,6 @@
 import SwiftUI
+import Photos
+import SCSDKCreativeKit
 
 struct ShareListingSheet: View {
     let listingId: String
@@ -10,6 +12,9 @@ struct ShareListingSheet: View {
     @Environment(\.dismiss) var dismiss
     
     @State private var isGeneratingImage = false
+    @State private var showingSavedAlert = false
+    @State private var savedAlertMessage = ""
+    @State private var pendingAppToOpen: String? = nil
     
     var body: some View {
         NavigationView {
@@ -70,14 +75,14 @@ struct ShareListingSheet: View {
                             Divider()
                                 .padding(.leading, 72)
                             
-                            ShareOptionRow(
-                                icon: "photo.fill",
-                                iconColor: .yellow,
-                                title: "Share Sticker",
-                                subtitle: "Snapchat, Messages, etc."
-                            ) {
-                                shareStickerGeneric()
-                            }
+                        ShareOptionRow(
+                            icon: "camera.fill",
+                            iconColor: Color(hex: "FFFC00"),
+                            title: "Snapchat Stories",
+                            subtitle: "Share as a sticker"
+                        ) {
+                            shareToSnapchatStory()
+                        }
                             
                             Divider()
                                 .padding(.leading, 72)
@@ -163,52 +168,173 @@ struct ShareListingSheet: View {
                     }
                 }
             }
+            .alert("Sticker Ready", isPresented: $showingSavedAlert) {
+                if let appScheme = pendingAppToOpen, let url = URL(string: appScheme) {
+                    Button("Open App") {
+                        UIApplication.shared.open(url)
+                        pendingAppToOpen = nil
+                    }
+                    Button("Done", role: .cancel) {
+                        pendingAppToOpen = nil
+                    }
+                } else {
+                    Button("OK", role: .cancel) { }
+                }
+            } message: {
+                Text(savedAlertMessage)
+            }
         }
     }
     
     // MARK: - Share Handlers
     
     private func shareToInstagramStories() {
-        guard let url = URL(string: "instagram-stories://share") else { return }
+        // Facebook App ID is required for Instagram Stories sticker sharing
+        // Get yours at: https://developers.facebook.com
+        // Once you have it, replace this placeholder:
+        let facebookAppID = "YOUR_FACEBOOK_APP_ID"  // TODO: Replace with real App ID
         
-        if UIApplication.shared.canOpenURL(url) {
-            Task {
-                isGeneratingImage = true
-                // defer { isGeneratingImage = false } // Don't defer, handle inside
+        // Check if we have a real Facebook App ID configured
+        let hasValidAppID = facebookAppID != "YOUR_FACEBOOK_APP_ID" && !facebookAppID.isEmpty
+        
+        Task {
+            isGeneratingImage = true
+            
+            guard let stickerImage = await generateStickerImage() else {
+                isGeneratingImage = false
+                return
+            }
+            
+            guard let imageData = stickerImage.pngData() else {
+                isGeneratingImage = false
+                return
+            }
+            
+            await MainActor.run {
+                isGeneratingImage = false
                 
-                guard let stickerImage = await generateStickerImage() else {
-                    isGeneratingImage = false
-                    return
-                }
-                
-                guard let imageData = stickerImage.pngData() else {
-                    isGeneratingImage = false
-                    return
-                }
-                
-                // Create pasteboard items
-                let pasteboardItems: [String: Any] = [
-                    "com.instagram.sharedSticker.stickerImage": imageData,
-                    "com.instagram.sharedSticker.backgroundTopColor": "#F5F5F5",
-                    "com.instagram.sharedSticker.backgroundBottomColor": "#FFFFFF",
-                    "com.instagram.sharedSticker.contentURL": generateShareURL().absoluteString
-                ]
-                
-                // Set pasteboard options with expiration
-                let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
-                    .expirationDate: Date().addingTimeInterval(60 * 5)
-                ]
-                
-                await MainActor.run {
-                    UIPasteboard.general.setItems([pasteboardItems], options: pasteboardOptions)
-                    UIApplication.shared.open(url)
-                    isGeneratingImage = false
+                if hasValidAppID {
+                    // Direct Instagram Stories sharing with sticker pre-loaded
+                    let urlString = "instagram-stories://share?source_application=\(facebookAppID)"
+                    guard let url = URL(string: urlString) else { return }
+                    
+                    if UIApplication.shared.canOpenURL(url) {
+                        // Set up pasteboard with sticker and link
+                        let pasteboardItems: [String: Any] = [
+                            "com.instagram.sharedSticker.stickerImage": imageData,
+                            "com.instagram.sharedSticker.backgroundTopColor": "#1a1a1a",
+                            "com.instagram.sharedSticker.backgroundBottomColor": "#000000",
+                            "com.instagram.sharedSticker.contentURL": generateShareURL().absoluteString
+                        ]
+                        
+                        let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
+                            .expirationDate: Date().addingTimeInterval(60 * 5)
+                        ]
+                        
+                        UIPasteboard.general.setItems([pasteboardItems], options: pasteboardOptions)
+                        UIApplication.shared.open(url)
+                        print("✅ Instagram Stories opened with sticker and link")
+                    } else {
+                        // Instagram not installed - fallback to save
+                        saveImageAndOpenApp(image: stickerImage, appScheme: "instagram://app", appName: "Instagram")
+                    }
+                } else {
+                    // No Facebook App ID - fallback to save to camera roll
+                    print("⚠️ No Facebook App ID configured - using camera roll fallback")
+                    saveImageAndOpenApp(image: stickerImage, appScheme: "instagram://app", appName: "Instagram")
                 }
             }
-        } else {
-            // Fallback if Instagram is not installed
-            print("Instagram not installed, showing alert or fallback")
-            // Could show an alert here, but for simplicity just log
+        }
+    }
+    
+    private func shareToSnapchatStory() {
+        Task {
+            isGeneratingImage = true
+            print("🚀 Starting Snapchat share...")
+            
+            guard let stickerImage = await generateStickerImage() else {
+                print("❌ Sticker generation failed")
+                await MainActor.run {
+                    isGeneratingImage = false
+                    savedAlertMessage = "Failed to prepare sticker. Please try again."
+                    showingSavedAlert = true
+                }
+                return
+            }
+            
+            await MainActor.run {
+                print("📤 Sending to Snapchat...")
+                
+                // Try Snap Kit SDK first
+                let photo = SCSDKSnapPhoto(image: stickerImage)
+                let sticker = SCSDKSnapSticker(stickerImage: stickerImage)
+                let content = SCSDKPhotoSnapContent(snapPhoto: photo)
+                content.sticker = sticker
+                content.attachmentUrl = generateShareURL().absoluteString
+                
+                let snapAPI = SCSDKSnapAPI()
+                
+                // Set timeout - if SDK doesn't respond in 2 seconds, use fallback
+                var didRespond = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if !didRespond && self.isGeneratingImage {
+                        print("⏱️ Snap SDK timeout - using camera roll method")
+                        self.isGeneratingImage = false
+                        self.saveImageAndOpenApp(image: stickerImage, appScheme: "snapchat://", appName: "Snapchat")
+                    }
+                }
+                
+                // Try SDK
+                snapAPI.startSending(content) { error in
+                    didRespond = true
+                    DispatchQueue.main.async {
+                        self.isGeneratingImage = false
+                        if let error = error {
+                            print("❌ Snapchat SDK error: \(error.localizedDescription)")
+                            print("📱 Falling back to camera roll...")
+                            self.saveImageAndOpenApp(image: stickerImage, appScheme: "snapchat://", appName: "Snapchat")
+                        } else {
+                            print("✅ Snapchat opened directly via SDK!")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Save image to camera roll and open the specified app
+    private func saveImageAndOpenApp(image: UIImage, appScheme: String, appName: String) {
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            DispatchQueue.main.async {
+                if status == .authorized || status == .limited {
+                    // Save to camera roll
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    }) { success, error in
+                        DispatchQueue.main.async {
+                            if success {
+                                // Try to open the app
+                                if let url = URL(string: appScheme), UIApplication.shared.canOpenURL(url) {
+                                    self.savedAlertMessage = "Sticker saved to Photos! \(appName) is opening - add it from your camera roll."
+                                    self.pendingAppToOpen = appScheme
+                                    self.showingSavedAlert = true
+                                } else {
+                                    self.savedAlertMessage = "Sticker saved to Photos! Open \(appName) and add it from your camera roll."
+                                    self.showingSavedAlert = true
+                                }
+                                print("✅ Sticker saved to Photos")
+                            } else {
+                                self.savedAlertMessage = "Failed to save sticker. Please try again."
+                                self.showingSavedAlert = true
+                                print("❌ Failed to save: \(error?.localizedDescription ?? "unknown")")
+                            }
+                        }
+                    }
+                } else {
+                    self.savedAlertMessage = "Please allow access to Photos in Settings to save stickers."
+                    self.showingSavedAlert = true
+                }
+            }
         }
     }
     
@@ -305,18 +431,31 @@ struct ShareListingSheet: View {
     
     @MainActor
     private func generateStickerImage() async -> UIImage? {
-        // 1. Download image if available
+        print("🎨 Starting sticker generation...")
+        
+        // 1. Download image if available (with timeout)
         var listingImage: UIImage?
         if let urlString = listingImageURL, let url = URL(string: urlString) {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
+                print("📥 Downloading image from: \(url)")
+                
+                // Add timeout to prevent hanging
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 5.0  // 5 second timeout
+                
+                let (data, _) = try await URLSession.shared.data(for: request)
                 listingImage = UIImage(data: data)
+                print("✅ Image downloaded successfully")
             } catch {
-                print("Error downloading image for sticker: \(error)")
+                print("⚠️ Image download failed (will use placeholder): \(error.localizedDescription)")
+                // Continue without image - use gradient placeholder
             }
+        } else {
+            print("📝 No image URL - using gradient placeholder")
         }
         
         // 2. Create View
+        print("🖼️ Creating sticker view...")
         let stickerView = ListingStickerView(
             title: listingTitle,
             price: listingPrice,
@@ -324,15 +463,22 @@ struct ShareListingSheet: View {
             image: listingImage
         )
         
-        // 3. Render
+        // 3. Render with timeout protection
+        print("🎨 Rendering sticker image...")
         if #available(iOS 16.0, *) {
             let renderer = ImageRenderer(content: stickerView)
             renderer.scale = UIScreen.main.scale
-            return renderer.uiImage
+            
+            // Force synchronous rendering to avoid async issues
+            if let image = renderer.uiImage {
+                print("✅ Sticker generated successfully!")
+                return image
+            } else {
+                print("❌ Failed to render sticker view")
+                return nil
+            }
         } else {
-            // Fallback for iOS 15 (if needed, though ImageRenderer is preferred)
-            // Since we are using modern SwiftUI, it's likely okay.
-            // Simple fallback: return just the image or nil
+            print("⚠️ iOS 15 fallback - using listing image only")
             return listingImage
         }
     }
@@ -384,6 +530,34 @@ struct ShareOptionRow: View {
     }
 }
 
+// Color extension for hex colors
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue:  Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
 // Preview
 struct ShareListingSheet_Previews: PreviewProvider {
     static var previews: some View {
@@ -397,3 +571,4 @@ struct ShareListingSheet_Previews: PreviewProvider {
         )
     }
 }
+

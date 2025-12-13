@@ -47,37 +47,101 @@ serve(async (req) => {
     const userId = user.id;
     console.log(`💳 Creating payment intent for user: ${userId}`);
 
-    // Parse request body
-    const { listing_id } = await req.json();
-    if (!listing_id) {
-      throw new Error("listing_id is required");
-    }
+    // Parse request body - support BOTH listing_id (new purchase) and order_id (accepted offer)
+    const { listing_id, order_id } = await req.json();
+    
+    let sellerUserId: string;
+    let sellerPriceCents: number;
+    let buyerPriceCents: number;
+    let listingId: string;
+    let listingTitle: string;
+    
+    if (order_id) {
+      // PAYING FOR EXISTING ORDER (accepted offer)
+      console.log(`💳 Payment for existing order: ${order_id}`);
+      
+      const { data: order, error: orderError } = await supabaseAdmin
+        .from("orders")
+        .select("id, buyer_id, seller_id, buyer_price_cents, seller_price_cents, listing_id, payment_status")
+        .eq("id", order_id)
+        .single();
 
-    console.log(`📦 Listing ID: ${listing_id}`);
+      if (orderError || !order) {
+        console.error("Order fetch error:", orderError);
+        throw new Error("Order not found");
+      }
 
-    // Get listing details including seller info
-    const { data: listing, error: listingError } = await supabaseAdmin
-      .from("listings")
-      .select(`
-        id,
-        price,
-        title,
-        user_id
-      `)
-      .eq("id", listing_id)
-      .single();
+      // Verify current user is the buyer
+      if (order.buyer_id !== userId) {
+        throw new Error("Unauthorized - you are not the buyer of this order");
+      }
 
-    if (listingError || !listing) {
-      console.error("Listing fetch error:", listingError);
-      throw new Error("Listing not found");
-    }
+      // Verify order is unpaid
+      if (order.payment_status !== 'pending') {
+        throw new Error("Order already paid");
+      }
 
-    console.log(`📦 Listing: ${listing.title}, Price: $${listing.price}`);
-    console.log(`👤 Seller ID: ${listing.user_id}`);
+      sellerUserId = order.seller_id;
+      sellerPriceCents = order.seller_price_cents;
+      buyerPriceCents = order.buyer_price_cents;
+      listingId = order.listing_id;
+      
+      // Get listing title separately
+      const { data: listing } = await supabaseAdmin
+        .from("listings")
+        .select("title")
+        .eq("id", order.listing_id)
+        .single();
+      
+      listingTitle = listing?.title || "Order";
+      
+      console.log(`📦 Order: ${listingTitle}, Buyer Price: $${buyerPriceCents / 100}`);
+      console.log(`👤 Seller ID: ${sellerUserId}`);
+      
+    } else if (listing_id) {
+      // EXISTING FLOW: New purchase
+      console.log(`📦 Listing ID: ${listing_id}`);
 
-    // Verify buyer is not the seller
-    if (listing.user_id === userId) {
-      throw new Error("Cannot purchase your own listing");
+      // Get listing details including seller info
+      const { data: listing, error: listingError } = await supabaseAdmin
+        .from("listings")
+        .select(`
+          id,
+          price,
+          title,
+          user_id
+        `)
+        .eq("id", listing_id)
+        .single();
+
+      if (listingError || !listing) {
+        console.error("Listing fetch error:", listingError);
+        throw new Error("Listing not found");
+      }
+
+      console.log(`📦 Listing: ${listing.title}, Price: $${listing.price}`);
+      console.log(`👤 Seller ID: ${listing.user_id}`);
+
+      // Verify buyer is not the seller
+      if (listing.user_id === userId) {
+        throw new Error("Cannot purchase your own listing");
+      }
+      
+      sellerUserId = listing.user_id;
+      listingId = listing.id;
+      listingTitle = listing.title;
+      
+      // Calculate prices for listing purchase
+      sellerPriceCents = Math.round(listing.price * 100);
+      
+      // Calculate Stripe processing fee (2.9% + $0.30)
+      const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
+      
+      // Buyer pays exact amount: seller price + Stripe fee (no rounding, no platform fee)
+      buyerPriceCents = sellerPriceCents + stripeFeeCents;
+      
+    } else {
+      throw new Error("Either listing_id or order_id is required");
     }
 
     // Initialize Stripe (needed for capability checks)
@@ -89,7 +153,7 @@ serve(async (req) => {
     const { data: sellerProfile, error: sellerError } = await supabaseAdmin
       .from("users")
       .select("stripe_connect_id")
-      .eq("id", listing.user_id)
+      .eq("id", sellerUserId)
       .single();
 
     if (sellerError || !sellerProfile) {
@@ -130,17 +194,9 @@ serve(async (req) => {
       }
     }
 
-    // Calculate pricing - NO platform fee, only Stripe processing fee
-    const sellerPriceCents = Math.round(listing.price * 100);
-    
-    // Calculate Stripe processing fee (2.9% + $0.30)
+    // Calculate Stripe fee and set platform cut to $0 (no platform fee)
     const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
-    
-    // Buyer pays exact amount: seller price + Stripe fee (no rounding, no platform fee)
-    const buyerPriceCents = sellerPriceCents + stripeFeeCents;
-    
-    // No platform cut - CampusLink takes $0
-    const campusLinkCutCents = 0;
+    const campusLinkCutCents = 0;  // No platform fee
     
     // Application fee = only Stripe processing fee (no platform profit)
     const applicationFeeCents = stripeFeeCents;
@@ -166,13 +222,14 @@ serve(async (req) => {
         enabled: true,
       },
       metadata: {
-        listing_id: listing_id,
+        listing_id: listingId,
         buyer_id: userId,
-        seller_id: listing.user_id,
+        seller_id: sellerUserId,
         seller_price_cents: sellerPriceCents.toString(),
         buyer_price_cents: buyerPriceCents.toString(),
         stripe_fee_cents: stripeFeeCents.toString(),
         campuslink_cut_cents: campusLinkCutCents.toString(),
+        ...(order_id ? { order_id: order_id } : {}),  // Include order_id if paying for existing order
         application_fee_cents: applicationFeeCents.toString(),
         seller_receives_cents: sellerReceivesCents.toString(),
       },
@@ -234,4 +291,3 @@ serve(async (req) => {
     );
   }
 });
-

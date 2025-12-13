@@ -1,4 +1,66 @@
-<!-- 5b06772f-ef75-48f0-b523-9ab8b4028d41 a0704981-c24b-46e3-83f3-03eed54adb9a -->
+---
+name: Swift to React Native Conversion - File-by-File Migration Plan
+overview: ""
+todos:
+  - id: d6ce42f6-8893-4643-8d29-f5048774d3ee
+    content: "Reorganize repository: move iOS files to ios-swift/, docs to docs/, create mobile/ folder"
+    status: pending
+  - id: ba1786b2-483a-4395-9861-459e2ccae38a
+    content: Create Expo project in mobile/ and install all dependencies
+    status: pending
+  - id: 7d93efce-d6af-4394-9745-ba6a1951dd88
+    content: Setup Supabase client, secrets, and app configuration
+    status: pending
+  - id: cad671b0-40cd-42e0-a94f-95b11d3b55b0
+    content: Convert all 13 Swift model files to TypeScript types
+    status: pending
+  - id: a2ff9386-97c8-40c0-bda0-8ed588a23ac4
+    content: Convert all 18 Swift service files to TypeScript services
+    status: pending
+  - id: 3493b419-3d4b-4aac-871e-17dd1a28f143
+    content: Build 15+ reusable UI components (Avatar, Button, SearchBar, etc.)
+    status: pending
+  - id: 95b6e24a-45f6-4b34-980c-d7245e3e11c3
+    content: Build authentication screens (Welcome, OTP, Guest)
+    status: pending
+  - id: 1f645e9e-5ac6-42b8-b406-e95ed6b5eb8c
+    content: Build home screens (Home, Listing Detail, Category Browse)
+    status: pending
+  - id: 2fbcc596-529b-417e-b934-c8e78bf08356
+    content: Build create/edit listing screens (largest file ~1200 lines)
+    status: pending
+  - id: 354b3aa3-4bac-485a-9a9e-15bdbe635f81
+    content: Build messaging screens (Conversations, Chat with real-time)
+    status: pending
+  - id: 6c46a49f-50b8-4064-bf65-6d8b5e16e778
+    content: Build orders/payments screens (Orders, Detail, Confirmation)
+    status: pending
+  - id: 55526a72-010c-44c1-95a4-18402efc3048
+    content: Build wallet screens (Balance, Payout, History)
+    status: pending
+  - id: c0d16121-6b37-49b0-98ab-072d1f894140
+    content: Build profile screens (Profile, Settings, Public Profile)
+    status: pending
+  - id: fc236252-74d8-4088-9981-3a9ed016b2bc
+    content: Build offers screens (Make Offer, List, Acceptance)
+    status: pending
+  - id: a39c9bbe-9dce-4a86-bda3-32227251403e
+    content: Setup React Navigation with bottom tabs and stack navigators
+    status: pending
+  - id: 345a68e4-2d93-43bf-a5c0-a81c00d072ff
+    content: Integrate Stripe SDK and test payment flows
+    status: pending
+  - id: f8d7ce60-ee21-4640-9d01-46fb4f4dfd37
+    content: Integrate OneSignal for push notifications (iOS + Android)
+    status: pending
+  - id: 2b1346e6-913a-45ed-847c-4181f4c78e2a
+    content: Test Supabase real-time subscriptions for chat and orders
+    status: pending
+  - id: 0a2cbcb3-6e1a-46f4-b5fd-bd8680d26caf
+    content: Run complete end-to-end tests of all critical user flows
+    status: pending
+---
+
 # Swift to React Native Conversion - File-by-File Migration Plan
 
 ## Repository Structure
@@ -368,25 +430,3 @@ Convert SwiftUI navigation to React Navigation.
 - Fix any bugs found
 - keep swift files for reference.
 - Deploy React Native to iOS + Android
-
-### To-dos
-
-- [ ] Reorganize repository: move iOS files to ios-swift/, docs to docs/, create mobile/ folder
-- [ ] Create Expo project in mobile/ and install all dependencies
-- [ ] Setup Supabase client, secrets, and app configuration
-- [ ] Convert all 13 Swift model files to TypeScript types
-- [ ] Convert all 18 Swift service files to TypeScript services
-- [ ] Build 15+ reusable UI components (Avatar, Button, SearchBar, etc.)
-- [ ] Build authentication screens (Welcome, OTP, Guest)
-- [ ] Build home screens (Home, Listing Detail, Category Browse)
-- [ ] Build create/edit listing screens (largest file ~1200 lines)
-- [ ] Build messaging screens (Conversations, Chat with real-time)
-- [ ] Build orders/payments screens (Orders, Detail, Confirmation)
-- [ ] Build wallet screens (Balance, Payout, History)
-- [ ] Build profile screens (Profile, Settings, Public Profile)
-- [ ] Build offers screens (Make Offer, List, Acceptance)
-- [ ] Setup React Navigation with bottom tabs and stack navigators
-- [ ] Integrate Stripe SDK and test payment flows
-- [ ] Integrate OneSignal for push notifications (iOS + Android)
-- [ ] Test Supabase real-time subscriptions for chat and orders
-- [ ] Run complete end-to-end tests of all critical user flows

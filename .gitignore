@@ -1,15 +1,47 @@
-
-
-# Swift
+# Swift / iOS
 .swiftpm/
 DerivedData/
-
-# Secrets
-Secrets.swift 
-# Build artifacts
 .DerivedData/
-CampusLink/App/Secrets.swift
+ios-swift/CampusLink/App/Secrets.swift
+ios-swift/Pods/
+ios-swift/*.xcworkspace
+ios-swift/build/
+*.xcuserstate
+
+# React Native / Expo
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/.expo-shared/
+mobile/*.log
+mobile/ios/
+mobile/android/
+
+# Secrets (both platforms)
+Secrets.swift
+mobile/src/config/secrets.ts
 
 # Build artifacts
-.DerivedData/
+*.log
+build/
 
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keys and certs (keep these out of git)
+*.p8
+*.p12
+cert_base64.txt
+key_base64.txt

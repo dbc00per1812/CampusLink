@@ -1,4 +1,33 @@
-<!-- e538a967-b079-4241-99b8-1c166945ad97 5de96890-45dc-4f22-b90f-656903d68d38 -->
+---
+name: Unified Offers & Negotiation System
+overview: ""
+todos:
+  - id: 435efe36-0aff-4bb9-b051-db30ab01ab6f
+    content: Migrate offers table to support bidirectional offers with new columns (listing_type, offer_from_user_id, offer_to_user_id, parent_offer_id) and add accepts_offers to listings
+    status: pending
+  - id: a2f16953-f3b3-4fec-91ea-ae75bd1ae243
+    content: Update Offer model in ProductModels.swift to support both directions and add acceptsOffers field to Listing models
+    status: pending
+  - id: 42fe76eb-7636-47c9-b2a4-bd0781f3dd47
+    content: Create UnifiedOfferService with methods for create/accept/reject/counter that work for both seek and regular listing offers
+    status: pending
+  - id: ce75ccf6-f902-48b5-bce8-d017bbf76628
+    content: Add accepts_offers toggle to EditListingView and Make Offer button to ListingDetailView for both offer types
+    status: pending
+  - id: 120d6a92-15fe-42b3-87ab-386333c33f19
+    content: Update OffersListView to support both types and create AllMyOffersView showing sent/received offers in unified interface
+    status: pending
+  - id: be33dfc9-233b-4be1-8c10-ba83d519841e
+    content: Enhance ChatView to display both offer types inline with appropriate action buttons
+    status: pending
+  - id: eb6fe42a-332f-423c-9cd2-05ce30c381b4
+    content: Add offer notification types and database triggers for both offer directions
+    status: pending
+  - id: 9050803f-472c-4444-869a-7176cc313a5b
+    content: Test both seek and negotiation flows, fee calculations, counter-offers, and add UI polish
+    status: pending
+---
+
 # Unified Offers & Negotiation System
 
 ## Overview
@@ -439,14 +468,3 @@ Update `log.md` with implementation details
 - Fees properly calculated (buyer pays +fees, seller sees negotiated amount)
 - Both offer types appear in chat
 - RLS policies enforce privacy
-
-### To-dos
-
-- [ ] Migrate offers table to support bidirectional offers with new columns (listing_type, offer_from_user_id, offer_to_user_id, parent_offer_id) and add accepts_offers to listings
-- [ ] Update Offer model in ProductModels.swift to support both directions and add acceptsOffers field to Listing models
-- [ ] Create UnifiedOfferService with methods for create/accept/reject/counter that work for both seek and regular listing offers
-- [ ] Add accepts_offers toggle to EditListingView and Make Offer button to ListingDetailView for both offer types
-- [ ] Update OffersListView to support both types and create AllMyOffersView showing sent/received offers in unified interface
-- [ ] Enhance ChatView to display both offer types inline with appropriate action buttons
-- [ ] Add offer notification types and database triggers for both offer directions
-- [ ] Test both seek and negotiation flows, fee calculations, counter-offers, and add UI polish

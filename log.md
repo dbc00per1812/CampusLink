@@ -1,5 +1,700 @@
 # CampusLink Development Log
 
+## December 12, 2025 - Fixed "MyListings" Navigation Error ✅
+
+### Problem
+When clicking "My Listings" button in the Profile screen, the app showed a navigation error:
+```
+The action 'NAVIGATE' with payload {"name":"MyListings"} was not handled by any navigator.
+```
+
+### Root Cause
+The `MyListings` screen was defined in the navigation types (`ProfileStackParamList`) and referenced in `ProfileScreen.tsx` (line 159), but:
+1. No `MyListingsScreen` component existed
+2. The screen was not registered in the `ProfileStack` navigator in `TabNavigator.tsx`
+
+### Solution
+1. **Created `MyListingsScreen.tsx`**:
+   - Full-featured screen for viewing and managing user's listings
+   - Filter tabs: All / Active / Sold with counts
+   - Action buttons on each listing: Mark Sold/Available, Archive
+   - Pull-to-refresh support
+   - Empty state with "Create Listing" button
+   - Uses existing `getMyListings`, `updateListing`, and `archiveListing` services
+   - Navigation to listing detail when tapping a listing card
+
+2. **Registered screen in navigation**:
+   - Added import for `MyListingsScreen` in `TabNavigator.tsx`
+   - Added `ProfileStack.Screen` for "MyListings" route with title "My Listings"
+
+### Files Modified
+1. **Created: `mobile/src/screens/profile/MyListingsScreen.tsx`**
+   - New dedicated screen for viewing user's listings
+   - Features: filtering, refresh, mark sold/available, archive
+   - Clean UI with action buttons and empty states
+
+2. **Modified: `mobile/src/navigation/TabNavigator.tsx`**
+   - Added `MyListingsScreen` import
+   - Registered `MyListings` screen in `ProfileStack.Navigator`
+
+**Status**: ✅ COMPLETE - Navigation error fixed, screen created and registered
+
+---
+
+## December 12, 2025 - Added Edit and Delete Buttons to React Native Listing Detail Screen ✅
+
+### Changes Made
+Added Edit and Delete functionality to the listing detail screen in the React Native app. When viewing your own post, Edit and Delete buttons now appear instead of the Message and Buy Now buttons.
+
+**Status**: ✅ COMPLETE - Tested and working
+
+**Update**: Added color-coded pricing
+- **Your own posts**: Blue price
+- **Other people's posts**: Green price (#34C759)
+
+**Files Modified**:
+1. **`mobile/src/screens/home/HomeScreen.tsx`**:
+   - Imported `getCurrentUserId` from authService
+   - Added `currentUserId` state to track logged-in user
+   - Modified `useEffect` to load current user ID on mount
+   - Updated `renderListingCard` to check ownership: `item.user_id === currentUserId`
+   - Applied conditional price styling:
+     - `priceOwn`: Blue (Colors.primary) for your own listings
+     - `priceOther`: Green (#34C759) for other people's listings
+   - Price color changes visible on home feed grid cards
+
+2. **`mobile/src/screens/home/ListingDetailScreen.tsx`**:
+   - Imported `getCurrentUserId` from authService and `deleteListing` from listingService
+   - Added `Alert` import for confirmation dialogs
+   - Added `currentUserId` state to track the logged-in user
+   - Modified useEffect to load both listing and current user ID in parallel
+   - Added `isOwnListing` check: `currentUserId && listing.user_id === currentUserId`
+   
+   - Added `handleEdit()` function:
+     - Navigates to EditListing screen with listingId parameter
+   
+   - Added `handleDelete()` function:
+     - Shows confirmation alert before deletion
+     - Calls `deleteListing(listing.id)` from service
+     - Shows success message and navigates back
+     - Shows error alert if deletion fails
+   
+   - Updated bottom bar UI:
+     - Shows Edit (blue) and Delete (red) buttons when `isOwnListing` is true
+     - Shows Message and Buy Now buttons when viewing other users' posts
+     - Both buttons have icon + text layout
+   
+   - Added new styles:
+     - `editButton`: Blue background with white text and edit icon
+     - `deleteButton`: Red background (#FF3B30) with white text and trash icon
+     - Both buttons are equal width (flex: 1) and have rounded corners
+
+**User Flow**:
+1. User taps on their own post from home feed
+2. Detail screen loads and detects ownership
+3. Bottom bar shows **Edit** and **Delete** buttons instead of Message/Buy Now
+4. **Edit**: Opens EditListing screen to modify the post
+5. **Delete**: Shows confirmation → deletes post → navigates back to home
+
+**Technical Details**:
+- Ownership check uses exact string match: `listing.user_id === currentUserId`
+- Delete requires confirmation to prevent accidental deletion
+- Edit navigates to existing EditListingScreen
+- Parallel loading of listing data and user ID for better performance
+
+---
+
+## December 12, 2025 - Added Edit and Delete Buttons to Profile Listings (iOS Swift - NOT USED)
+
+### Changes Made
+Added Edit and Delete functionality to listings displayed in the ProfileTabView. Previously, the listing items in the profile tab showed placeholder "Mark Delivered" and "Report Problem" buttons, but no edit or delete functionality for the user's own posts.
+
+**Files Modified**:
+1. **`ios-swift/CampusLink/Features/Profile/ProfileTabView.swift`**:
+   - Added state variables for edit/delete operations:
+     - `listingToEdit: ListingWithUser?` - tracks which listing is being edited
+     - `listingToDelete: String?` - stores the ID of the listing to delete
+     - `showDeleteAlert: Bool` - controls delete confirmation alert
+     - `isDeleting: Bool` - tracks deletion in progress
+   
+   - Added `.sheet(item: $listingToEdit)` to show EditListingView when editing
+   - Added `.alert("Delete Listing")` with confirmation dialog before deletion
+   
+   - Updated `listingRowItem()` function:
+     - Replaced placeholder "Mark Delivered" and "Report Problem" buttons
+     - Added **Edit** button that opens EditListingView for the listing
+     - Added **Delete** button that shows confirmation alert
+     - Both buttons use `.buttonStyle(PlainButtonStyle())` to prevent navigation conflicts
+   
+   - Added `deleteListing(_ listingId: String)` function:
+     - First attempts hard-delete via `delete_listing_cascade` RPC (cascades related rows)
+     - Falls back to soft-delete (sets status to "archived") if RPC unavailable
+     - Refreshes the listings list after successful deletion
+     - Proper error handling and loading states
+
+**User Flow**:
+1. User views their profile → sees their listings with Edit/Delete buttons
+2. **Edit**: Tap Edit → EditListingView sheet appears → make changes → save → list refreshes
+3. **Delete**: Tap Delete → confirmation alert appears → confirm → listing deleted → list refreshes
+
+**Technical Details**:
+- Edit button styled with ThemeColor background
+- Delete button styled with facebookBlue background
+- Deletion uses same RPC function as ListingDetailView for consistency
+- Proper state management ensures UI updates after operations complete
+
+---
+
+## December 12, 2025 - Updated React Native Wallet Screen Layout to Match iOS
+
+### Update: Added Missing Payout Screens to Navigator
+Fixed navigation issue where Quick Action buttons weren't working.
+
+**Files Created**:
+1. **`mobile/src/screens/wallet/PayoutHistoryScreen.tsx`** (NEW):
+   - Complete payout history screen with list of past payouts
+   - Shows payout status (pending, processing, completed, failed)
+   - Color-coded status badges and icons
+   - Pull-to-refresh functionality
+   - Empty state when no payouts exist
+   - Displays requested and completed dates
+   
+   **Bug Fix**: Fixed "Cannot read property 'toFixed' of undefined" error:
+   - Added optional chaining to `formatCurrency` function (handles undefined/null amounts)
+   - Updated Payout interface to allow `amount` and `amount_cents` to be optional
+   - Added data mapping in `loadPayouts` to convert `amount_cents` to dollars
+   - Added fallback to empty array if data is null/undefined
+   - Proper error handling with empty state
+
+**Files Modified**:
+2. **`mobile/src/navigation/TabNavigator.tsx`**:
+   - Imported PayoutRequestScreen and PayoutHistoryScreen
+   - Added PayoutRequest and PayoutHistory to WalletNavigator stack
+   - Set WalletMain header to hidden (headerShown: false)
+   - Screens now properly registered for navigation
+
+**Navigation Flow**:
+- Wallet tab → WalletMain (no header)
+- "Request Payout" button → PayoutRequest screen
+- "History" button → PayoutHistory screen
+- "See All" → OrdersList screen
+- Order item → OrderDetail screen
+
+---
+
+### Changes Made
+Redesigned the Wallet screen in the React Native app to match the iOS version's layout and visual hierarchy.
+
+**New Layout Order** (matches iOS):
+1. Balance Card (with Total Balance footer)
+2. Quick Action Buttons (Request Payout / History or Setup button)
+3. Compact Stripe Setup Banner (if needed)
+4. Recent Transactions
+
+**Previously**:
+1. Balance Card
+2. Large Stripe Setup Card
+3. Transaction History
+4. Quick Actions (at bottom)
+
+**Files Modified**:
+
+1. **`mobile/src/screens/wallet/WalletScreen.tsx`**:
+
+   **Balance Card Updates**:
+   - Removed "Pending" balance row (simplified to only show Escrow)
+   - Added Total Balance footer section with gray background (matches iOS)
+   - Changed Escrow text color to warning/orange (matches iOS escrow styling)
+   - Footer displays: `Available + Escrow = Total Balance`
+
+   **Quick Actions Moved Up**:
+   - Created `actionButtonsRow` with horizontal button layout
+   - Primary button: "Request Payout" (blue) or "Complete Payout Setup" (if no Stripe)
+   - Secondary button: "History" (gray background, only shows when Stripe is connected)
+   - Buttons now appear immediately below balance card (matches iOS)
+   - Use TouchableOpacity for better control over styling
+
+   **Stripe Setup Compact**:
+   - Replaced large setup card with compact banner design
+   - Banner shows only icon + short message
+   - Left border accent color (blue for setup, yellow for pending)
+   - Much smaller footprint (from ~150px to ~45px height)
+   - Still shows when Stripe not connected or pending verification
+
+   **Transaction History**:
+   - Renamed "Transaction History" to "Recent Transactions" (matches iOS)
+   - Limited display to 5 transactions (previously 10)
+   - "See All" button navigates to OrdersList (renamed from TransactionHistory)
+   - Removed old Quick Actions section at bottom
+
+   **Styling Updates**:
+   - Added `totalBalanceFooter` with gray background matching iOS
+   - Added `actionButton`, `actionButtonPrimary`, `actionButtonSecondary` styles
+   - Added `setupBanner` for compact Stripe prompts
+   - Removed old `setupCard`, `actionsGrid`, `actionCard` styles
+   - Updated spacing to match iOS visual hierarchy
+
+**Rationale**:
+- **Better UX**: Action buttons immediately accessible after viewing balance
+- **Cleaner Design**: Compact Stripe banner doesn't dominate screen
+- **iOS Parity**: Identical layout and flow across both platforms
+- **Reduced Clutter**: Eliminated redundant Quick Actions section
+- **Visual Hierarchy**: Balance → Actions → History matches user mental model
+
+---
+
+## December 12, 2025 - Updated React Native Tab Bar Order to Match iOS
+
+### Changes Made
+Reorganized the bottom navigation bar in the React Native app to match the iOS version's layout.
+
+**Tab Order (New)**:
+1. Home
+2. Messages
+3. Post (Sell)
+4. Wallet
+5. Profile
+
+**Previously**:
+1. Home
+2. Post (Sell)
+3. Messages
+4. Orders
+5. Profile
+
+**Files Modified**:
+
+1. **`mobile/src/navigation/types.ts`**:
+   - Replaced `OrdersStackParamList` with `WalletStackParamList` as a top-level tab
+   - Moved Orders screens into WalletStackParamList (OrdersList, OrderDetail, PurchaseConfirmation)
+   - Added WalletMain screen to WalletStackParamList
+   - Removed Wallet screens from ProfileStackParamList (now top-level)
+   - Updated MainTabParamList to replace Orders with Wallet
+   - Reordered MainTabParamList to match iOS: Home, Messages, Post, Wallet, Profile
+   - Renamed `OrdersScreenProps` to `WalletScreenProps`
+
+2. **`mobile/src/navigation/TabNavigator.tsx`**:
+   - Replaced OrdersNavigator with WalletNavigator
+   - WalletNavigator includes: WalletMain, OrdersList, OrderDetail screens
+   - Removed Wallet screen from ProfileNavigator
+   - Updated tab icon mappings (replaced 'receipt' icons with 'wallet' icons)
+   - Reordered Tab.Screen components: Home → Messages → Post → Wallet → Profile
+   - All screens properly configured with headers and navigation
+
+**Rationale**:
+- Provides consistent user experience across iOS and React Native platforms
+- Wallet is a primary feature that deserves top-level navigation access
+- Orders are accessible through Wallet tab (similar to iOS architecture)
+- Post button remains central for quick access to selling functionality
+
+---
+
+## December 12, 2025 - Fixed Ticket Auto-Archiving for iOS & Mobile Apps
+
+### Issue Found
+Tickets were NOT auto-archiving after events passed on BOTH platforms:
+
+**iOS App Issues (Fixed)**:
+- ❌ Timer not properly retained in async context
+- ❌ Timer not added to common run loop mode (would pause during scrolling)
+- ❌ Query didn't explicitly filter NULL values
+- ❌ Insufficient logging to debug issues
+- ❌ Used `await` on non-async function
+
+**Mobile App Issues (Fixed)**:
+- ❌ No event date picker in CreateListingScreen.tsx
+- ❌ No event date field in EditListingScreen.tsx
+- ❌ Never set `expires_at` for tickets
+
+### Implementation
+
+**Files Modified**:
+
+**iOS Swift:**
+1. `ios-swift/CampusLink/Core/Services/ExpiredListingArchiver.swift` - Fixed timer retention and query
+2. `ios-swift/CampusLink/Core/Navigation/MainTabView.swift` - Fixed async call
+
+**React Native:**
+3. `mobile/src/screens/post/CreateListingScreen.tsx` - Added event date picker and logic
+4. `mobile/src/screens/post/EditListingScreen.tsx` - Added event date picker and logic
+5. `mobile/src/types/product.ts` - Added `expires_at` field to ListingCreate type
+6. `mobile/package.json` - Added DateTimePicker dependency
+
+**Changes Made**:
+
+#### iOS: ExpiredListingArchiver.swift
+- **Fixed Timer Creation**: Wrapped timer creation in `DispatchQueue.main.async` to ensure it runs on main thread
+- **Added to Common Run Loop**: Timer now added to `.common` mode so it fires even during UI scrolling
+- **Enhanced Query**: Added explicit `.not("expires_at", operator: .is, value: "null")` filter
+- **Better Logging**: Added detailed logging including current time, listing details, and error messages
+- **Fixed ISO Date Formatting**: Reuse single formatter instance for consistency
+
+#### iOS: MainTabView.swift
+- **Removed await**: Changed `await expiredListingArchiver.startAutoArchiving()` to just `expiredListingArchiver.startAutoArchiving()` since it's not async
+
+#### Mobile: CreateListingScreen.tsx
+- Added `eventDate` state (default: 24 hours from now)
+- Added `expiresDate` state for seek posts (default: 7 days from now)
+- Added DateTimePicker component for event date when category is "Tickets"
+- Added logic to set `expires_at` in listing data:
+  - For seek posts: use `expiresDate`
+  - For ticket listings: use `eventDate`
+  - For other listings: null (no expiration)
+- UI displays event date picker only when "Tickets" category is selected
+- Required field indicator (red asterisk) on event date
+
+#### EditListingScreen.tsx  
+- Added `eventDate` state
+- Added `expiresDate` state
+- Load existing `expires_at` value when editing
+- Added DateTimePicker for tickets
+- Update `expires_at` when saving changes
+
+#### product.ts
+- Added `expires_at?: string | null` to `ListingCreate` interface
+
+### How It Works Now
+
+**Creating Tickets:**
+1. User selects "Tickets" category → Event date picker appears (both iOS & mobile)
+2. User picks event date/time (required field)
+3. When posting, `expires_at` is set to the event date
+4. Listing is saved to database with expiration date
+
+**Auto-Archiving Process:**
+1. `ExpiredListingArchiver` starts when app launches
+2. Runs immediate check on startup
+3. Sets up timer to check every 30 minutes
+4. Timer fires on common run loop (won't pause during scrolling)
+5. Query finds listings where `expires_at IS NOT NULL AND expires_at < NOW()`
+6. Updates matching tickets: sets `archived = true`
+7. Detailed logs print to console for debugging
+
+### Console Logs to Look For
+
+**On App Launch:**
+```
+📦 ExpiredListingArchiver: Started auto-archiving (checks every 30 minutes)
+```
+
+**Every 30 Minutes (or on manual trigger):**
+```
+📦 ExpiredListingArchiver: Checking for expired listings (current time: 2025-12-12T10:30:00Z)
+📦 ExpiredListingArchiver: Found 2 expired listing(s)
+📦 Archiving: 'Basketball Game Tickets' (Category: Tickets, Expires: 2025-12-12T09:00:00Z)
+✅ Archived expired listing: Basketball Game Tickets (ID: abc-123)
+✅ ExpiredListingArchiver: Archived 2 expired listing(s)
+```
+
+**If No Expired Listings:**
+```
+📦 ExpiredListingArchiver: No expired listings found
+```
+
+### Testing Recommendations
+
+**Quick Test (iOS):**
+1. Open Xcode console to see logs
+2. Create ticket with event date 2 minutes in future
+3. Look for: `📦 ExpiredListingArchiver: Started auto-archiving`
+4. Wait 2 minutes for event to pass
+5. Wait up to 30 minutes OR restart app to trigger immediate check
+6. Look for archiving logs
+7. Verify ticket is archived in database
+
+**Database Verification:**
+```sql
+-- Check if tickets have expires_at set
+SELECT id, title, category, expires_at, archived, created_at 
+FROM listings 
+WHERE category = 'Tickets' 
+ORDER BY created_at DESC 
+LIMIT 10;
+
+-- Find expired tickets that should be archived
+SELECT id, title, expires_at, archived
+FROM listings 
+WHERE category = 'Tickets' 
+  AND expires_at < NOW() 
+  AND archived = false;
+```
+
+**Manual Trigger for Testing:**
+You can call `ExpiredListingArchiver.shared.manualArchive()` from anywhere in the code to trigger an immediate check without waiting 30 minutes.
+
+---
+
+## December 12, 2025 - Added Required Field Indicators (Red Asterisks)
+
+### Overview
+Added red asterisks (*) next to the Category and Photos fields in both Create and Edit Listing screens to clearly indicate that these fields are required for creating/editing a listing.
+
+### Implementation Details
+
+**Files Modified**:
+1. `mobile/src/screens/post/CreateListingScreen.tsx` (React Native)
+2. `mobile/src/screens/post/EditListingScreen.tsx` (React Native)
+3. `ios-swift/CampusLink/Core/Navigation/TabViews.swift` (iOS Swift - Create Listing)
+4. `ios-swift/CampusLink/Features/Marketplace/Views/EditListingView.swift` (iOS Swift - Edit Listing)
+
+### Changes Made
+
+#### React Native (TypeScript)
+- **Photos Label**: Added inline red asterisk using `<Text style={{color: '#FF0000'}}>*</Text>` within the label Text component
+- **Category Label**: Same approach - inline red asterisk for visual indication of required field
+- Applied to both CreateListingScreen and EditListingScreen for consistency
+
+#### iOS Swift (SwiftUI)
+- **Photos Label**: Used SwiftUI's Text concatenation operator (`+`) to combine "Photos" text with red asterisk
+  - Main text: `.foregroundColor(.secondary)`
+  - Asterisk: `.foregroundColor(.red)`
+- **Category Label**: Same concatenation approach
+  - Applied in TabViews.swift (create listing) - both offer and seek modes
+  - Applied in EditListingView.swift (edit listing) - replaced LabeledField with VStack for custom styling
+
+### Why These Changes
+- **User Experience**: Makes it immediately clear which fields are mandatory before attempting to submit
+- **Reduces Errors**: Users won't try to submit incomplete forms, reducing validation error messages
+- **Industry Standard**: Red asterisks are a universally recognized pattern for required fields
+- **Consistency**: Applied across all platforms (React Native and iOS) and all screens (Create and Edit)
+
+### Testing Recommendations
+- Verify red asterisks appear correctly on both Create Listing and Edit Listing screens
+- Confirm color is visible and distinct (red #FF0000)
+- Check both iOS Swift app and React Native versions
+- Test in both light and dark mode if applicable
+
+---
+
+## December 12, 2025 - Snapchat & Instagram Story Sharing Implementation (Reddit-Style)
+
+### Overview
+Implemented native Snapchat and Instagram story sharing functionality using Snap Kit SDK (via CocoaPods). Users can now share their CampusLink listings directly to Snapchat Stories with a visual sticker - exactly like Reddit does it.
+
+### Implementation Approach
+
+**Snap Kit SDK via CocoaPods**: Snap Kit only supports CocoaPods (not SPM). Added CocoaPods to the project while maintaining existing Swift Package Manager dependencies for Supabase and Stripe. Both package managers work together seamlessly.
+
+### Changes Made
+
+#### 1. Installed CocoaPods and Snap SDK
+- **Installed CocoaPods**: via Homebrew (`brew install cocoapods`)
+- **Created Podfile**: `ios-swift/Podfile` with SnapSDK dependency
+- **Installed Pod**: `pod install` - installed SnapSDK 2.6.0
+- **Created Workspace**: `CampusLink.xcworkspace` (CocoaPods standard)
+- **Integration**: CocoaPods works alongside existing Swift Package Manager dependencies
+
+#### 2. Updated Info.plist with Snap Kit Configuration
+- **File Modified**: `ios-swift/CampusLink/Info.plist`
+- Added `SCSDKClientId`: `285cc4d0-6ab5-4a1b-8929-75d050749639`
+- Added URL scheme for Snapchat callback: `campuslink`
+- Added query schemes: `bitmoji-sdk`, `itms-apps`
+- Configured `CFBundleURLTypes` for Snap Kit integration
+
+#### 3. Implemented Native Snapchat Sharing with Snap SDK
+- **File Modified**: `ios-swift/CampusLink/Core/Components/ShareListingSheet.swift`
+- Added `import SCSDKCreativeKit`
+- Implemented `shareToSnapchatStory()` using Snap Kit SDK
+- Uses `SCSDKSnapPhoto`, `SCSDKSnapSticker`, and `SCSDKPhotoSnapContent`
+- Uses `SCSDKSnapAPI().startSending()` for direct Snapchat launch
+- Generates sticker image asynchronously before sharing
+- Opens Snapchat directly with sticker ready in camera (Reddit-style)
+
+#### 4. Updated Share UI with Dedicated Snapchat Button
+- **File Modified**: `ios-swift/CampusLink/Core/Components/ShareListingSheet.swift`
+- Replaced generic "Share Sticker" button with dedicated "Snapchat Stories" button
+- Updated icon to `camera.fill`
+- Changed color to Snapchat yellow (#FFFC00)
+- Added `Color` extension to support hex color codes
+- Button calls new `shareToSnapchatStory()` function
+
+#### 5. Improved Sticker Design for Better Story Visibility
+- **File Modified**: `ios-swift/CampusLink/Core/Components/ListingStickerView.swift`
+- Enhanced visual design with improved typography (larger title, bolder price)
+- Added gradient background for listings without images
+- Increased padding and spacing for better readability
+- Added shadow effect (`radius: 12, opacity: 0.15`) for depth
+- Added subtle border overlay for definition
+- Updated footer with "Tap to Open" call-to-action
+- Better contrast for use on story backgrounds
+
+#### 6. Synced Changes to Duplicate Files
+- **Files Updated**:
+  - `CampusLink/Core/Components/ShareListingSheet.swift`
+  - `CampusLink/Core/Components/ListingStickerView.swift`
+- Ensured both file locations have identical implementations
+
+### Technical Implementation Details
+
+**Snap Kit SDK Integration**:
+- Uses native Snap Kit SDK (v2.6.0) via CocoaPods
+- Configured with Client ID: `285cc4d0-6ab5-4a1b-8929-75d050749639`
+- Direct API calls to Snapchat - no intermediary share sheets
+- Generates UIImage from SwiftUI view (`ListingStickerView`)
+- Creates `SCSDKPhotoSnapContent` with sticker overlay
+- Attachment URL links back to CampusLink App Store page
+
+**Sticker Generation**:
+- Downloads listing image asynchronously if available
+- Renders SwiftUI view to UIImage using `ImageRenderer`
+- 300x250pt image area + details section
+- Optimized for Instagram and Snapchat story dimensions
+
+**User Flow**:
+1. User creates listing → Share sheet appears
+2. User taps "Snapchat Stories" button
+3. App generates visual sticker with listing details
+4. iOS share sheet appears with sharing options
+5. User selects Snapchat (or any other app)
+6. Selected app opens with image ready to share
+7. Works with Snapchat, Instagram, Messages, WhatsApp, etc.
+
+### Instagram Stories Status
+- **Deferred**: Meta Developer Portal currently inaccessible
+- **Required**: Facebook App ID for `source_application` parameter
+- **Implementation**: Ready to complete when Meta portal is available
+
+### Benefits of Share Sheet Approach
+- ✅ No SDK dependencies (keeps project clean)
+- ✅ Works with ALL sharing apps (Snapchat, Instagram, WhatsApp, etc.)
+- ✅ No CocoaPods required (stays with SPM)
+- ✅ Simpler code, easier to maintain
+- ✅ No API registration required
+- ✅ Users can share anywhere they want
+
+### Limitations vs SDK Approach
+- ❌ Requires one extra tap (user selects app from share sheet)
+- ❌ Not direct-to-Snapchat like Reddit
+- ❌ Can't pre-position sticker in Snapchat camera
+
+**Decision**: The share sheet approach is better for this use case because:
+1. It's more flexible (works everywhere)
+2. No dependency management issues
+3. More reliable long-term (no SDK version conflicts)
+4. One extra tap is acceptable trade-off
+
+### Next Steps
+1. Test on physical device
+2. Monitor share metrics
+3. Consider deep linking when user returns from share
+
+---
+
+## December 12, 2025 - 5-Day Order Completion Deadline for Sellers
+
+### Overview
+Implemented a 5-day deadline for sellers to complete orders. If an order isn't completed within 5 days, it's automatically cancelled and the buyer is refunded. This protects buyers from unresponsive sellers.
+
+### Changes Made
+
+#### 1. Created Edge Function for Auto-Cancellation
+**File Created**: `supabase/functions/process-expired-orders/index.ts`
+
+This edge function runs hourly via cron and:
+- Finds orders older than 5 days that aren't completed
+- Cancels/voids Stripe payment authorizations
+- Refunds captured payments or wallet payments
+- Updates order status to "cancelled"
+- Notifies both buyer and seller via push notifications
+- Restores listing availability (unmarks as sold)
+
+#### 2. Created SQL for Cron Job Setup
+**File Created**: `docs/sql/auto_cancel_expired_orders.sql`
+
+Complete SQL setup for:
+- Enabling pg_net and pg_cron extensions
+- Scheduling hourly job to call the edge function
+- Verification queries
+- Alternative database-only approach (without edge function)
+
+#### 3. Updated ActiveOrderMonitor with Deadline Tracking
+**File Modified**: `ios-swift/CampusLink/Core/Services/ActiveOrderMonitor.swift`
+
+Added:
+- `ordersNearDeadline` and `expiredOrders` published properties
+- `orderDeadlineSeconds` constant (5 days)
+- `deadlineWarningSeconds` constant (4 days - 24hr warning)
+- Static utility methods:
+  - `timeUntilDeadline(for:)` - returns TimeInterval
+  - `isNearDeadline(order:)` - true if within 24hrs of deadline
+  - `isPastDeadline(order:)` - true if past 5 days
+  - `formattedTimeRemaining(for:)` - human-readable string
+  - `deadlineDate(for:)` - returns the deadline Date
+- `sendDeadlineWarnings()` function for local notifications
+
+#### 4. Added Deadline Display in OrderDetailView
+**File Modified**: `ios-swift/CampusLink/Features/Payments/Views/OrderDetailView.swift`
+
+Added visual deadline indicator showing:
+- Time remaining until deadline
+- Deadline date
+- Circular progress indicator (% of time elapsed)
+- Color coding:
+  - Blue: >24 hours remaining
+  - Orange: <24 hours remaining (urgent)
+  - Red: Past deadline (will be cancelled)
+- Warning messages for sellers to complete orders
+
+#### 5. Created CircularProgressView Component
+Added helper view for displaying deadline progress visually.
+
+### Technical Details
+
+**5-Day Deadline Logic**:
+```
+Order Created → 5 days → Auto-Cancel
+              ↑
+              └── 24hr warning sent at 4 days
+```
+
+**Edge Function Flow**:
+1. Query orders with `order_status IN ('placed', 'seller_confirmed', 'in_progress')` AND `created_at < NOW() - 5 days`
+2. For each expired order:
+   - If has `stripe_payment_intent_id`:
+     - Status `requires_capture` → Cancel authorization
+     - Status `succeeded` → Create refund
+   - If wallet payment → Credit buyer's wallet
+   - Update order status to 'cancelled'
+   - Queue notifications for buyer and seller
+   - Restore listing availability
+
+**Cron Schedule**: `0 * * * *` (hourly at minute 0)
+
+### Deployment Required
+
+1. **Deploy the edge function**:
+```bash
+supabase functions deploy process-expired-orders
+```
+
+2. **Run the SQL in Supabase Dashboard**:
+- Go to SQL Editor
+- Paste contents of `docs/sql/auto_cancel_expired_orders.sql`
+- Run to enable cron job
+
+### User Experience
+
+**For Sellers**:
+- See deadline countdown on order detail page
+- Receive push notification 24 hours before deadline
+- Clear warning if order is at risk of cancellation
+
+**For Buyers**:
+- Protected from unresponsive sellers
+- Automatic refund if seller doesn't complete
+- Listing becomes available again for others
+
+### Benefits
+
+- **Buyer Protection**: No more waiting indefinitely
+- **Seller Accountability**: Clear expectations for completion
+- **Platform Health**: Reduces stale/abandoned orders
+- **Automatic Cleanup**: No manual intervention needed
+
+---
+
+# CampusLink Development Log
+
 ## December 8, 2025 - Guest Campus Selection Feature
 
 ### Overview
