@@ -109,7 +109,7 @@ const OrdersScreen: React.FC = () => {
         <Text style={styles.orderTitle} numberOfLines={1}>
           {item.listing?.title || 'Unknown Item'}
         </Text>
-        <Text style={styles.orderPrice}>${item.total_amount.toFixed(2)}</Text>
+        <Text style={styles.orderPrice}>${((item.price_cents || 0) / 100).toFixed(2)}</Text>
         <Text style={styles.orderDate}>{formatDate(item.created_at)}</Text>
       </View>
 

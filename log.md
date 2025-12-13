@@ -1,5 +1,32 @@
 # CampusLink Development Log
 
+## December 12, 2025 - Fixed OrdersScreen Render Error ✅
+
+### Problem
+OrdersScreen was crashing with error: "Cannot read property 'toFixed' of undefined"
+- Occurred when trying to display order price on line 112
+
+### Root Cause
+The code was trying to access `item.total_amount` which doesn't exist in the Order type.
+- Order interface has `price_cents` (stored in cents)
+- Code was referencing non-existent `total_amount` field
+
+### Solution
+Changed price display to use the correct field with proper conversion:
+- From: `${item.total_amount.toFixed(2)}`
+- To: `${((item.price_cents || 0) / 100).toFixed(2)}`
+- Converts cents to dollars and handles null/undefined with fallback to 0
+
+### Files Modified
+1. **`mobile/src/screens/orders/OrdersScreen.tsx`**:
+   - Fixed price display to use `price_cents` field
+   - Added null check with default value of 0
+   - Properly converts cents to dollars (divide by 100)
+
+**Status**: ✅ COMPLETE - OrdersScreen now displays prices correctly
+
+---
+
 ## December 12, 2025 - Fixed Multiple Navigation Errors in ProfileScreen ✅
 
 ### Problem
