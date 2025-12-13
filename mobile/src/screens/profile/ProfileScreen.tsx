@@ -125,7 +125,7 @@ const ProfileScreen: React.FC = () => {
 
           <TouchableOpacity
             style={styles.editButton}
-            onPress={() => navigation.navigate('EditProfile')}
+            onPress={() => Alert.alert('Coming Soon', 'Edit Profile feature is under development')}
           >
             <Ionicons name="pencil" size={18} color={Colors.primary} />
             <Text style={styles.editButtonText}>Edit Profile</Text>
@@ -167,7 +167,7 @@ const ProfileScreen: React.FC = () => {
 
           <TouchableOpacity 
             style={styles.menuItem}
-            onPress={() => navigation.navigate('Orders')}
+            onPress={() => navigation.navigate('Wallet', { screen: 'OrdersList' })}
           >
             <View style={[styles.menuIcon, { backgroundColor: Colors.success + '20' }]}>
               <Ionicons name="receipt-outline" size={22} color={Colors.success} />
@@ -193,7 +193,7 @@ const ProfileScreen: React.FC = () => {
           
           <TouchableOpacity 
             style={styles.menuItem}
-            onPress={() => navigation.navigate('NotificationSettings')}
+            onPress={() => Alert.alert('Coming Soon', 'Notification settings feature is under development')}
           >
             <View style={[styles.menuIcon, { backgroundColor: Colors.error + '20' }]}>
               <Ionicons name="notifications-outline" size={22} color={Colors.error} />

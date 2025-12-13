@@ -1,5 +1,40 @@
 # CampusLink Development Log
 
+## December 12, 2025 - Fixed Multiple Navigation Errors in ProfileScreen ✅
+
+### Problem
+Multiple navigation errors when clicking buttons in the Profile screen:
+1. "Orders" navigation error - trying to navigate to non-existent screen
+2. "NotificationSettings" navigation error - screen doesn't exist
+3. "EditProfile" navigation error - screen doesn't exist
+
+### Root Cause
+ProfileScreen was trying to navigate to screens that either:
+- Don't exist in the React Native app
+- Are registered under different names in different navigator stacks
+- Were defined in types but never implemented
+
+### Solution
+1. **Orders Navigation** - Fixed by using nested navigation:
+   - Changed from `navigation.navigate('Orders')` 
+   - To `navigation.navigate('Wallet', { screen: 'OrdersList' })`
+   - The OrdersScreen exists but is registered as "OrdersList" in the WalletStack
+
+2. **NotificationSettings & EditProfile** - Replaced with "Coming Soon" alerts:
+   - Changed navigation calls to show Alert dialogs
+   - Prevents crashes while features are under development
+   - Better UX than hidden errors
+
+### Files Modified
+1. **`mobile/src/screens/profile/ProfileScreen.tsx`**:
+   - Fixed "My Orders" button navigation to use nested navigation to WalletStack
+   - Changed "Edit Profile" button to show "Coming Soon" alert
+   - Changed "Notifications" button to show "Coming Soon" alert
+
+**Status**: ✅ COMPLETE - All navigation errors in ProfileScreen resolved
+
+---
+
 ## December 12, 2025 - Fixed "MyListings" Navigation Error ✅
 
 ### Problem
