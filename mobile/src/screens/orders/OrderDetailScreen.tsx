@@ -351,16 +351,16 @@ const OrderDetailScreen: React.FC = () => {
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${order.subtotal.toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>${((order.price_cents || 0) / 100).toFixed(2)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Service Fee</Text>
-              <Text style={styles.summaryValue}>${order.service_fee.toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>${((order.marketplace_fee_cents || 0) / 100).toFixed(2)}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.summaryRow}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${order.total_amount.toFixed(2)}</Text>
+              <Text style={styles.totalValue}>${((order.buyer_price_cents || order.price_cents || 0) / 100).toFixed(2)}</Text>
             </View>
           </View>
         </View>

@@ -1,5 +1,39 @@
 # CampusLink Development Log
 
+## December 12, 2025 - Fixed OrderDetailScreen Render Error ✅
+
+### Problem
+OrderDetailScreen was crashing when tapping an order with error: "Cannot read property 'toFixed' of undefined"
+- Occurred in the order summary section showing Subtotal, Service Fee, and Total
+
+### Root Cause
+The code was trying to access non-existent fields on the Order object:
+- `order.subtotal` - doesn't exist
+- `order.service_fee` - doesn't exist  
+- `order.total_amount` - doesn't exist
+
+### Solution
+Changed all price displays to use the correct fields from the Order type with proper conversion:
+- **Subtotal**: `price_cents / 100`
+- **Service Fee**: `marketplace_fee_cents / 100`
+- **Total**: `buyer_price_cents / 100` (with fallback to `price_cents`)
+
+All calculations:
+- Convert cents to dollars (divide by 100)
+- Include null checks with fallback to 0
+- Use proper field names from Order interface
+
+### Files Modified
+1. **`mobile/src/screens/orders/OrderDetailScreen.tsx`**:
+   - Fixed Subtotal to use `price_cents` field
+   - Fixed Service Fee to use `marketplace_fee_cents` field
+   - Fixed Total to use `buyer_price_cents` with fallback to `price_cents`
+   - Added null checks and proper cents-to-dollars conversion for all amounts
+
+**Status**: ✅ COMPLETE - OrderDetailScreen now displays all prices correctly
+
+---
+
 ## December 12, 2025 - Fixed OrdersScreen Render Error ✅
 
 ### Problem
