@@ -1,55 +1,80 @@
-// Sign Up Screen
-import React, { useState } from 'react';
+// Sign Up Screen - Modern iOS-aligned design
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
-  TouchableOpacity,
-  SafeAreaView,
+  Pressable,
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { AuthScreenProps } from '../../navigation/types';
 import { signUpWithEmailConfirmation } from '../../services/authService';
 import { getCampusFromEmail } from '../../types/campus';
-import Colors from '../../utils/colors';
+import { useColors } from '../../context/ThemeContext';
+import { Typography } from '../../utils/typography';
+import { Spacing, BorderRadius, Layout } from '../../utils/spacing';
+import { Button } from '../../components';
 
 type Props = AuthScreenProps<'SignUp'>;
 
 const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+  const colors = useColors();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Focus states
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  
+  // Refs
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
   const handleSignUp = async () => {
     // Validation
     if (!name || !email || !password || !confirmPassword) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     if (!email.toLowerCase().endsWith('.edu')) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Error', 'Please use a valid .edu email address');
       return;
     }
 
     if (password.length < 6) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
     if (password !== confirmPassword) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
-    // Detect campus from email
     const campus = getCampusFromEmail(email) || '';
 
     setLoading(true);
@@ -57,115 +82,184 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
     setLoading(false);
 
     if (result.success) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       if (result.data === true) {
-        // OTP required - navigate to verification
         navigation.navigate('OTPVerification', { email, name, campus });
       } else {
-        // Auto-confirmed - will redirect via auth state change
         Alert.alert('Success', 'Account created successfully!');
       }
     } else {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Sign Up Failed', result.error?.message || 'Unknown error');
     }
   };
 
+  const renderInput = (
+    label: string,
+    placeholder: string,
+    value: string,
+    onChangeText: (text: string) => void,
+    icon: keyof typeof Ionicons.glyphMap,
+    options: {
+      ref?: React.RefObject<TextInput>;
+      nextRef?: React.RefObject<TextInput>;
+      keyboardType?: 'default' | 'email-address';
+      autoCapitalize?: 'none' | 'words';
+      secureTextEntry?: boolean;
+      isPassword?: boolean;
+      hint?: string;
+    } = {}
+  ) => {
+    const fieldId = label.toLowerCase();
+    const isFocused = focusedField === fieldId;
+
+    return (
+      <View style={styles.inputContainer}>
+        <Text style={[styles.label, { color: colors.textPrimary }]}>
+          {label}
+        </Text>
+        <View
+          style={[
+            styles.inputWrapper,
+            {
+              backgroundColor: colors.surfaceSecondary,
+              borderColor: isFocused ? colors.primary : 'transparent',
+            },
+          ]}
+        >
+          <Ionicons
+            name={icon}
+            size={20}
+            color={isFocused ? colors.primary : colors.textTertiary}
+            style={styles.inputIcon}
+          />
+          <TextInput
+            ref={options.ref}
+            style={[styles.input, { color: colors.textPrimary }]}
+            placeholder={placeholder}
+            placeholderTextColor={colors.textTertiary}
+            value={value}
+            onChangeText={onChangeText}
+            keyboardType={options.keyboardType || 'default'}
+            autoCapitalize={options.autoCapitalize || 'none'}
+            autoCorrect={false}
+            secureTextEntry={options.isPassword && !showPassword}
+            returnKeyType={options.nextRef ? 'next' : 'done'}
+            onFocus={() => setFocusedField(fieldId)}
+            onBlur={() => setFocusedField(null)}
+            onSubmitEditing={() => options.nextRef?.current?.focus()}
+          />
+          {options.isPassword && (
+            <Pressable
+              onPress={() => setShowPassword(!showPassword)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={colors.textTertiary}
+              />
+            </Pressable>
+          )}
+        </View>
+        {options.hint && (
+          <Text style={[styles.hint, { color: colors.textTertiary }]}>
+            {options.hint}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={styles.backButton}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join your campus marketplace</Text>
+            <Pressable
+              onPress={() => navigation.goBack()}
+              style={({ pressed }) => [
+                styles.backButton,
+                { opacity: pressed ? 0.5 : 1 },
+              ]}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={[styles.backButtonText, { color: colors.primary }]}>back</Text>
+            </Pressable>
+            
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              Create Account
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              Join your campus marketplace
+            </Text>
           </View>
 
           {/* Form */}
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Your name"
-                placeholderTextColor={Colors.textTertiary}
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
+            {renderInput('Full Name', 'Your name', name, setName, 'person-outline', {
+              autoCapitalize: 'words',
+              nextRef: emailRef,
+            })}
+            
+            {renderInput('School Email', 'you@university.edu', email, setEmail, 'mail-outline', {
+              ref: emailRef,
+              keyboardType: 'email-address',
+              nextRef: passwordRef,
+              hint: 'Use your .edu email to verify your student status',
+            })}
+            
+            {renderInput('Password', 'Create a password', password, setPassword, 'lock-closed-outline', {
+              ref: passwordRef,
+              isPassword: true,
+              nextRef: confirmRef,
+            })}
+            
+            {renderInput('Confirm Password', 'Confirm your password', confirmPassword, setConfirmPassword, 'lock-closed-outline', {
+              ref: confirmRef,
+              isPassword: true,
+            })}
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>School Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="you@university.edu"
-                placeholderTextColor={Colors.textTertiary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <Text style={styles.hint}>
-                Use your .edu email to verify your student status
-              </Text>
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Create a password"
-                placeholderTextColor={Colors.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Confirm Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm your password"
-                placeholderTextColor={Colors.textTertiary}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
+            <Button
+              title="Create Account"
               onPress={handleSignUp}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={Colors.textInverse} />
-              ) : (
-                <Text style={styles.buttonText}>Create Account</Text>
-              )}
-            </TouchableOpacity>
+              loading={loading}
+              variant="primary"
+              size="large"
+            />
 
-            <Text style={styles.terms}>
-              By signing up, you agree to our Terms of Service and Privacy Policy
+            <Text style={[styles.terms, { color: colors.textTertiary }]}>
+              By signing up, you agree to our{' '}
+              <Text style={{ color: colors.primary }}>Terms of Service</Text> and{' '}
+              <Text style={{ color: colors.primary }}>Privacy Policy</Text>
             </Text>
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('SignIn')}>
-              <Text style={styles.footerLink}>Sign In</Text>
-            </TouchableOpacity>
+            <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+              Already have an account?{' '}
+            </Text>
+            <Pressable
+              onPress={() => navigation.navigate('SignIn')}
+              style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+            >
+              <Text style={[styles.footerLink, { color: colors.primary }]}>
+                Sign In
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -176,94 +270,78 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   keyboardView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: Spacing.xl,
   },
   header: {
-    marginBottom: 24,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xl,
   },
   backButton: {
-    fontSize: 16,
-    color: Colors.primary,
-    marginBottom: 24,
+    marginBottom: Spacing.xl,
+    marginLeft: -Spacing.sm,
+  },
+  backButtonText: {
+    fontSize: 17,
+    fontWeight: '400',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
+    ...Typography.largeTitle,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: Colors.textSecondary,
+    ...Typography.body,
   },
   form: {
-    gap: 16,
+    gap: Spacing.lg,
   },
   inputContainer: {
-    gap: 6,
+    gap: Spacing.sm,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+    ...Typography.subheadlineBold,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: Layout.inputHeightLarge,
+    borderWidth: 2,
+  },
+  inputIcon: {
+    marginRight: Spacing.sm,
   },
   input: {
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: Colors.textPrimary,
+    flex: 1,
+    ...Typography.body,
   },
   hint: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: Colors.textInverse,
-    fontSize: 17,
-    fontWeight: '600',
+    ...Typography.caption2,
   },
   terms: {
-    fontSize: 12,
-    color: Colors.textTertiary,
+    ...Typography.caption1,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 20,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 'auto',
-    paddingVertical: 32,
+    paddingVertical: Spacing.xl,
   },
   footerText: {
-    fontSize: 15,
-    color: Colors.textSecondary,
+    ...Typography.body,
   },
   footerLink: {
-    fontSize: 15,
-    color: Colors.primary,
+    ...Typography.body,
     fontWeight: '600',
   },
 });
 
 export default SignUpScreen;
-

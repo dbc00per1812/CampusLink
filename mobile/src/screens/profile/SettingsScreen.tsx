@@ -70,7 +70,7 @@ const SettingsScreen: React.FC = () => {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={28} color={Colors.textPrimary} />
+            <Text style={styles.backButtonText}>back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Settings</Text>
           <View style={{ width: 28 }} />
@@ -201,6 +201,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: Colors.textPrimary,
+  },
+  backButtonText: {
+    fontSize: 17,
+    color: Colors.primary,
+    fontWeight: '400',
   },
   section: {
     paddingTop: 24,

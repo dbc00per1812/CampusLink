@@ -185,7 +185,7 @@ const CreateListingScreen: React.FC = () => {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <Ionicons name="close" size={28} color={Colors.textPrimary} />
+              <Text style={styles.backButtonText}>back</Text>
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Create Listing</Text>
             <View style={styles.backButton} />
@@ -604,6 +604,11 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backButtonText: {
+    fontSize: 17,
+    color: Colors.primary,
+    fontWeight: '400',
   },
   headerTitle: {
     fontSize: 18,

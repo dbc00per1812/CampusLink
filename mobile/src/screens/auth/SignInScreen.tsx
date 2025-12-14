@@ -1,30 +1,44 @@
-// Sign In Screen
-import React, { useState } from 'react';
+// Sign In Screen - Modern iOS-aligned design
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
-  TouchableOpacity,
-  SafeAreaView,
+  Pressable,
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator,
+  Animated,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { AuthScreenProps } from '../../navigation/types';
 import { signIn } from '../../services/authService';
-import Colors from '../../utils/colors';
+import { useColors } from '../../context/ThemeContext';
+import { Typography } from '../../utils/typography';
+import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
+import { Button } from '../../components';
 
 type Props = AuthScreenProps<'SignIn'>;
 
 const SignInScreen: React.FC<Props> = ({ navigation }) => {
+  const colors = useColors();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const passwordRef = useRef<TextInput>(null);
 
   const handleSignIn = async () => {
     if (!email || !password) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Error', 'Please enter email and password');
       return;
     }
@@ -34,82 +48,178 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
     setLoading(false);
 
     if (!result.success) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       Alert.alert('Sign In Failed', result.error?.message || 'Unknown error');
+    } else {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     }
-    // If successful, auth state change will redirect to main app
+  };
+
+  const handleForgotPassword = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.selectionAsync();
+    }
+    navigation.navigate('ForgotPassword');
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <View style={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={styles.backButton}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Sign In</Text>
-            <Text style={styles.subtitle}>Welcome back to CampusLink</Text>
+            <Pressable
+              onPress={() => navigation.goBack()}
+              style={({ pressed }) => [
+                styles.backButton,
+                { opacity: pressed ? 0.5 : 1 },
+              ]}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={[styles.backButtonText, { color: colors.primary }]}>back</Text>
+            </Pressable>
+            
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              Welcome back
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              Sign in to continue to CampusLink
+            </Text>
           </View>
 
           {/* Form */}
           <View style={styles.form}>
+            {/* Email Input */}
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="you@university.edu"
-                placeholderTextColor={Colors.textTertiary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <Text style={[styles.label, { color: colors.textPrimary }]}>
+                Email
+              </Text>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  {
+                    backgroundColor: colors.surfaceSecondary,
+                    borderColor: emailFocused ? colors.primary : 'transparent',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="mail-outline"
+                  size={20}
+                  color={emailFocused ? colors.primary : colors.textTertiary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.input, { color: colors.textPrimary }]}
+                  placeholder="you@university.edu"
+                  placeholderTextColor={colors.textTertiary}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  returnKeyType="next"
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                />
+              </View>
             </View>
 
+            {/* Password Input */}
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your password"
-                placeholderTextColor={Colors.textTertiary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
+              <Text style={[styles.label, { color: colors.textPrimary }]}>
+                Password
+              </Text>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  {
+                    backgroundColor: colors.surfaceSecondary,
+                    borderColor: passwordFocused ? colors.primary : 'transparent',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color={passwordFocused ? colors.primary : colors.textTertiary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  ref={passwordRef}
+                  style={[styles.input, { color: colors.textPrimary }]}
+                  placeholder="Enter your password"
+                  placeholderTextColor={colors.textTertiary}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                  returnKeyType="done"
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                  onSubmitEditing={handleSignIn}
+                />
+                <Pressable
+                  onPress={() => setShowPassword(!showPassword)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={colors.textTertiary}
+                  />
+                </Pressable>
+              </View>
             </View>
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate('ForgotPassword')}
+            {/* Forgot Password */}
+            <Pressable
+              onPress={handleForgotPassword}
+              style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
             >
-              <Text style={styles.forgotPassword}>Forgot Password?</Text>
-            </TouchableOpacity>
+              <Text style={[styles.forgotPassword, { color: colors.primary }]}>
+                Forgot Password?
+              </Text>
+            </Pressable>
 
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
+            {/* Sign In Button */}
+            <Button
+              title="Sign In"
               onPress={handleSignIn}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={Colors.textInverse} />
-              ) : (
-                <Text style={styles.buttonText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
+              loading={loading}
+              variant="primary"
+              size="large"
+            />
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-              <Text style={styles.footerLink}>Sign Up</Text>
-            </TouchableOpacity>
+            <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+              Don't have an account?{' '}
+            </Text>
+            <Pressable
+              onPress={() => navigation.navigate('SignUp')}
+              style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+            >
+              <Text style={[styles.footerLink, { color: colors.primary }]}>
+                Sign Up
+              </Text>
+            </Pressable>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -118,89 +228,75 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   keyboardView: {
     flex: 1,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 16,
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: Spacing.xl,
   },
   header: {
-    marginBottom: 32,
+    marginTop: Spacing.md,
+    marginBottom: Spacing['3xl'],
   },
   backButton: {
-    fontSize: 16,
-    color: Colors.primary,
-    marginBottom: 24,
+    marginBottom: Spacing.xl,
+    marginLeft: -Spacing.sm,
+  },
+  backButtonText: {
+    fontSize: 17,
+    fontWeight: '400',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
+    ...Typography.largeTitle,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: Colors.textSecondary,
+    ...Typography.body,
   },
   form: {
-    gap: 16,
+    gap: Spacing.lg,
   },
   inputContainer: {
-    gap: 6,
+    gap: Spacing.sm,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+    ...Typography.subheadlineBold,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: Layout.inputHeightLarge,
+    borderWidth: 2,
+  },
+  inputIcon: {
+    marginRight: Spacing.sm,
   },
   input: {
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: Colors.textPrimary,
+    flex: 1,
+    ...Typography.body,
   },
   forgotPassword: {
-    fontSize: 14,
-    color: Colors.primary,
-    textAlign: 'right',
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: Colors.textInverse,
-    fontSize: 17,
+    ...Typography.footnote,
     fontWeight: '600',
+    textAlign: 'right',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 'auto',
-    paddingBottom: 32,
+    paddingVertical: Spacing.xl,
   },
   footerText: {
-    fontSize: 15,
-    color: Colors.textSecondary,
+    ...Typography.body,
   },
   footerLink: {
-    fontSize: 15,
-    color: Colors.primary,
+    ...Typography.body,
     fontWeight: '600',
   },
 });
 
 export default SignInScreen;
-
