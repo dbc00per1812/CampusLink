@@ -19,8 +19,9 @@ export type HomeStackParamList = {
   HomeMain: undefined;
   ListingDetail: { listingId: string };
   PublicProfile: { userId: string };
-  CategoryBrowse: { category: string };
+  CategoryBrowse: { category?: string };
   Search: undefined;
+  TransactionGuide: undefined;
 };
 
 // Post Stack
@@ -32,7 +33,11 @@ export type PostStackParamList = {
 // Messages Stack
 export type MessagesStackParamList = {
   ConversationsList: undefined;
-  Chat: { conversationId: string };
+  Chat: { 
+    conversationId: string;
+    returnScreen?: 'ListingDetail' | 'ConversationsList';
+    returnParams?: { listingId?: string };
+  };
 };
 
 // Wallet Stack

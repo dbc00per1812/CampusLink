@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
-import { UserAvatar, LoadingSpinner } from '../../components';
+import { UserAvatar, LoadingSpinner, ReportUserModal } from '../../components';
 import {
   getConversation,
   getMessages,
@@ -32,14 +32,18 @@ import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows } from '../../utils/spacing';
 
 type RouteParams = {
-  Chat: { conversationId: string };
+  Chat: { 
+    conversationId: string;
+    returnScreen?: 'ListingDetail' | 'ConversationsList';
+    returnParams?: { listingId?: string };
+  };
 };
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const route = useRoute<RouteProp<RouteParams, 'Chat'>>();
   const colors = useColors();
-  const { conversationId } = route.params;
+  const { conversationId, returnScreen, returnParams } = route.params;
   const flatListRef = useRef<FlatList>(null);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -48,6 +52,7 @@ const ChatScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     loadUserId();
@@ -223,11 +228,20 @@ const ChatScreen: React.FC = () => {
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <Pressable
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              if (returnScreen === 'ListingDetail' && returnParams?.listingId) {
+                navigation.navigate('Home', {
+                  screen: 'ListingDetail',
+                  params: { listingId: returnParams.listingId }
+                });
+              } else {
+                navigation.goBack();
+              }
+            }}
             style={({ pressed }) => [styles.backButton, { opacity: pressed ? 0.5 : 1 }]}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={[styles.backButtonText, { color: colors.primary }]}>back</Text>
+            <Ionicons name="chevron-back" size={28} color={colors.primary} />
           </Pressable>
           
           <Pressable
@@ -241,7 +255,12 @@ const ChatScreen: React.FC = () => {
           </Pressable>
           
           <Pressable 
-            onPress={() => Alert.alert('Report', 'Report this user?')} 
+            onPress={() => {
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              setShowReportModal(true);
+            }} 
             style={({ pressed }) => [styles.headerButton, { opacity: pressed ? 0.5 : 1 }]}
           >
             <Ionicons name="ellipsis-horizontal" size={24} color={colors.textSecondary} />
@@ -327,6 +346,14 @@ const ChatScreen: React.FC = () => {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Report User Modal */}
+      <ReportUserModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        reportedUserId={otherUser?.id}
+        reportedUserName={otherUser?.name}
+      />
     </SafeAreaView>
   );
 };

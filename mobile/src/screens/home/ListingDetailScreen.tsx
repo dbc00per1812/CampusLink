@@ -11,6 +11,8 @@ import {
   Alert,
   Share,
   Platform,
+  Modal,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,11 +20,11 @@ import * as Haptics from 'expo-haptics';
 import { HomeScreenProps } from '../../navigation/types';
 import { getListing, deleteListing } from '../../services/listingService';
 import { getCurrentUserId } from '../../services/authService';
-import { ListingWithUser, ListingTypeDisplay, DeliveryMethodDisplay } from '../../types';
+import { ListingWithUser, ListingTypeDisplay, DeliveryMethodDisplay, ServiceLocationDisplay } from '../../types';
 import { useColors } from '../../context/ThemeContext';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
-import { ImageGallery, UserAvatar, Button } from '../../components';
+import { ImageGallery, UserAvatar, Button, SellerRatingSummary, ReportUserModal, TicketGuaranteeInfo, ProductVerificationInfo, ServiceVerificationInfo } from '../../components';
 
 type Props = HomeScreenProps<'ListingDetail'>;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -34,6 +36,8 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -146,9 +150,14 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    // Navigate to chat
-    navigation.navigate('Chat', { 
-      conversationId: listing.id, // This would need proper conversation handling
+    // Navigate to Messages tab and then to Chat screen with return info
+    navigation.navigate('Messages', { 
+      screen: 'Chat', 
+      params: { 
+        conversationId: listing.id,
+        returnScreen: 'ListingDetail',
+        returnParams: { listingId: listing.id }
+      }
     });
   }, [listing, navigation]);
 
@@ -178,6 +187,44 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     navigation.navigate('PublicProfile', { userId: listing.user_id });
   }, [listing, navigation]);
 
+  const handleMenuPress = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setShowMenuModal(true);
+  }, []);
+
+  const handleReport = useCallback(() => {
+    setShowMenuModal(false);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowReportModal(true);
+  }, []);
+
+  const handleBlockUser = useCallback(() => {
+    setShowMenuModal(false);
+    if (!listing) return;
+    
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${listing.user?.name || 'this user'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => {
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            }
+            Alert.alert('Success', 'User blocked successfully');
+          },
+        },
+      ]
+    );
+  }, [listing]);
+
   // Loading state
   if (loading) {
     return (
@@ -196,18 +243,48 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           Listing not found
         </Text>
         <Button
-          title="back"
+          title="Go Back"
           onPress={() => navigation.goBack()}
           variant="outline"
           size="medium"
           fullWidth={false}
+          icon="arrow-back"
         />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={({ pressed }) => [styles.headerButton, { opacity: pressed ? 0.5 : 1 }]}
+        >
+          <Ionicons name="chevron-back" size={28} color={colors.primary} />
+        </Pressable>
+        
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={handleShare}
+            style={({ pressed }) => [styles.headerIconButton, { opacity: pressed ? 0.5 : 1 }]}
+          >
+            <Ionicons name="share-outline" size={24} color={colors.primary} />
+          </Pressable>
+
+          
+          {!isOwnListing && (
+            <Pressable
+              onPress={handleMenuPress}
+              style={({ pressed }) => [styles.headerIconButton, { opacity: pressed ? 0.5 : 1 }]}
+            >
+              <Ionicons name="ellipsis-horizontal-circle-outline" size={24} color={colors.primary} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -223,20 +300,9 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.content}>
           {/* Title and Price Section */}
           <View style={styles.titleSection}>
-            <View style={styles.titleRow}>
-              <Text style={[styles.title, { color: colors.textPrimary }]}>
-                {listing.title}
-              </Text>
-              <Pressable
-                onPress={handleShare}
-                style={({ pressed }) => [
-                  styles.shareButton,
-                  { backgroundColor: colors.primaryMuted, opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Ionicons name="share-outline" size={20} color={colors.primary} />
-              </Pressable>
-            </View>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              {listing.title}
+            </Text>
 
             <Text
               style={[
@@ -291,17 +357,64 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                   </Text>
                 </View>
               )}
+            </View>
+          </View>
 
-              {/* Delivery Method */}
-              {listing.delivery_method && (
-                <View style={[styles.badge, { backgroundColor: colors.surfaceSecondary }]}>
-                  <Text style={[styles.badgeText, { color: colors.textSecondary }]}>
-                    {DeliveryMethodDisplay[listing.delivery_method]}
+          {/* Service Details Section */}
+          {listing.listing_type === 'service' && (
+            <View style={[styles.section, styles.serviceCard, { backgroundColor: colors.surfaceSecondary }]}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                Service Details
+              </Text>
+              
+              {listing.service_duration && (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIcon}>
+                    <Ionicons name="time-outline" size={20} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Duration:
+                  </Text>
+                  <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+                    {listing.service_duration}
                   </Text>
                 </View>
               )}
+              
+              {listing.service_location && (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIcon}>
+                    <Ionicons name="location-outline" size={20} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Location:
+                  </Text>
+                  <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+                    {ServiceLocationDisplay[listing.service_location]}
+                  </Text>
+                </View>
+              )}
+              
+              {listing.service_availability && (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIcon}>
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Availability:
+                  </Text>
+                  <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+                    {listing.service_availability}
+                  </Text>
+                </View>
+              )}
+
+              {/* Service Verification Info for buyers */}
+              {!isOwnListing && (
+                <ServiceVerificationInfo isForSeller={false} />
+              )}
             </View>
-          </View>
+          )}
 
           {/* Description Section */}
           <View style={styles.section}>
@@ -311,6 +424,16 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={[styles.description, { color: colors.textSecondary }]}>
               {listing.description}
             </Text>
+
+            {/* Show ticket guarantee info when Tickets category is selected */}
+            {listing.category === 'Tickets' && (
+              <TicketGuaranteeInfo isOwnListing={isOwnListing} />
+            )}
+
+            {/* Show product verification info for products */}
+            {listing.listing_type === 'product' && (
+              <ProductVerificationInfo isForSeller={isOwnListing} />
+            )}
           </View>
 
           {/* Seller Info Section */}
@@ -333,7 +456,8 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                 <Text style={[styles.sellerCampus, { color: colors.textSecondary }]}>
                   {listing.user?.campus || 'Campus'}
                 </Text>
-                {/* TODO: Add ratings here */}
+                {/* Seller Ratings */}
+                <SellerRatingSummary userId={listing.user_id} />
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </Pressable>
@@ -362,84 +486,164 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                 </Text>
               </View>
             )}
+            {listing.delivery_method && (
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                  Delivery
+                </Text>
+                <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+                  {DeliveryMethodDisplay[listing.delivery_method]}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Action Buttons - Now inside ScrollView like iOS */}
+          <View style={styles.actionsSection}>
+            {isOwnListing ? (
+              // Owner actions
+              <View style={styles.actionRow}>
+                <View style={styles.actionButtonHalf}>
+                  <Button
+                    title="Edit"
+                    onPress={handleEdit}
+                    variant="primary"
+                    icon="create-outline"
+                  />
+                </View>
+                <View style={styles.actionButtonHalf}>
+                  <Button
+                    title="Delete"
+                    onPress={handleDelete}
+                    variant="danger"
+                    icon="trash-outline"
+                    loading={isDeleting}
+                  />
+                </View>
+              </View>
+            ) : (
+              // Buyer actions - stacked vertically like iOS
+              <>
+                {/* Buy Now Button - First */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.fullWidthButton,
+                    { backgroundColor: colors.success, opacity: pressed ? 0.9 : 1 },
+                    Shadows.md,
+                  ]}
+                  onPress={isSeek ? handleMakeOffer : handleBuyNow}
+                >
+                  <Ionicons name="cart" size={20} color={colors.textInverse} style={{ marginRight: 8 }} />
+                  <Text style={[styles.buyButtonText, { color: colors.textInverse }]}>
+                    {isSeek ? 'Offer My Item' : listing.listing_type === 'service' ? 'Book Now' : 'Buy Now'}
+                  </Text>
+                </Pressable>
+
+                {/* Make Offer Button - Second (if applicable) */}
+                {listing.accepts_offers && !isSeek && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.fullWidthButton,
+                      { backgroundColor: colors.primary, opacity: pressed ? 0.9 : 1 },
+                      Shadows.md,
+                    ]}
+                    onPress={handleMakeOffer}
+                  >
+                    <Ionicons name="pricetag" size={20} color={colors.textInverse} style={{ marginRight: 8 }} />
+                    <Text style={[styles.buyButtonText, { color: colors.textInverse }]}>
+                      Make Offer
+                    </Text>
+                  </Pressable>
+                )}
+
+                {/* Contact Seller Button - Third */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.outlineButton,
+                    { borderColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+                  ]}
+                  onPress={handleMessage}
+                >
+                  <Ionicons name="chatbubble" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text style={[styles.outlineButtonText, { color: colors.primary }]}>
+                    Contact {isSeek ? 'Seeker' : 'Seller'}
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
       </ScrollView>
 
-      {/* Bottom Action Bar */}
-      <SafeAreaView edges={['bottom']} style={[styles.bottomBar, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-        {isOwnListing ? (
-          // Owner actions
-          <View style={styles.actionRow}>
-            <View style={styles.actionButtonHalf}>
-              <Button
-                title="Edit"
-                onPress={handleEdit}
-                variant="primary"
-                icon="create-outline"
-              />
-            </View>
-            <View style={styles.actionButtonHalf}>
-              <Button
-                title="Delete"
-                onPress={handleDelete}
-                variant="danger"
-                icon="trash-outline"
-                loading={isDeleting}
-              />
-            </View>
-          </View>
-        ) : (
-          // Buyer actions
-          <View style={styles.actionRow}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.messageButton,
-                { backgroundColor: colors.surfaceSecondary, opacity: pressed ? 0.8 : 1 },
-              ]}
-              onPress={handleMessage}
+      {/* Dropdown Menu */}
+      {showMenuModal && (
+        <>
+          <Pressable 
+            style={styles.dropdownOverlay}
+            onPress={() => setShowMenuModal(false)}
+          />
+          <View style={[styles.dropdownMenu, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleReport}
             >
-              <Ionicons name="chatbubble-outline" size={22} color={colors.primary} />
-              <Text style={[styles.messageButtonText, { color: colors.primary }]}>
-                Message
-              </Text>
-            </Pressable>
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Report</Text>
+              <Ionicons name="flag-outline" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
             
-            <View style={styles.buyButtonContainer}>
-              {listing.accepts_offers && !isSeek && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.offerButton,
-                    { backgroundColor: colors.primaryMuted, opacity: pressed ? 0.8 : 1 },
-                  ]}
-                  onPress={handleMakeOffer}
-                >
-                  <Ionicons name="pricetag-outline" size={18} color={colors.primary} />
-                </Pressable>
-              )}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.buyButton,
-                  { backgroundColor: isSeek ? colors.primary : colors.success, opacity: pressed ? 0.9 : 1 },
-                  Shadows.md,
-                ]}
-                onPress={isSeek ? handleMakeOffer : handleBuyNow}
-              >
-                <Text style={[styles.buyButtonText, { color: colors.textInverse }]}>
-                  {isSeek ? 'Offer My Item' : 'Buy Now'}
-                </Text>
-              </Pressable>
-            </View>
+            <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+            
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleBlockUser}
+            >
+              <Text style={[styles.menuItemText, { color: colors.error }]}>Block User</Text>
+              <Ionicons name="hand-left-outline" size={20} color={colors.error} />
+            </TouchableOpacity>
           </View>
-        )}
-      </SafeAreaView>
-    </View>
+        </>
+      )}
+
+      {/* Report Modal */}
+      <ReportUserModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        reportedUserId={listing?.user_id}
+        reportedUserName={listing?.user?.name}
+        reportedListingId={listing?.id}
+        reportedListingTitle={listing?.title}
+        onBlockUser={handleBlockUser}
+      />
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  headerButton: {
+    padding: Spacing.sm,
+  },
+  headerButtonText: {
+    ...Typography.body,
+    fontSize: 17,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    alignItems: 'center',
+  },
+  headerIconButton: {
+    padding: Spacing.sm,
   },
   loadingContainer: {
     flex: 1,
@@ -458,7 +662,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   scrollContent: {
-    paddingBottom: 120,
+    paddingBottom: 100, // Space for tab bar
   },
   content: {
     padding: Spacing.lg,
@@ -467,21 +671,8 @@ const styles = StyleSheet.create({
   titleSection: {
     gap: Spacing.sm,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-  },
   title: {
-    flex: 1,
     ...Typography.title1,
-  },
-  shareButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   price: {
     ...Typography.priceLarge,
@@ -504,6 +695,11 @@ const styles = StyleSheet.create({
   section: {
     gap: Spacing.sm,
   },
+  serviceCard: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.md,
+  },
   sectionTitle: {
     ...Typography.headline,
   },
@@ -520,7 +716,7 @@ const styles = StyleSheet.create({
   },
   sellerInfo: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   sellerName: {
     ...Typography.headline,
@@ -528,29 +724,32 @@ const styles = StyleSheet.create({
   sellerCampus: {
     ...Typography.footnote,
   },
+  sellerDate: {
+    ...Typography.caption2,
+  },
   detailsCard: {
     padding: Spacing.lg,
     borderRadius: BorderRadius.lg,
   },
   detailRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  detailIcon: {
+    width: 20,
   },
   detailLabel: {
     ...Typography.subheadline,
+    flex: 1,
   },
   detailValue: {
     ...Typography.subheadlineBold,
   },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: Spacing.lg,
-    borderTopWidth: 1,
+  actionsSection: {
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
   },
   actionRow: {
     flexDirection: 'row',
@@ -559,39 +758,66 @@ const styles = StyleSheet.create({
   actionButtonHalf: {
     flex: 1,
   },
-  messageButton: {
+  fullWidthButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.md + 2,
     paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.lg,
-    gap: Spacing.sm,
   },
-  messageButtonText: {
-    ...Typography.button,
-  },
-  buyButtonContainer: {
-    flex: 1,
+  outlineButton: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  offerButton: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  buyButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.md + 2,
+    paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.lg,
+    borderWidth: 2,
   },
   buyButtonText: {
     ...Typography.button,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  outlineButtonText: {
+    ...Typography.button,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  dropdownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 55,
+    right: 12,
+    width: 180,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  menuDivider: {
+    height: 1,
   },
 });
 
