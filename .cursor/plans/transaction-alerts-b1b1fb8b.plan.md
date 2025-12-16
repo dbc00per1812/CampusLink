@@ -1,4 +1,45 @@
-<!-- b1b1fb8b-e841-4520-a623-a4309042c9b0 2ee61179-4387-4de6-9588-cddcd2decf06 -->
+---
+name: Transaction Alert & Visibility Features
+overview: ""
+todos:
+  - id: 055a97ed-53bd-433c-b41e-2e42db62f748
+    content: Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+    status: completed
+  - id: 38bcd411-138e-4333-8078-10e605681d48
+    content: Create ActiveOrderMonitor service for background polling and repeated notifications
+    status: completed
+  - id: 158ee27f-e02d-4e8f-b97c-7a2a4f2e73cb
+    content: Add flashing 'Active Post' button to HomeTabView header that shows when orders need attention
+    status: completed
+  - id: 36fe73b9-4e49-4f0c-a962-e2a626fc8468
+    content: Add red badge icon with count in MyTransactionsView toolbar when orders require user action
+    status: completed
+  - id: e285f5cc-301d-41ad-a8a6-e7b00bea7587
+    content: Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+    status: completed
+  - id: 0bb10100-39e9-4441-9ada-2bee08e5e9c1
+    content: Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+    status: completed
+  - id: fb381553-ebbb-451f-9c46-c80f2325c438
+    content: Create ActiveOrderMonitor service for background polling and repeated notifications
+    status: completed
+  - id: 5ce7e7d4-68d8-4276-8ef1-1f49d42ce8e4
+    content: Add flashing 'Active Post' button to HomeTabView header that shows when orders need attention
+    status: completed
+  - id: 557f6dfb-0a79-4294-aa14-614636254a88
+    content: Add red badge icon with count in MyTransactionsView toolbar when orders require user action
+    status: completed
+  - id: 506bdd85-89df-4ad6-ac4e-5eda932c32d8
+    content: Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+    status: completed
+  - id: ff29aca2-b02e-4f50-9c85-e6a651363a5a
+    content: Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+    status: completed
+  - id: d0abdbef-135d-468c-bada-acc4d09b8b5f
+    content: Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
+    status: completed
+---
+
 # Transaction Alert & Visibility Features
 
 ## Overview
@@ -93,10 +134,3 @@ orderStatus == .sellerConfirmed && paymentStatus == .requiresCapture
 - [ ] Clicking "Active Post" navigates to correct tab
 - [ ] Red icon count updates in real-time
 - [ ] Works for both buyer and seller perspectives
-
-### To-dos
-
-- [ ] Add 'What Happens Next' section to PurchaseConfirmationView with step-by-step transaction verification process
-- [ ] Create ActiveOrderMonitor service for background polling and repeated notifications
-- [ ] Add flashing 'Active Post' button to HomeTabView header that shows when orders need attention
-- [ ] Add red badge icon with count in MyTransactionsView toolbar when orders require user action

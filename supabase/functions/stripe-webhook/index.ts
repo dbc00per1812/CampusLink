@@ -38,10 +38,19 @@ function getSupabaseServiceClient() {
 
 async function updatePaymentStatusByIntentId(paymentIntentId, status, extra = {}) {
   const supabase = getSupabaseServiceClient();
-  const { error } = await supabase.from("payments").update({
+  
+  // If payment succeeded, set escrow status to held
+  const updateData: any = {
     status,
     ...extra
-  }).eq("payment_intent_id", paymentIntentId);
+  };
+  
+  if (status === 'succeeded') {
+    updateData.escrow_release_status = 'held';
+    console.log(`🔒 Setting escrow_release_status to 'held' for payment ${paymentIntentId}`);
+  }
+  
+  const { error } = await supabase.from("payments").update(updateData).eq("payment_intent_id", paymentIntentId);
   if (error) {
     throw new Error(`Failed to update payment status: ${error.message}`);
   }
@@ -70,30 +79,84 @@ async function getPayoutByTransferId(transferId) {
   return data;
 }
 
-async function createOrderFromPayment(paymentIntentId) {
+async function createOrUpdateOrderFromPayment(paymentIntentId, metadata) {
   const supabase = getSupabaseServiceClient();
   try {
-    // Get payment details
-    const { data: payment, error: paymentError } = await supabase.from("payments").select("listing_id, buyer_id, seller_id, amount_cents, payment_method").eq("payment_intent_id", paymentIntentId).single();
-    if (paymentError || !payment) {
-      console.warn(`No payment found for PaymentIntent ${paymentIntentId}`);
+    // Get payment details from METADATA (not payments table - that's not used)
+    const listingId = metadata?.listing_id;
+    const buyerId = metadata?.buyer_id;
+    const sellerId = metadata?.seller_id;
+    const buyerPriceCents = metadata?.buyer_price_cents;
+    
+    if (!listingId || !buyerId || !sellerId) {
+      console.error("Missing required metadata for order creation");
       return;
     }
-    // Create order using the reserve_then_order RPC
+    
+    console.log(`Processing payment ${paymentIntentId} for listing ${listingId}`);
+    
+    // CHECK IF ORDER ALREADY EXISTS (from accepted offer)
+    const { data: existingOrders } = await supabase
+      .from("orders")
+      .select("id, payment_status")
+      .eq("listing_id", listingId)
+      .eq("buyer_id", buyerId)
+      .eq("payment_status", "pending")
+      .limit(1);
+    
+    if (existingOrders && existingOrders.length > 0) {
+      // UPDATE EXISTING ORDER (accepted offer that's now being paid)
+      const existingOrder = existingOrders[0];
+      console.log(`Found existing unpaid order ${existingOrder.id}, updating with payment`);
+      
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({
+          stripe_payment_intent_id: paymentIntentId,
+          payment_status: "succeeded",
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", existingOrder.id);
+      
+      if (updateError) {
+        console.error(`Failed to update order ${existingOrder.id}:`, updateError.message);
+      } else {
+        console.log(`✅ Order ${existingOrder.id} updated with payment successfully`);
+        
+        // Also update escrow_release_status in payments table to 'held'
+        const { error: escrowError } = await supabase
+          .from("payments")
+          .update({
+            escrow_release_status: 'held'
+          })
+          .eq("payment_intent_id", paymentIntentId);
+        
+        if (escrowError) {
+          console.error(`Failed to update escrow status: ${escrowError.message}`);
+        } else {
+          console.log(`✅ Escrow status set to 'held' for payment ${paymentIntentId}`);
+        }
+      }
+      return;
+    }
+    
+    // NO EXISTING ORDER: Create new order (normal purchase flow)
+    console.log("No existing order found, creating new order via RPC");
     const { data: order, error: orderError } = await supabase.rpc("reserve_then_order", {
-      p_listing_id: payment.listing_id,
-      p_buyer_id: payment.buyer_id,
-      p_seller_id: payment.seller_id,
-      p_price_cents: payment.amount_cents.toString(),
-      p_payment_method: payment.payment_method || "card"
+      p_listing_id: listingId,
+      p_buyer_id: buyerId,
+      p_seller_id: sellerId,
+      p_price_cents: buyerPriceCents || "0",
+      p_payment_method: "card"
     });
+    
     if (orderError) {
       console.error(`Failed to create order for payment ${paymentIntentId}: ${orderError.message}`);
     } else {
-      console.log(`Order created successfully for payment ${paymentIntentId}: ${order.id}`);
+      console.log(`✅ Order created successfully for payment ${paymentIntentId}: ${order?.id || 'unknown'}`);
     }
   } catch (error) {
-    console.error(`Error creating order from payment ${paymentIntentId}:`, error);
+    console.error(`Error handling order from payment ${paymentIntentId}:`, error);
   }
 }
 
@@ -163,8 +226,8 @@ Deno.serve(async (req)=>{
         {
           const pi = event.data.object;
           await updatePaymentStatusByIntentId(pi.id, "succeeded");
-          // Create order when payment succeeds
-          await createOrderFromPayment(pi.id);
+          // Create or update order when payment succeeds
+          await createOrUpdateOrderFromPayment(pi.id, pi.metadata);
           break;
         }
       case "payment_intent.payment_failed":
@@ -198,6 +261,19 @@ Deno.serve(async (req)=>{
           break;
         }
       // Charge Events
+      case "charge.succeeded":
+        {
+          const charge = event.data.object;
+          const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? "";
+          if (paymentIntentId) {
+            console.log(`💳 Charge succeeded for payment intent: ${paymentIntentId}`);
+            await updatePaymentStatusByIntentId(paymentIntentId, "succeeded");
+            // Also create/update order
+            const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+            await createOrUpdateOrderFromPayment(paymentIntentId, paymentIntent.metadata);
+          }
+          break;
+        }
       case "charge.dispute.created":
         {
           const charge = event.data.object;
@@ -435,3 +511,4 @@ Deno.serve(async (req)=>{
     });
   }
 });
+

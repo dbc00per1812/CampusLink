@@ -1,4 +1,54 @@
-<!-- c7505129-d482-483e-8697-2cdf510fa2eb 41cf48a5-3522-4f9a-a48e-19a014aa97a1 -->
+---
+name: "Performance Optimization Plan: Instant-Feel Loading"
+overview: ""
+todos:
+  - id: ce3efb3e-7d3c-4942-b878-9f0d72d7c1dc
+    content: Create loading skeleton components for all major views (ListingCard, TransactionRow, Profile, Chat)
+    status: pending
+  - id: 59a8d4fb-9537-4004-a359-ef934460f791
+    content: Replace all ProgressView spinners with skeleton screens in HomeTabView, MyTransactionsView, ProfileTabView, ChatView
+    status: pending
+  - id: 977d3812-a16a-4d31-a1ac-d40344c8d765
+    content: Create DataCacheManager service with TTL-based caching for listings, orders, users, conversations
+    status: pending
+  - id: 770dd9fb-1e23-460e-86ab-a2f38e07b206
+    content: Integrate DataCacheManager into HomeTabView - show cached listings instantly, refresh in background
+    status: pending
+  - id: ad09068b-9e95-4e97-8a9f-26120dd19772
+    content: Integrate DataCacheManager into MyTransactionsView for purchases and sales caching
+    status: pending
+  - id: c699e402-8f1e-48aa-893b-9dc427014c1c
+    content: Integrate DataCacheManager into ProfileTabView for user profile and listings
+    status: pending
+  - id: 0c6f31a4-d9a5-41c7-b01e-aea76032e496
+    content: Create and run SQL scripts for database indexes on orders and listings tables
+    status: pending
+  - id: 30158fd7-f215-4524-97f5-a25d662e4117
+    content: Enhance image prefetching to prefetch next page when user reaches 50% of current page
+    status: pending
+  - id: 93868539-4316-4299-b67e-178cc87113ec
+    content: Create PrefetchService for predictive data loading (conversations, listing details)
+    status: pending
+  - id: 4faad4b3-1a83-448e-999a-ce292768d09c
+    content: Create BackgroundRefreshManager for silent data refresh on app foreground
+    status: pending
+  - id: 888575b7-9bd1-4f44-b11a-294fd31ce876
+    content: Implement message caching in ChatViewModel - show cached instantly, fetch only new messages
+    status: pending
+  - id: 1f982cfc-7087-4c7e-8349-6048001e42ef
+    content: Add pagination to ChatView for loading older messages on scroll-to-top
+    status: pending
+  - id: 34721c8b-74cd-4baa-a860-96e7407c7617
+    content: Add quality levels to ImageCacheManager (thumbnail, medium, full) for different use cases
+    status: pending
+  - id: 6d5d40a3-9c5f-4a12-b7a6-003d4eaf02ff
+    content: Create RequestDeduplicator to prevent multiple simultaneous requests for same data
+    status: pending
+  - id: fdbcfa09-ade6-44cb-b9d7-9246ae9a03ae
+    content: Create PerformanceMonitor service to track load times, cache hit rates, and performance metrics
+    status: pending
+---
+
 # Performance Optimization Plan: Instant-Feel Loading
 
 ## Goal
@@ -547,21 +597,3 @@ Run these SQL scripts in Supabase SQL Editor:
 3. **create_listing_views.sql** - Create optimized database views
 
 These can run in production without downtime (concurrent index creation).
-
-### To-dos
-
-- [ ] Create loading skeleton components for all major views (ListingCard, TransactionRow, Profile, Chat)
-- [ ] Replace all ProgressView spinners with skeleton screens in HomeTabView, MyTransactionsView, ProfileTabView, ChatView
-- [ ] Create DataCacheManager service with TTL-based caching for listings, orders, users, conversations
-- [ ] Integrate DataCacheManager into HomeTabView - show cached listings instantly, refresh in background
-- [ ] Integrate DataCacheManager into MyTransactionsView for purchases and sales caching
-- [ ] Integrate DataCacheManager into ProfileTabView for user profile and listings
-- [ ] Create and run SQL scripts for database indexes on orders and listings tables
-- [ ] Enhance image prefetching to prefetch next page when user reaches 50% of current page
-- [ ] Create PrefetchService for predictive data loading (conversations, listing details)
-- [ ] Create BackgroundRefreshManager for silent data refresh on app foreground
-- [ ] Implement message caching in ChatViewModel - show cached instantly, fetch only new messages
-- [ ] Add pagination to ChatView for loading older messages on scroll-to-top
-- [ ] Add quality levels to ImageCacheManager (thumbnail, medium, full) for different use cases
-- [ ] Create RequestDeduplicator to prevent multiple simultaneous requests for same data
-- [ ] Create PerformanceMonitor service to track load times, cache hit rates, and performance metrics

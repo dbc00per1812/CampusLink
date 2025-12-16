@@ -1,4 +1,57 @@
-<!-- 38841d7b-4e5e-4e46-a421-c0a482e14821 50d0dd71-7ae6-4715-9198-0bd0bebe28d4 -->
+---
+name: Smart Recommendations & Search Implementation
+overview: ""
+todos:
+  - id: b80f52a9-2cf4-4395-907d-66222212127f
+    content: Create RecommendationService.swift with category diversification algorithm (3 products + 1 service from different categories)
+    status: pending
+  - id: 95410533-2286-4809-a101-713023334d0e
+    content: Update HomeTabView to use diversified listings for first 4 items in For You, All, and Selling tabs
+    status: pending
+  - id: 95197d60-7543-4568-9393-7b3cb550c55f
+    content: Create and run optimize_listing_queries.sql to add category-based indexes
+    status: pending
+  - id: cd68f4f6-4952-4d49-bc40-a0260615363b
+    content: Test diversification across all tabs, verify no performance degradation
+    status: pending
+  - id: 3c79e5cc-6985-45a3-bc12-a93382ac029e
+    content: Create and run enable_vector_search.sql to enable pgvector extension and add embedding column
+    status: pending
+  - id: dbc258d6-514e-48aa-a731-6fb913587f20
+    content: Create and deploy create_embedding_function.sql for auto-generating embeddings using Supabase AI
+    status: pending
+  - id: b6ac99d7-9bed-4caf-bb2d-6556a3a08c18
+    content: Run backfill_embeddings.sql multiple times to generate embeddings for all existing active listings
+    status: pending
+  - id: fa4b1558-af19-4d9f-9244-c1042469d177
+    content: Enable Inference API in Supabase Dashboard and configure gte-small model
+    status: pending
+  - id: 0acc6b28-ea94-48ec-be87-7857e2a452a0
+    content: Create and deploy create_hybrid_search.sql with hybrid search combining keyword + semantic
+    status: pending
+  - id: e1eb5b82-3af4-434e-b246-f5e5780af581
+    content: Update SearchService.swift to call hybrid_search_listings RPC instead of search_listings
+    status: pending
+  - id: 72787236-f7fd-44e3-9a11-187b4bdb43e1
+    content: Add enableHybridSearch feature flag to AppConfig.swift with fallback to keyword search
+    status: pending
+  - id: 745e1a7e-6d2c-4407-8101-212aa8cee9b3
+    content: Test hybrid search quality and performance, compare with keyword-only search
+    status: pending
+  - id: 602689b9-0dcf-4681-a228-c6fcb4489f58
+    content: Create and deploy create_similar_items_function.sql for vector-based similarity search
+    status: pending
+  - id: b1481791-fb4f-46d5-9065-4bb12ca39416
+    content: Add getSimilarListings() and getPersonalizedRecommendations() to RecommendationService.swift
+    status: pending
+  - id: 5c146f5c-d2d2-4081-ae75-bcb3ab284518
+    content: Add 'Similar items' section to ListingDetailView.swift using RecommendationService
+    status: pending
+  - id: 844b9969-0aa2-4c42-bb75-c4d08b14988f
+    content: Test similar items quality and engagement metrics on detail view
+    status: pending
+---
+
 # Smart Recommendations & Search Implementation
 
 ## Overview
@@ -636,22 +689,3 @@ func getPersonalizedRecommendations(for userId: String, limit: Int = 20) async t
 - Phase 0: Remove diversification, revert to chronological
 - Phase 2: Disable hybrid search flag, use keyword-only
 - Phase 3: Disable similar items feature flag
-
-### To-dos
-
-- [ ] Create RecommendationService.swift with category diversification algorithm (3 products + 1 service from different categories)
-- [ ] Update HomeTabView to use diversified listings for first 4 items in For You, All, and Selling tabs
-- [ ] Create and run optimize_listing_queries.sql to add category-based indexes
-- [ ] Test diversification across all tabs, verify no performance degradation
-- [ ] Create and run enable_vector_search.sql to enable pgvector extension and add embedding column
-- [ ] Create and deploy create_embedding_function.sql for auto-generating embeddings using Supabase AI
-- [ ] Run backfill_embeddings.sql multiple times to generate embeddings for all existing active listings
-- [ ] Enable Inference API in Supabase Dashboard and configure gte-small model
-- [ ] Create and deploy create_hybrid_search.sql with hybrid search combining keyword + semantic
-- [ ] Update SearchService.swift to call hybrid_search_listings RPC instead of search_listings
-- [ ] Add enableHybridSearch feature flag to AppConfig.swift with fallback to keyword search
-- [ ] Test hybrid search quality and performance, compare with keyword-only search
-- [ ] Create and deploy create_similar_items_function.sql for vector-based similarity search
-- [ ] Add getSimilarListings() and getPersonalizedRecommendations() to RecommendationService.swift
-- [ ] Add 'Similar items' section to ListingDetailView.swift using RecommendationService
-- [ ] Test similar items quality and engagement metrics on detail view

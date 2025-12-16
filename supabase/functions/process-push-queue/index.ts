@@ -1,14 +1,5 @@
-// Supabase Edge Function - Process Push Notification Queue
+// Supabase Edge Function - Process Push Notification Queue (WORKING VERSION)
 // This function reads from push_notification_queue and sends actual push notifications via APNs
-//
-// Required Environment Variables:
-// - APNS_TEAM_ID (Apple Developer Team ID)
-// - APNS_KEY_ID (Apple Push Notification Auth Key ID)
-// - APNS_PRIVATE_KEY (Content of .p8 file from Apple)
-// - BUNDLE_ID (App bundle ID: darragh.CampusLink)
-// - APNS_ENV (either "sandbox" or "production")
-// - SUPABASE_URL (automatically available)
-// - SUPABASE_SERVICE_ROLE_KEY (automatically available)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
@@ -23,19 +14,9 @@ const corsHeaders = {
 async function generateAPNsToken(teamId: string, keyId: string, privateKey: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   
-  // JWT Header
-  const header = {
-    alg: "ES256",
-    kid: keyId,
-  };
+  const header = { alg: "ES256", kid: keyId };
+  const payload = { iss: teamId, iat: now };
   
-  // JWT Payload
-  const payload = {
-    iss: teamId,
-    iat: now,
-  };
-  
-  // Base64URL encode
   const base64UrlEncode = (obj: any): string => {
     const json = JSON.stringify(obj);
     const base64 = btoa(json);
@@ -46,7 +27,6 @@ async function generateAPNsToken(teamId: string, keyId: string, privateKey: stri
   const payloadEncoded = base64UrlEncode(payload);
   const dataToSign = `${headerEncoded}.${payloadEncoded}`;
   
-  // Import the private key
   const pemHeader = "-----BEGIN PRIVATE KEY-----";
   const pemFooter = "-----END PRIVATE KEY-----";
   const pemContents = privateKey.replace(/\\n/g, "\n").replace(pemHeader, "").replace(pemFooter, "").trim();
@@ -56,26 +36,18 @@ async function generateAPNsToken(teamId: string, keyId: string, privateKey: stri
   const key = await crypto.subtle.importKey(
     "pkcs8",
     binaryDer,
-    {
-      name: "ECDSA",
-      namedCurve: "P-256",
-    },
+    { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"]
   );
   
-  // Sign the data
   const encoder = new TextEncoder();
   const signature = await crypto.subtle.sign(
-    {
-      name: "ECDSA",
-      hash: { name: "SHA-256" },
-    },
+    { name: "ECDSA", hash: { name: "SHA-256" } },
     key,
     encoder.encode(dataToSign)
   );
   
-  // Convert signature to base64url
   const signatureArray = new Uint8Array(signature);
   const signatureBase64 = btoa(String.fromCharCode(...signatureArray));
   const signatureBase64Url = signatureBase64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
@@ -83,7 +55,6 @@ async function generateAPNsToken(teamId: string, keyId: string, privateKey: stri
   return `${dataToSign}.${signatureBase64Url}`;
 }
 
-// Send push notification to APNs
 async function sendToAPNs(
   deviceToken: string,
   title: string,
@@ -99,10 +70,7 @@ async function sendToAPNs(
   
   const notification = {
     aps: {
-      alert: {
-        title: title,
-        body: body,
-      },
+      alert: { title: title, body: body },
       sound: "default",
       badge: 1,
     },
@@ -143,7 +111,6 @@ async function sendToAPNs(
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -151,43 +118,40 @@ serve(async (req) => {
   try {
     console.log("🔄 Processing push notification queue...");
     
-    // Get environment variables
     const apnsTeamId = Deno.env.get("APNS_TEAM_ID");
     const apnsKeyId = Deno.env.get("APNS_KEY_ID");
     const apnsPrivateKey = Deno.env.get("APNS_PRIVATE_KEY");
     const bundleId = Deno.env.get("BUNDLE_ID") || "darragh.CampusLink";
     const apnsEnv = Deno.env.get("APNS_ENV") || "sandbox";
     
+    console.log(`APNS_TEAM_ID: ${apnsTeamId ? '✅' : '❌'}`);
+    console.log(`APNS_KEY_ID: ${apnsKeyId ? '✅' : '❌'}`);
+    console.log(`APNS_PRIVATE_KEY: ${apnsPrivateKey ? '✅' : '❌'}`);
+    console.log(`APNS_ENV: ${apnsEnv}`);
+    
     if (!apnsTeamId || !apnsKeyId || !apnsPrivateKey) {
-      throw new Error("Missing APNs credentials in environment variables");
+      throw new Error("Missing APNs credentials");
     }
     
     const isProduction = apnsEnv === "production";
-    console.log(`📱 APNs Environment: ${apnsEnv}`);
     
-    // Create Supabase client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
     
-    // Generate APNs JWT token
     console.log("🔐 Generating APNs JWT token...");
     const apnsToken = await generateAPNsToken(apnsTeamId, apnsKeyId, apnsPrivateKey);
     
-    // Fetch unprocessed notifications from queue
+    // Simple query - no JOIN
+    console.log("📊 Fetching unprocessed notifications...");
     const { data: queueItems, error: fetchError } = await supabaseAdmin
       .from("push_notification_queue")
       .select("*")
       .eq("processed", false)
       .order("created_at", { ascending: true })
-      .limit(50); // Process max 50 at a time
+      .limit(100);
     
     if (fetchError) {
       console.error("Error fetching queue:", fetchError);
@@ -197,15 +161,8 @@ serve(async (req) => {
     if (!queueItems || queueItems.length === 0) {
       console.log("✅ No notifications in queue");
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          processed: 0,
-          message: "No notifications to process" 
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        }
+        JSON.stringify({ success: true, processed: 0, message: "No notifications to process" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
     
@@ -225,14 +182,10 @@ serve(async (req) => {
           .single();
         
         if (prefError || !preferences) {
-          console.log(`⚠️ No preferences found for user ${item.user_id}`);
+          console.log(`⚠️ No preferences for user ${item.user_id}`);
           await supabaseAdmin
             .from("push_notification_queue")
-            .update({
-              processed: true,
-              processed_at: new Date().toISOString(),
-              error: "No user preferences found",
-            })
+            .update({ processed: true, processed_at: new Date().toISOString(), error: "No user preferences found" })
             .eq("id", item.id);
           errorCount++;
           continue;
@@ -242,11 +195,7 @@ serve(async (req) => {
           console.log(`⚠️ Push disabled for user ${item.user_id}`);
           await supabaseAdmin
             .from("push_notification_queue")
-            .update({
-              processed: true,
-              processed_at: new Date().toISOString(),
-              error: "Push notifications disabled",
-            })
+            .update({ processed: true, processed_at: new Date().toISOString(), error: "Push notifications disabled" })
             .eq("id", item.id);
           errorCount++;
           continue;
@@ -256,11 +205,7 @@ serve(async (req) => {
           console.log(`⚠️ No push token for user ${item.user_id}`);
           await supabaseAdmin
             .from("push_notification_queue")
-            .update({
-              processed: true,
-              processed_at: new Date().toISOString(),
-              error: "No push token",
-            })
+            .update({ processed: true, processed_at: new Date().toISOString(), error: "No push token" })
             .eq("id", item.id);
           errorCount++;
           continue;
@@ -282,22 +227,14 @@ serve(async (req) => {
           console.log(`✅ Successfully sent push to user ${item.user_id}`);
           await supabaseAdmin
             .from("push_notification_queue")
-            .update({
-              processed: true,
-              processed_at: new Date().toISOString(),
-              error: null,
-            })
+            .update({ processed: true, processed_at: new Date().toISOString(), error: null })
             .eq("id", item.id);
           successCount++;
         } else {
           console.log(`❌ Failed to send push to user ${item.user_id}: ${result.error}`);
           await supabaseAdmin
             .from("push_notification_queue")
-            .update({
-              processed: true,
-              processed_at: new Date().toISOString(),
-              error: result.error || "Unknown error",
-            })
+            .update({ processed: true, processed_at: new Date().toISOString(), error: result.error || "Unknown error" })
             .eq("id", item.id);
           errorCount++;
         }
@@ -305,11 +242,7 @@ serve(async (req) => {
         console.error(`❌ Error processing notification ${item.id}:`, error);
         await supabaseAdmin
           .from("push_notification_queue")
-          .update({
-            processed: true,
-            processed_at: new Date().toISOString(),
-            error: error instanceof Error ? error.message : "Unknown error",
-          })
+          .update({ processed: true, processed_at: new Date().toISOString(), error: error instanceof Error ? error.message : "Unknown error" })
           .eq("id", item.id);
         errorCount++;
       }
@@ -318,29 +251,14 @@ serve(async (req) => {
     console.log(`✅ Processing complete: ${successCount} succeeded, ${errorCount} failed`);
     
     return new Response(
-      JSON.stringify({
-        success: true,
-        processed: queueItems.length,
-        succeeded: successCount,
-        failed: errorCount,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
+      JSON.stringify({ success: true, processed: queueItems.length, succeeded: successCount, failed: errorCount }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
     console.error("Error processing push queue:", error);
-
     return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to process push queue",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
+      JSON.stringify({ error: error instanceof Error ? error.message : "Failed to process push queue" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
-
