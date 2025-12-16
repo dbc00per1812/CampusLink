@@ -1,80 +1,174 @@
-// App Color Theme - Converted from Color+Extensions.swift
+// App Color Theme - Enhanced Design System
+// Aligned with iOS CampusLink app design language
+
+// Theme color from iOS app - the branded blue
+const THEME_COLOR = '#007AFF';
 
 export const Colors = {
-  // Primary brand colors
-  primary: '#3B82F6', // blue-500
-  primaryDark: '#2563EB', // blue-600
-  primaryLight: '#60A5FA', // blue-400
+  // Primary brand colors (matching iOS ThemeColor)
+  primary: THEME_COLOR,
+  primaryDark: '#0056B3',
+  primaryLight: '#4DA3FF',
+  primaryMuted: `${THEME_COLOR}1A`, // 10% opacity
+
+  // Accent colors
+  accent: '#5856D6', // Purple accent
+  accentLight: '#7A79E0',
+  accentBlue: 'rgba(0, 122, 255, 0.05)', // Light blue background for info cards
+  accentGreen: 'rgba(52, 199, 89, 0.05)', // Light green background for success cards
 
   // Status colors
-  success: '#22C55E', // green-500
-  warning: '#F97316', // orange-500
-  error: '#EF4444', // red-500
-  info: '#3B82F6', // blue-500
+  success: '#34C759', // iOS green
+  successLight: '#34C75920',
+  warning: '#FF9500', // iOS orange
+  warningLight: '#FF950020',
+  error: '#FF3B30', // iOS red
+  errorLight: '#FF3B3020',
+  info: THEME_COLOR,
+  infoLight: `${THEME_COLOR}20`,
 
-  // Neutral colors
+  // Neutral colors - Light mode
   background: '#FFFFFF',
-  backgroundSecondary: '#F9FAFB', // gray-50
+  backgroundSecondary: '#F2F2F7', // iOS system gray 6
   surface: '#FFFFFF',
-  surfaceSecondary: '#F3F4F6', // gray-100
+  surfaceSecondary: '#F2F2F7',
+  surfaceTertiary: '#E5E5EA', // iOS system gray 5
 
-  // Text colors
-  textPrimary: '#111827', // gray-900
-  textSecondary: '#6B7280', // gray-500
-  textTertiary: '#9CA3AF', // gray-400
+  // Text colors - Light mode
+  textPrimary: '#000000',
+  textSecondary: '#3C3C4399', // 60% opacity
+  textTertiary: '#3C3C434D', // 30% opacity
   textInverse: '#FFFFFF',
+  textLink: THEME_COLOR,
 
   // Border colors
-  border: '#E5E7EB', // gray-200
-  borderFocus: '#3B82F6', // blue-500
+  border: '#3C3C4333', // iOS separator color
+  borderLight: '#3C3C431A',
+  borderFocus: THEME_COLOR,
+
+  // Card and overlay
+  cardBackground: '#FFFFFF',
+  cardShadow: '#00000019',
+  overlay: '#00000066',
+  overlayLight: '#00000033',
+
+  // Badge colors
+  badgeBlue: THEME_COLOR,
+  badgeGreen: '#34C759',
+  badgeOrange: '#FF9500',
+  badgeRed: '#FF3B30',
+  badgePurple: '#5856D6',
+  badgeGray: '#8E8E93',
 
   // Order status colors
-  orderPlaced: '#3B82F6', // blue
-  orderConfirmed: '#F97316', // orange
-  orderInProgress: '#EAB308', // yellow
-  orderCompleted: '#22C55E', // green
-  orderDisputed: '#EF4444', // red
-  orderCancelled: '#6B7280', // gray
-  orderRefunded: '#A855F7', // purple
+  orderPlaced: THEME_COLOR,
+  orderConfirmed: '#FF9500',
+  orderInProgress: '#FFCC00',
+  orderCompleted: '#34C759',
+  orderDisputed: '#FF3B30',
+  orderCancelled: '#8E8E93',
+  orderRefunded: '#5856D6',
 
   // Trust level colors
-  trustTrusted: '#FFD700', // gold
-  trustReliable: '#C0C0C0', // silver
-  trustNew: '#CD7F32', // bronze
-  trustCaution: '#F97316', // orange
-  trustRisk: '#EF4444', // red
+  trustTrusted: '#FFD700',
+  trustReliable: '#C0C0C0',
+  trustNew: '#CD7F32',
+  trustCaution: '#FF9500',
+  trustRisk: '#FF3B30',
 
   // Payout status colors
-  payoutPending: '#F97316', // orange
-  payoutProcessing: '#F97316', // orange
-  payoutInTransit: '#F97316', // orange
-  payoutCompleted: '#22C55E', // green
-  payoutPaid: '#22C55E', // green
-  payoutFailed: '#EF4444', // red
-  payoutCancelled: '#EF4444', // red
+  payoutPending: '#FF9500',
+  payoutProcessing: '#FF9500',
+  payoutInTransit: '#FF9500',
+  payoutCompleted: '#34C759',
+  payoutPaid: '#34C759',
+  payoutFailed: '#FF3B30',
+  payoutCancelled: '#FF3B30',
 
   // Tab bar
-  tabActive: '#3B82F6',
-  tabInactive: '#9CA3AF',
+  tabActive: THEME_COLOR,
+  tabInactive: '#8E8E93',
 
-  // Shadows (for React Native shadow props)
+  // Skeleton loading
+  skeletonBase: '#E5E5EA',
+  skeletonHighlight: '#F2F2F7',
+
+  // Shadows
   shadow: '#000000',
+  shadowLight: '#00000010',
+
+  // Gradients (as color stops)
+  gradientPrimary: [THEME_COLOR, '#0056B3'] as const,
+  gradientSuccess: ['#34C759', '#30B350'] as const,
+  gradientWarm: ['#FF9500', '#FF6B00'] as const,
+  gradientCool: ['#5856D6', '#007AFF'] as const,
+  gradientMesh: ['#F2F2F7', '#E5E5EA', '#F2F2F7'] as const,
 } as const;
 
-// Dark mode colors (for future use)
-export const DarkColors = {
+// Dark mode colors
+export const DarkColors: typeof Colors = {
   ...Colors,
-  background: '#111827', // gray-900
-  backgroundSecondary: '#1F2937', // gray-800
-  surface: '#1F2937', // gray-800
-  surfaceSecondary: '#374151', // gray-700
-  textPrimary: '#F9FAFB', // gray-50
-  textSecondary: '#D1D5DB', // gray-300
-  textTertiary: '#9CA3AF', // gray-400
-  border: '#374151', // gray-700
+  
+  // Backgrounds - Dark mode
+  background: '#000000',
+  backgroundSecondary: '#1C1C1E',
+  surface: '#1C1C1E',
+  surfaceSecondary: '#2C2C2E',
+  surfaceTertiary: '#3A3A3C',
+
+  // Text colors - Dark mode
+  textPrimary: '#FFFFFF',
+  textSecondary: '#EBEBF599',
+  textTertiary: '#EBEBF54D',
+  textInverse: '#000000',
+
+  // Border colors - Dark mode
+  border: '#54545899',
+  borderLight: '#5454581A',
+
+  // Card - Dark mode
+  cardBackground: '#1C1C1E',
+  cardShadow: '#00000066',
+
+  // Skeleton - Dark mode
+  skeletonBase: '#2C2C2E',
+  skeletonHighlight: '#3A3A3C',
+
+  // Gradients - Dark mode
+  gradientMesh: ['#1C1C1E', '#2C2C2E', '#1C1C1E'] as const,
+};
+
+// Helper to get color with opacity
+export const withOpacity = (color: string, opacity: number): string => {
+  const hex = Math.round(opacity * 255).toString(16).padStart(2, '0');
+  return `${color}${hex}`;
+};
+
+// Semantic color aliases
+export const SemanticColors = {
+  // Listing states
+  listingActive: Colors.success,
+  listingSold: Colors.badgeGray,
+  listingWanted: Colors.warning,
+  
+  // Price colors
+  priceOwn: Colors.primary,
+  priceOther: Colors.success,
+  
+  // Interactive states
+  buttonPrimary: Colors.primary,
+  buttonSecondary: Colors.surfaceSecondary,
+  buttonDanger: Colors.error,
+  buttonDisabled: Colors.textTertiary,
+  
+  // Form states
+  inputBorder: Colors.border,
+  inputBorderFocus: Colors.primary,
+  inputBorderError: Colors.error,
+  inputPlaceholder: Colors.textTertiary,
 } as const;
 
 export type ColorScheme = typeof Colors;
+export type SemanticColorScheme = typeof SemanticColors;
 
 export default Colors;
-

@@ -10,6 +10,7 @@ import ListingDetailScreen from '../screens/home/ListingDetailScreen';
 import PublicProfileScreen from '../screens/home/PublicProfileScreen';
 import CategoryBrowseScreen from '../screens/home/CategoryBrowseScreen';
 import SearchScreen from '../screens/home/SearchScreen';
+import TransactionGuideScreen from '../screens/home/TransactionGuideScreen';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 
@@ -25,6 +26,7 @@ export const HomeNavigator: React.FC = () => {
           fontWeight: '600',
         },
         headerShadowVisible: false,
+        headerBackTitleVisible: false,
       }}
     >
       <Stack.Screen
@@ -35,7 +37,7 @@ export const HomeNavigator: React.FC = () => {
       <Stack.Screen
         name="ListingDetail"
         component={ListingDetailScreen}
-        options={{ title: 'Listing' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="PublicProfile"
@@ -45,12 +47,17 @@ export const HomeNavigator: React.FC = () => {
       <Stack.Screen
         name="CategoryBrowse"
         component={CategoryBrowseScreen}
-        options={({ route }) => ({ title: route.params.category })}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="Search"
         component={SearchScreen}
         options={{ title: 'Search' }}
+      />
+      <Stack.Screen
+        name="TransactionGuide"
+        component={TransactionGuideScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

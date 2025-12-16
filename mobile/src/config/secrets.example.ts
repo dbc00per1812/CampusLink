@@ -16,6 +16,8 @@ export const SUPABASE_ANON_KEY = CURRENT_ENVIRONMENT === 'production'
   : 'YOUR_PREVIEW_ANON_KEY';
 
 // Third-Party Keys
+// Stripe Publishable Key (starts with pk_test_ for test mode, pk_live_ for production)
+// Get from: https://dashboard.stripe.com/apikeys
 export const STRIPE_PUBLISHABLE_KEY = 'YOUR_STRIPE_PUBLISHABLE_KEY';
 
 export const ONESIGNAL_APP_ID = 'YOUR_ONESIGNAL_APP_ID';

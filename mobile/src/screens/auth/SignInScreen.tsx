@@ -87,7 +87,7 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
               ]}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={[styles.backButtonText, { color: colors.primary }]}>back</Text>
+              <Ionicons name="chevron-back" size={28} color={colors.primary} />
             </Pressable>
             
             <Text style={[styles.title, { color: colors.textPrimary }]}>

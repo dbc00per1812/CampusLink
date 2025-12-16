@@ -135,8 +135,9 @@ export interface OrderCreate {
   seller_price_cents: number | null;
   buyer_price_cents: number | null;
   payment_method: PaymentMethod;
-  time_slot_id: string | null;
-  quantity: number;
+  time_slot_id?: string | null;
+  quantity?: number;
+  stripe_payment_intent_id?: string;
 }
 
 // Order Insert (for database operations)

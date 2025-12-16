@@ -53,7 +53,8 @@ const PayoutRequestScreen: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await requestPayout(payoutAmount);
+      // Convert dollars to cents for the API
+      await requestPayout(Math.round(payoutAmount * 100));
       Alert.alert(
         'Payout Requested',
         'Your payout request has been submitted. It will be processed within 2-3 business days.',

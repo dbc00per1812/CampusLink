@@ -4,8 +4,11 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { StripeProvider } from '@stripe/stripe-react-native';
 
+import { ThemeProvider, useIsDarkMode, OrderMonitorProvider } from './src/context';
 import RootNavigator from './src/navigation/RootNavigator';
+import { STRIPE_PUBLISHABLE_KEY } from './src/config/secrets';
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -17,14 +20,34 @@ const queryClient = new QueryClient({
   },
 });
 
+// App content with theme-aware status bar
+const AppContent: React.FC = () => {
+  const isDarkMode = useIsDarkMode();
+  
+  return (
+    <>
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <RootNavigator />
+    </>
+  );
+};
+
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <StatusBar style="dark" />
-          <RootNavigator />
-        </QueryClientProvider>
+        <StripeProvider
+          publishableKey={STRIPE_PUBLISHABLE_KEY}
+          merchantIdentifier="merchant.com.campuslink"
+        >
+          <QueryClientProvider client={queryClient}>
+            <ThemeProvider>
+              <OrderMonitorProvider>
+                <AppContent />
+              </OrderMonitorProvider>
+            </ThemeProvider>
+          </QueryClientProvider>
+        </StripeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

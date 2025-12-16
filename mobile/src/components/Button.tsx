@@ -1,5 +1,5 @@
-// Button Component - Reusable button with variants
-import React from 'react';
+// Button Component - Enhanced with haptic feedback and press animations
+import React, { useCallback } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -7,11 +7,17 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
+  Platform,
+  Pressable,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Colors from '../utils/colors';
+import * as Haptics from 'expo-haptics';
+import { useColors } from '../context/ThemeContext';
+import { Typography } from '../utils/typography';
+import { Spacing, BorderRadius, Shadows, Layout } from '../utils/spacing';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger' | 'success';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success';
 export type ButtonSize = 'small' | 'medium' | 'large';
 
 interface ButtonProps {
@@ -24,6 +30,7 @@ interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   fullWidth?: boolean;
+  haptic?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -38,114 +45,159 @@ const Button: React.FC<ButtonProps> = ({
   loading = false,
   disabled = false,
   fullWidth = true,
+  haptic = true,
   style,
   textStyle,
 }) => {
+  const colors = useColors();
   const isDisabled = disabled || loading;
 
+  const handlePress = useCallback(() => {
+    if (haptic && Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    onPress();
+  }, [haptic, onPress]);
+
   const getBackgroundColor = (): string => {
-    if (isDisabled) return Colors.surfaceSecondary;
+    if (isDisabled) return colors.surfaceSecondary;
     switch (variant) {
       case 'primary':
-        return Colors.primary;
+        return colors.primary;
       case 'secondary':
-        return Colors.surfaceSecondary;
+        return colors.surfaceSecondary;
       case 'outline':
+      case 'ghost':
         return 'transparent';
       case 'danger':
-        return Colors.error;
+        return colors.error;
       case 'success':
-        return Colors.success;
+        return colors.success;
       default:
-        return Colors.primary;
+        return colors.primary;
+    }
+  };
+
+  const getPressedBackgroundColor = (): string => {
+    if (isDisabled) return colors.surfaceSecondary;
+    switch (variant) {
+      case 'primary':
+        return colors.primaryDark;
+      case 'secondary':
+        return colors.surfaceTertiary;
+      case 'outline':
+      case 'ghost':
+        return colors.primaryMuted;
+      case 'danger':
+        return '#CC2F26';
+      case 'success':
+        return '#2BA34A';
+      default:
+        return colors.primaryDark;
     }
   };
 
   const getTextColor = (): string => {
-    if (isDisabled) return Colors.textTertiary;
+    if (isDisabled) return colors.textTertiary;
     switch (variant) {
       case 'primary':
       case 'danger':
       case 'success':
-        return Colors.textInverse;
+        return colors.textInverse;
       case 'secondary':
-        return Colors.textPrimary;
+        return colors.textPrimary;
       case 'outline':
-        return Colors.primary;
+      case 'ghost':
+        return colors.primary;
       default:
-        return Colors.textInverse;
+        return colors.textInverse;
     }
   };
 
   const getBorderColor = (): string => {
-    if (variant === 'outline') return Colors.primary;
+    if (variant === 'outline') {
+      return isDisabled ? colors.border : colors.primary;
+    }
     return 'transparent';
   };
 
-  const getPadding = (): { paddingVertical: number; paddingHorizontal: number } => {
+  const getHeight = (): number => {
     switch (size) {
       case 'small':
-        return { paddingVertical: 8, paddingHorizontal: 16 };
+        return Layout.buttonHeightSmall;
       case 'medium':
-        return { paddingVertical: 14, paddingHorizontal: 20 };
+        return Layout.buttonHeight;
       case 'large':
-        return { paddingVertical: 18, paddingHorizontal: 24 };
+        return Layout.buttonHeightLarge;
       default:
-        return { paddingVertical: 14, paddingHorizontal: 20 };
+        return Layout.buttonHeight;
     }
   };
 
-  const getFontSize = (): number => {
+  const getPadding = (): number => {
     switch (size) {
       case 'small':
-        return 14;
+        return Spacing.md;
       case 'medium':
-        return 16;
+        return Spacing.lg;
       case 'large':
-        return 18;
+        return Spacing.xl;
       default:
-        return 16;
+        return Spacing.lg;
     }
   };
 
   const getIconSize = (): number => {
     switch (size) {
       case 'small':
-        return 16;
+        return Layout.iconSm;
       case 'medium':
-        return 20;
+        return Layout.iconMd;
       case 'large':
-        return 24;
+        return Layout.iconLg;
       default:
-        return 20;
+        return Layout.iconMd;
     }
   };
 
-  const padding = getPadding();
+  const getTypography = () => {
+    switch (size) {
+      case 'small':
+        return Typography.buttonSmall;
+      case 'medium':
+      case 'large':
+        return Typography.button;
+      default:
+        return Typography.button;
+    }
+  };
+
   const textColor = getTextColor();
 
   return (
-    <TouchableOpacity
-      style={[
+    <Pressable
+      style={({ pressed }) => [
         styles.button,
         {
-          backgroundColor: getBackgroundColor(),
+          height: getHeight(),
+          paddingHorizontal: getPadding(),
+          backgroundColor: pressed ? getPressedBackgroundColor() : getBackgroundColor(),
           borderColor: getBorderColor(),
           borderWidth: variant === 'outline' ? 2 : 0,
-          ...padding,
+          transform: [{ scale: pressed && !isDisabled ? 0.98 : 1 }],
         },
+        variant !== 'ghost' && variant !== 'outline' && Shadows.sm,
         fullWidth && styles.fullWidth,
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
-      activeOpacity={0.7}
     >
       {loading ? (
         <ActivityIndicator color={textColor} size="small" />
       ) : (
-        <>
+        <View style={styles.content}>
           {icon && iconPosition === 'left' && (
             <Ionicons
               name={icon}
@@ -156,8 +208,8 @@ const Button: React.FC<ButtonProps> = ({
           )}
           <Text
             style={[
-              styles.text,
-              { color: textColor, fontSize: getFontSize() },
+              getTypography(),
+              { color: textColor },
               textStyle,
             ]}
           >
@@ -171,9 +223,9 @@ const Button: React.FC<ButtonProps> = ({
               style={styles.iconRight}
             />
           )}
-        </>
+        </View>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
@@ -182,7 +234,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: BorderRadius.lg,
   },
   fullWidth: {
     width: '100%',
@@ -190,16 +242,17 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.6,
   },
-  text: {
-    fontWeight: '600',
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconLeft: {
-    marginRight: 8,
+    marginRight: Spacing.sm,
   },
   iconRight: {
-    marginLeft: 8,
+    marginLeft: Spacing.sm,
   },
 });
 
 export default Button;
-

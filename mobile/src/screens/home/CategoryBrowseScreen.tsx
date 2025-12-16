@@ -182,7 +182,7 @@ const CategoryBrowseScreen: React.FC<Props> = ({ route, navigation }) => {
             onPress={() => navigation.goBack()}
             style={styles.backButton}
           >
-            <Text style={styles.backButtonText}>back</Text>
+            <Ionicons name="chevron-back" size={28} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{category}</Text>
           <View style={styles.headerSpacer} />
@@ -222,6 +222,16 @@ const CategoryBrowseScreen: React.FC<Props> = ({ route, navigation }) => {
   // Show category browser
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={28} color={Colors.primary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Browse Categories</Text>
+        <View style={styles.headerSpacer} />
+      </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Products Section */}
         <View style={styles.section}>
@@ -344,11 +354,6 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
-  },
-  backButtonText: {
-    fontSize: 17,
-    color: Colors.primary,
-    fontWeight: '400',
   },
   headerTitle: {
     fontSize: 18,

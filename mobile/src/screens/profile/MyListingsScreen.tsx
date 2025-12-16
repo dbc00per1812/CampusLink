@@ -59,11 +59,14 @@ const MyListingsScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log('🗄️ Archiving listing:', listingId);
               await archiveListing(listingId);
               setListings(prev => prev.filter(l => l.id !== listingId));
               Alert.alert('Success', 'Listing archived');
             } catch (error) {
-              Alert.alert('Error', 'Failed to archive listing');
+              console.error('❌ Archive error:', error);
+              const errorMessage = error instanceof Error ? error.message : 'Failed to archive listing';
+              Alert.alert('Error', errorMessage);
             }
           },
         },

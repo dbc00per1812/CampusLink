@@ -27,11 +27,25 @@ export const getConversations = async (): Promise<Conversation[]> => {
 
   if (error) throw error;
   
-  // Process and return conversations with last message
-  return (data ?? []).map(conv => ({
-    ...conv,
-    last_message: conv.last_message?.[0] || null,
-  }));
+  // Process and filter out archived conversations
+  return (data ?? [])
+    .map(conv => ({
+      ...conv,
+      last_message: conv.last_message?.[0] || null,
+    }))
+    .filter(conv => {
+      // Filter out conversations archived by current user
+      // Check for true explicitly (not just truthy) to handle null/undefined
+      if (conv.buyer_id === userId && conv.archived_by_buyer === true) {
+        console.log('📌 Filtering out archived conversation (buyer):', conv.id);
+        return false;
+      }
+      if (conv.seller_id === userId && conv.archived_by_seller === true) {
+        console.log('📌 Filtering out archived conversation (seller):', conv.id);
+        return false;
+      }
+      return true;
+    });
 };
 
 // Get a single conversation by ID
@@ -86,6 +100,71 @@ export const getOrCreateConversation = async (
 
   if (error) throw error;
   return data;
+};
+
+// Get or create a conversation for an order
+// Matches iOS OrderDetailView.loadConversation() logic
+export const getOrCreateConversationForOrder = async (
+  orderId: string,
+  listingId: string,
+  buyerId: string,
+  sellerId: string
+): Promise<Conversation> => {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+
+  // Find existing conversation - check BOTH directions
+  // Conversation could have current user as buyer OR seller
+  // IMPORTANT: Include buyer and seller user profiles for proper display names
+  const { data: existing, error: searchError } = await supabase
+    .from('conversations')
+    .select(`
+      *,
+      buyer:users!buyer_id(*),
+      seller:users!seller_id(*),
+      listing:listings(*)
+    `)
+    .eq('listing_id', listingId)
+    .or(`and(buyer_id.eq.${userId},seller_id.eq.${userId === buyerId ? sellerId : buyerId}),and(buyer_id.eq.${userId === buyerId ? sellerId : buyerId},seller_id.eq.${userId})`)
+    .limit(1);
+
+  if (searchError && searchError.code !== 'PGRST116') {
+    throw searchError;
+  }
+
+  if (existing && existing.length > 0) {
+    console.log('✅ Found existing conversation:', existing[0].id);
+    console.log('   Buyer:', existing[0].buyer?.name || 'nil');
+    console.log('   Seller:', existing[0].seller?.name || 'nil');
+    return existing[0];
+  }
+
+  console.log('📝 Creating new conversation for order:', orderId);
+
+  // Create new conversation if none exists
+  const { data: created, error: createError } = await supabase
+    .from('conversations')
+    .insert({
+      buyer_id: buyerId,
+      seller_id: sellerId,
+      listing_id: listingId,
+      order_id: orderId,
+    })
+    .select(`
+      *,
+      buyer:users!buyer_id(*),
+      seller:users!seller_id(*),
+      listing:listings(*)
+    `)
+    .single();
+
+  if (createError) throw createError;
+
+  console.log('✅ Created new conversation:', created.id);
+  console.log('   Buyer:', created.buyer?.name || 'nil');
+  console.log('   Seller:', created.seller?.name || 'nil');
+
+  return created;
 };
 
 // Get messages for a conversation
@@ -202,6 +281,45 @@ export const subscribeToMessages = (
   };
 };
 
+// Archive a conversation
+export const archiveConversation = async (conversationId: string): Promise<void> => {
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    console.error('❌ Archive failed: Not authenticated');
+    throw new Error('Not authenticated');
+  }
+
+  console.log('📝 Archiving conversation:', conversationId, 'for user:', userId);
+
+  // Get the conversation to determine if user is buyer or seller
+  const conversation = await getConversation(conversationId);
+  if (!conversation) {
+    console.error('❌ Archive failed: Conversation not found');
+    throw new Error('Conversation not found');
+  }
+
+  // Update the appropriate archived field based on user role
+  const isBuyer = conversation.buyer_id === userId;
+  const updateField = isBuyer 
+    ? { archived_by_buyer: true }
+    : { archived_by_seller: true };
+
+  console.log('📝 Updating field:', updateField, 'for role:', isBuyer ? 'buyer' : 'seller');
+
+  const { error, data } = await supabase
+    .from('conversations')
+    .update(updateField)
+    .eq('id', conversationId)
+    .select();
+
+  if (error) {
+    console.error('❌ Database update error:', error);
+    throw error;
+  }
+
+  console.log('✅ Archive successful, updated data:', data);
+};
+
 // Subscribe to conversation updates
 export const subscribeToConversations = (
   onUpdate: (conversation: Conversation) => void
@@ -245,10 +363,12 @@ export default {
   getConversations,
   getConversation,
   getOrCreateConversation,
+  getOrCreateConversationForOrder,
   getMessages,
   sendMessage,
   markMessagesAsRead,
   subscribeToMessages,
   subscribeToConversations,
+  archiveConversation,
 };
 

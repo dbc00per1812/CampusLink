@@ -7,6 +7,7 @@ import {
   OrderStats,
   Listing,
   Wallet,
+  normalizeOrder,
 } from '../types';
 
 // Generate 4-digit PIN for service verification
@@ -19,6 +20,52 @@ const getCurrentUserId = async (): Promise<string> => {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user.id) throw new Error('No active session');
   return session.user.id;
+};
+
+// Deduct from wallet for wallet payments
+const deductFromWallet = async (userId: string, amountCents: number): Promise<void> => {
+  console.log('💰 Deducting from wallet:', userId, amountCents);
+
+  // Get or create wallet
+  let { data: wallet, error: walletError } = await supabase
+    .from('wallets')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (walletError) {
+    // Create wallet if doesn't exist
+    const { data: newWallet, error: createError } = await supabase
+      .from('wallets')
+      .insert({
+        user_id: userId,
+        available_cents: 0,
+        escrow_cents: 0,
+      })
+      .select()
+      .single();
+
+    if (createError) throw createError;
+    wallet = newWallet;
+  }
+
+  // Check sufficient balance
+  if (wallet.available_cents < amountCents) {
+    throw new Error('Insufficient wallet balance');
+  }
+
+  // Deduct from available balance
+  const { error: updateError } = await supabase
+    .from('wallets')
+    .update({
+      available_cents: wallet.available_cents - amountCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId);
+
+  if (updateError) throw updateError;
+
+  console.log('✅ Wallet deducted:', amountCents, 'cents');
 };
 
 // Create a new order
@@ -43,6 +90,11 @@ export const createOrder = async (orderCreate: OrderCreate): Promise<Order> => {
 
   const verificationPin = listing.listing_type === 'service' ? generateVerificationPIN() : null;
 
+  // For wallet payments, deduct from buyer's wallet
+  if (orderCreate.payment_method === 'wallet') {
+    await deductFromWallet(orderCreate.buyer_id, orderCreate.buyer_price_cents ?? orderCreate.price_cents);
+  }
+
   // Create order
   const orderData = {
     listing_id: orderCreate.listing_id,
@@ -53,11 +105,12 @@ export const createOrder = async (orderCreate: OrderCreate): Promise<Order> => {
     buyer_price_cents: orderCreate.buyer_price_cents,
     payment_method: orderCreate.payment_method,
     order_status: 'placed',
-    payment_status: 'succeeded',
+    payment_status: orderCreate.payment_method === 'wallet' ? 'succeeded' : 'requires_capture',
     marketplace_fee_cents: 0,
-    time_slot_id: orderCreate.time_slot_id,
+    time_slot_id: orderCreate.time_slot_id ?? null,
     verification_pin: verificationPin,
-    quantity: orderCreate.quantity,
+    quantity: orderCreate.quantity ?? 1,
+    stripe_payment_intent_id: orderCreate.stripe_payment_intent_id ?? null,
   };
 
   const { data: order, error } = await supabase
@@ -69,7 +122,7 @@ export const createOrder = async (orderCreate: OrderCreate): Promise<Order> => {
   if (error) throw error;
 
   console.log('✅ Order created:', order.id);
-  return order;
+  return normalizeOrder(order);
 };
 
 // Get order details
@@ -86,7 +139,7 @@ export const getOrderDetails = async (orderId: string): Promise<Order> => {
     .single();
 
   if (error) throw error;
-  return data;
+  return normalizeOrder(data);
 };
 
 // Get user's orders (as buyer or seller)
@@ -115,7 +168,7 @@ export const getUserOrders = async (
     .limit(limit);
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map(normalizeOrder);
 };
 
 // Get buyer orders only
@@ -135,7 +188,7 @@ export const getBuyerOrders = async (limit = 50): Promise<Order[]> => {
     .limit(limit);
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map(normalizeOrder);
 };
 
 // Get seller orders only
@@ -155,7 +208,7 @@ export const getSellerOrders = async (limit = 50): Promise<Order[]> => {
     .limit(limit);
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map(normalizeOrder);
 };
 
 // Seller accepts/confirms order
@@ -179,7 +232,7 @@ export const acceptOrder = async (orderId: string): Promise<Order> => {
     .single();
 
   if (error) throw error;
-  return data;
+  return normalizeOrder(data);
 };
 
 // Seller marks as delivered
@@ -211,7 +264,7 @@ export const markDelivered = async (
     .single();
 
   if (error) throw error;
-  return data;
+  return normalizeOrder(data);
 };
 
 // Buyer confirms delivery
@@ -248,7 +301,7 @@ export const confirmDelivery = async (orderId: string): Promise<Order> => {
   await releaseEscrowFunds(order);
 
   console.log('✅ Order completed and escrow released');
-  return updatedOrder;
+  return normalizeOrder(updatedOrder);
 };
 
 // Release escrow funds to seller wallet
@@ -330,7 +383,7 @@ export const cancelOrder = async (orderId: string): Promise<Order> => {
   await refundBuyer(order);
 
   console.log('✅ Order cancelled and buyer refunded');
-  return updatedOrder;
+  return normalizeOrder(updatedOrder);
 };
 
 // Refund buyer's wallet
@@ -422,6 +475,37 @@ export const getOrderStats = async (): Promise<OrderStats> => {
   };
 };
 
+// Update order payment status after payment
+export const updateOrderPaymentStatus = async (
+  orderId: string,
+  paymentIntentId: string
+): Promise<Order> => {
+  console.log('💳 updateOrderPaymentStatus: Starting for order', orderId);
+
+  const currentUserId = await getCurrentUserId();
+  const order = await getOrderDetails(orderId);
+
+  if (currentUserId !== order.buyer_id) {
+    throw new Error('Unauthorized: Only buyer can update payment status');
+  }
+
+  const { data, error } = await supabase
+    .from('orders')
+    .update({
+      payment_status: 'succeeded',
+      stripe_payment_intent_id: paymentIntentId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  console.log('✅ Order payment status updated to succeeded');
+  return normalizeOrder(data);
+};
+
 // Aliases
 export const getOrder = getOrderDetails;
 export const getMyOrders = getUserOrders;
@@ -442,5 +526,6 @@ export default {
   verifyServicePIN,
   verifyServicePin,
   getOrderStats,
+  updateOrderPaymentStatus,
 };
 

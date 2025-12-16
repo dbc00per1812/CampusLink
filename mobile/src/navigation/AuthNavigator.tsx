@@ -18,6 +18,7 @@ export const AuthNavigator: React.FC = () => {
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
+        headerBackTitle: 'back',
       }}
     >
       <Stack.Screen name="Welcome" component={WelcomeScreen} />

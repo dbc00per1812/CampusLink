@@ -11,6 +11,8 @@ export interface Conversation {
   last_message_at: string | null;
   created_at: string;
   updated_at: string | null;
+  archived_by_buyer: boolean;
+  archived_by_seller: boolean;
   // Joined data
   listing?: Listing | null;
   buyer?: User | null;

@@ -1,27 +1,32 @@
-// WalletScreen - Balance and transaction history
-import React, { useState, useEffect, useCallback } from 'react';
+// WalletScreen - Modern balance and transaction history
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   RefreshControl,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Button, LoadingSpinner, EmptyState } from '../../components';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import { LoadingSpinner } from '../../components';
 import { 
   getWalletBalance, 
   getTransactionHistory, 
-  getPayoutHistory 
 } from '../../services/walletService';
 import { supabase } from '../../config/supabase';
-import Colors from '../../utils/colors';
+import { useColors } from '../../context/ThemeContext';
+import { Typography } from '../../utils/typography';
+import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
+import { Order, OrderStatus } from '../../types/order';
 
 interface WalletBalance {
   available: number;
@@ -29,19 +34,20 @@ interface WalletBalance {
   escrow: number;
 }
 
-interface WalletTx {
+interface OrderTransaction {
   id: string;
-  type: 'sale' | 'purchase' | 'payout' | 'refund';
+  type: 'sale' | 'purchase';
   amount: number;
-  description: string;
-  status: string;
+  listingTitle: string;
+  status: OrderStatus;
   created_at: string;
 }
 
 const WalletScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const colors = useColors();
   const [balance, setBalance] = useState<WalletBalance>({ available: 0, pending: 0, escrow: 0 });
-  const [transactions, setTransactions] = useState<WalletTx[]>([]);
+  const [transactions, setTransactions] = useState<OrderTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasStripeAccount, setHasStripeAccount] = useState(false);
@@ -55,34 +61,67 @@ const WalletScreen: React.FC = () => {
 
   const loadWalletData = async () => {
     try {
-      // Get user's Stripe account status
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('stripe_connect_id, stripe_payouts_enabled')
-          .eq('id', session.user.id)
-          .single();
-        
-        setHasStripeAccount(!!userData?.stripe_connect_id);
-        setStripeAccountEnabled(userData?.stripe_payouts_enabled ?? false);
-      }
+      if (!session?.user) return;
+
+      const userId = session.user.id;
+
+      // Get user data for Stripe account status
+      const { data: userData } = await supabase
+        .from('users')
+        .select('stripe_connect_id, stripe_payouts_enabled')
+        .eq('id', userId)
+        .single();
+      
+      setHasStripeAccount(!!userData?.stripe_connect_id);
+      setStripeAccountEnabled(userData?.stripe_payouts_enabled ?? false);
 
       // Get wallet balance
       const walletData = await getWalletBalance();
       setBalance(walletData);
 
-      // Get transaction history
-      const txHistory = await getTransactionHistory();
-      // Map to our simplified type
-      setTransactions(txHistory.map((tx: any) => ({
-        id: tx.id,
-        type: tx.transaction_type || 'sale',
-        amount: tx.amount_cents / 100,
-        description: tx.description || 'Transaction',
-        status: tx.status || 'completed',
-        created_at: tx.created_at,
-      })));
+      // Get recent orders where user is buyer or seller
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          buyer_id,
+          seller_id,
+          price_cents,
+          buyer_price_cents,
+          seller_price_cents,
+          order_status,
+          payment_status,
+          created_at,
+          listing:listings(title)
+        `)
+        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('Error fetching orders:', error);
+        setTransactions([]);
+      } else {
+        // Transform orders into transactions
+        const orderTransactions: OrderTransaction[] = (orders || []).map((order: any) => {
+          const isSale = order.seller_id === userId;
+          const amount = isSale 
+            ? (order.seller_price_cents || order.price_cents) / 100
+            : (order.buyer_price_cents || order.price_cents) / 100;
+
+          return {
+            id: order.id,
+            type: isSale ? 'sale' : 'purchase',
+            amount: amount,
+            listingTitle: order.listing?.title || 'Unknown Item',
+            status: order.order_status,
+            created_at: order.created_at,
+          };
+        });
+
+        setTransactions(orderTransactions);
+      }
     } catch (error) {
       console.error('Error loading wallet data:', error);
     } finally {
@@ -97,8 +136,11 @@ const WalletScreen: React.FC = () => {
   };
 
   const handleSetupStripe = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     try {
-      // Call edge function to get Stripe Connect onboarding URL
       const { data, error } = await supabase.functions.invoke('create-connect-account-link', {
         body: { refreshUrl: 'campuslink://wallet', returnUrl: 'campuslink://wallet' }
       });
@@ -114,6 +156,10 @@ const WalletScreen: React.FC = () => {
   };
 
   const handleRequestPayout = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     if (balance.available < 1) {
       Alert.alert('Insufficient Balance', 'You need at least $1.00 to request a payout.');
       return;
@@ -127,40 +173,36 @@ const WalletScreen: React.FC = () => {
 
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, { 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
   const getTransactionIcon = (type: string): keyof typeof Ionicons.glyphMap => {
     switch (type) {
-      case 'sale':
-        return 'arrow-down-circle';
-      case 'purchase':
-        return 'arrow-up-circle';
-      case 'payout':
-        return 'wallet-outline';
-      case 'refund':
-        return 'refresh-circle';
-      default:
-        return 'cash-outline';
+      case 'sale': return 'arrow-down-circle';
+      case 'purchase': return 'arrow-up-circle';
+      default: return 'cash-outline';
     }
   };
 
   const getTransactionColor = (type: string): string => {
     switch (type) {
-      case 'sale':
-        return Colors.success;
-      case 'purchase':
-        return Colors.error;
-      case 'payout':
-        return Colors.primary;
-      case 'refund':
-        return Colors.warning;
-      default:
-        return Colors.textSecondary;
+      case 'sale': return colors.success;
+      case 'purchase': return colors.primary;
+      default: return colors.textSecondary;
     }
+  };
+
+  const getOrderStatusText = (status: OrderStatus): string => {
+    const statusMap: Record<OrderStatus, string> = {
+      'placed': 'Placed',
+      'seller_confirmed': 'Confirmed',
+      'in_progress': 'In Progress',
+      'completed': 'Completed',
+      'disputed': 'Disputed',
+      'cancelled': 'Cancelled',
+      'refunded': 'Refunded',
+    };
+    return statusMap[status] || status;
   };
 
   if (isLoading) {
@@ -168,90 +210,123 @@ const WalletScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView 
         style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={Colors.primary}
+            tintColor={colors.primary}
           />
         }
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Wallet</Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Wallet</Text>
         </View>
 
         {/* Balance Card */}
-        <View style={styles.balanceCard}>
-          <View style={styles.balanceHeader}>
-            <Text style={styles.balanceLabel}>Available Balance</Text>
-            <Ionicons name="wallet" size={24} color={Colors.primary} />
-          </View>
-          <Text style={styles.balanceAmount}>{formatCurrency(balance.available)}</Text>
-          
-          <View style={styles.balanceRow}>
-            <View style={styles.balanceItem}>
-              <Text style={styles.balanceItemLabel}>In Escrow</Text>
-              <Text style={styles.balanceItemValue}>{formatCurrency(balance.escrow)}</Text>
+        <View style={[styles.balanceCard, Shadows.lg]}>
+          <LinearGradient
+            colors={[colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.balanceGradient}
+          >
+            <View style={styles.balanceHeader}>
+              <Text style={styles.balanceLabel}>Available Balance</Text>
+              <View style={styles.walletIconWrapper}>
+                <Ionicons name="wallet" size={24} color="#FFFFFF" />
+              </View>
             </View>
-          </View>
-
-          <View style={styles.totalBalanceFooter}>
-            <Text style={styles.totalBalanceLabel}>Total Balance</Text>
-            <Text style={styles.totalBalanceAmount}>
-              {formatCurrency(balance.available + balance.escrow)}
-            </Text>
-          </View>
+            <Text style={styles.balanceAmount}>{formatCurrency(balance.available)}</Text>
+            
+            <View style={styles.balanceStats}>
+              <View style={styles.balanceStat}>
+                <View style={styles.balanceStatIcon}>
+                  <Ionicons name="hourglass-outline" size={16} color="#FFFFFF" />
+                </View>
+                <View>
+                  <Text style={styles.balanceStatLabel}>In Escrow</Text>
+                  <Text style={styles.balanceStatValue}>{formatCurrency(balance.escrow)}</Text>
+                </View>
+              </View>
+              <View style={styles.balanceStatDivider} />
+              <View style={styles.balanceStat}>
+                <View style={styles.balanceStatIcon}>
+                  <Ionicons name="calculator-outline" size={16} color="#FFFFFF" />
+                </View>
+                <View>
+                  <Text style={styles.balanceStatLabel}>Total</Text>
+                  <Text style={styles.balanceStatValue}>
+                    {formatCurrency(balance.available + balance.escrow)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
         </View>
 
-        {/* Quick Action Buttons */}
-        <View style={styles.actionButtonsRow}>
+        {/* Quick Actions */}
+        <View style={styles.actionsRow}>
           {hasStripeAccount && stripeAccountEnabled ? (
             <>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.actionButtonPrimary]}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  { backgroundColor: colors.success, opacity: pressed ? 0.9 : 1 },
+                  Shadows.sm,
+                ]}
                 onPress={handleRequestPayout}
                 disabled={balance.available < 1}
               >
-                <Ionicons name="arrow-up-circle" size={20} color="#fff" />
-                <Text style={styles.actionButtonTextPrimary}>Request Payout</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.actionButtonSecondary]}
+                <Ionicons name="arrow-up-circle" size={22} color="#FFFFFF" />
+                <Text style={styles.actionButtonTextLight}>Request Payout</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  { backgroundColor: colors.surface, opacity: pressed ? 0.9 : 1 },
+                  Shadows.sm,
+                ]}
                 onPress={() => navigation.navigate('PayoutHistory')}
               >
-                <Ionicons name="time-outline" size={20} color={Colors.primary} />
-                <Text style={styles.actionButtonTextSecondary}>History</Text>
-              </TouchableOpacity>
+                <Ionicons name="time-outline" size={22} color={colors.primary} />
+                <Text style={[styles.actionButtonText, { color: colors.primary }]}>History</Text>
+              </Pressable>
             </>
           ) : (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.actionButtonPrimary, { flex: 1 }]}
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionButton,
+                styles.actionButtonFull,
+                { backgroundColor: colors.primary, opacity: pressed ? 0.9 : 1 },
+                Shadows.sm,
+              ]}
               onPress={handleSetupStripe}
             >
-              <Ionicons name="link" size={20} color="#fff" />
-              <Text style={styles.actionButtonTextPrimary}>Complete Payout Setup</Text>
-            </TouchableOpacity>
+              <Ionicons name="link" size={22} color="#FFFFFF" />
+              <Text style={styles.actionButtonTextLight}>Complete Payout Setup</Text>
+            </Pressable>
           )}
         </View>
 
-        {/* Stripe Setup Prompt - Compact version */}
+        {/* Setup Banner */}
         {!hasStripeAccount && (
-          <View style={styles.setupBanner}>
-            <Ionicons name="information-circle" size={20} color={Colors.primary} />
-            <Text style={styles.setupBannerText}>
-              Connect your bank account to receive payments
+          <View style={[styles.setupBanner, { backgroundColor: colors.infoLight, borderColor: colors.primary }]}>
+            <Ionicons name="information-circle" size={22} color={colors.primary} />
+            <Text style={[styles.setupBannerText, { color: colors.textSecondary }]}>
+              Connect your bank account to receive payments from sales
             </Text>
           </View>
         )}
 
         {hasStripeAccount && !stripeAccountEnabled && (
-          <View style={styles.setupBanner}>
-            <Ionicons name="time-outline" size={20} color={Colors.warning} />
-            <Text style={styles.setupBannerText}>
+          <View style={[styles.setupBanner, { backgroundColor: colors.warningLight, borderColor: colors.warning }]}>
+            <Ionicons name="time-outline" size={22} color={colors.warning} />
+            <Text style={[styles.setupBannerText, { color: colors.textSecondary }]}>
               Your Stripe account is pending verification
             </Text>
           </View>
@@ -260,27 +335,48 @@ const WalletScreen: React.FC = () => {
         {/* Transaction History */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+              Recent Transactions
+            </Text>
             {transactions.length > 5 && (
-              <TouchableOpacity onPress={() => navigation.navigate('OrdersList')}>
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
+              <Pressable
+                onPress={() => navigation.navigate('OrdersList')}
+                style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+              >
+                <Text style={[styles.seeAll, { color: colors.primary }]}>See All</Text>
+              </Pressable>
             )}
           </View>
 
           {transactions.length === 0 ? (
-            <View style={styles.emptyTransactions}>
-              <Ionicons name="receipt-outline" size={40} color={Colors.textTertiary} />
-              <Text style={styles.emptyText}>No transactions yet</Text>
+            <View style={[styles.emptyTransactions, { backgroundColor: colors.surfaceSecondary }]}>
+              <Ionicons name="receipt-outline" size={48} color={colors.textTertiary} />
+              <Text style={[styles.emptyText, { color: colors.textTertiary }]}>
+                No transactions yet
+              </Text>
+              <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>
+                Your transaction history will appear here
+              </Text>
             </View>
           ) : (
-            <View style={styles.transactionsList}>
-              {transactions.slice(0, 5).map((tx: WalletTx) => (
-                <View key={tx.id} style={styles.transactionItem}>
-                  <View style={[
-                    styles.transactionIcon,
-                    { backgroundColor: getTransactionColor(tx.type) + '20' }
-                  ]}>
+            <View style={[styles.transactionsList, { backgroundColor: colors.surface }, Shadows.sm]}>
+              {transactions.slice(0, 5).map((tx: OrderTransaction, index: number) => (
+                <View
+                  key={tx.id}
+                  style={[
+                    styles.transactionItem,
+                    index < Math.min(transactions.length, 5) - 1 && {
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.transactionIcon,
+                      { backgroundColor: `${getTransactionColor(tx.type)}20` },
+                    ]}
+                  >
                     <Ionicons 
                       name={getTransactionIcon(tx.type)} 
                       size={24} 
@@ -288,20 +384,28 @@ const WalletScreen: React.FC = () => {
                     />
                   </View>
                   <View style={styles.transactionInfo}>
-                    <Text style={styles.transactionDescription} numberOfLines={1}>
-                      {tx.description}
+                    <Text
+                      style={[styles.transactionDescription, { color: colors.textPrimary }]}
+                      numberOfLines={1}
+                    >
+                      {tx.listingTitle}
                     </Text>
-                    <Text style={styles.transactionDate}>{formatDate(tx.created_at)}</Text>
+                    <Text style={[styles.transactionDate, { color: colors.textTertiary }]}>
+                      {getOrderStatusText(tx.status)} • {formatDate(tx.created_at)}
+                    </Text>
                   </View>
-                  <Text style={[
-                    styles.transactionAmount,
-                    { color: tx.type === 'sale' || tx.type === 'refund' 
-                      ? Colors.success 
-                      : Colors.textPrimary 
-                    }
-                  ]}>
-                    {tx.type === 'sale' || tx.type === 'refund' ? '+' : '-'}
-                    {formatCurrency(Math.abs(tx.amount))}
+                  <Text
+                    style={[
+                      styles.transactionAmount,
+                      {
+                        color: tx.type === 'sale'
+                          ? colors.success
+                          : colors.textPrimary,
+                      },
+                    ]}
+                  >
+                    {tx.type === 'sale' ? '+' : ''}
+                    {formatCurrency(tx.amount)}
                   </Text>
                 </View>
               ))}
@@ -316,204 +420,181 @@ const WalletScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    ...Typography.largeTitle,
   },
   balanceCard: {
-    margin: 16,
-    padding: 20,
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    marginHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  balanceGradient: {
+    padding: Spacing.xl,
   },
   balanceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   balanceLabel: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+    ...Typography.subheadline,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  walletIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   balanceAmount: {
-    fontSize: 36,
+    fontSize: 42,
     fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 16,
+    color: '#FFFFFF',
+    marginBottom: Spacing.lg,
   },
-  balanceRow: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  balanceItem: {
-    flex: 1,
-  },
-  balanceItemLabel: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginBottom: 4,
-  },
-  balanceItemValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.warning,
-  },
-  totalBalanceFooter: {
+  balanceStats: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.surfaceSecondary,
-    marginHorizontal: -20,
-    marginBottom: -20,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
   },
-  totalBalanceLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  totalBalanceAmount: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  actionButtonsRow: {
+  balanceStat: {
+    flex: 1,
     flexDirection: 'row',
-    gap: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  balanceStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balanceStatLabel: {
+    ...Typography.caption2,
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  balanceStatValue: {
+    ...Typography.subheadlineBold,
+    color: '#FFFFFF',
+  },
+  balanceStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    marginHorizontal: Spacing.md,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
   },
-  actionButtonPrimary: {
-    backgroundColor: Colors.primary,
+  actionButtonFull: {
+    flex: 1,
   },
-  actionButtonSecondary: {
-    backgroundColor: Colors.surface,
+  actionButtonTextLight: {
+    ...Typography.button,
+    color: '#FFFFFF',
   },
-  actionButtonTextPrimary: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  actionButtonTextSecondary: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.primary,
+  actionButtonText: {
+    ...Typography.button,
   },
   setupBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    padding: 12,
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
+    gap: Spacing.md,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderLeftWidth: 4,
   },
   setupBannerText: {
     flex: 1,
-    fontSize: 13,
-    color: Colors.textSecondary,
+    ...Typography.footnote,
     lineHeight: 18,
   },
   section: {
-    padding: 16,
+    padding: Spacing.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacing.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    ...Typography.title3,
   },
   seeAll: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '500',
+    ...Typography.subheadlineBold,
   },
   emptyTransactions: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: Spacing['3xl'],
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
   },
   emptyText: {
-    fontSize: 14,
-    color: Colors.textTertiary,
-    marginTop: 8,
+    ...Typography.headline,
+  },
+  emptySubtext: {
+    ...Typography.footnote,
   },
   transactionsList: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    borderRadius: BorderRadius.lg,
     overflow: 'hidden',
   },
   transactionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    padding: Spacing.md,
   },
   transactionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   transactionInfo: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: Spacing.md,
   },
   transactionDescription: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+    ...Typography.subheadlineBold,
     marginBottom: 2,
   },
   transactionDate: {
-    fontSize: 12,
-    color: Colors.textTertiary,
+    ...Typography.caption1,
   },
   transactionAmount: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...Typography.headline,
   },
 });
 

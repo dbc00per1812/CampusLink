@@ -1,26 +1,33 @@
-// ConversationsScreen - List of conversations
-import React, { useState, useEffect, useCallback } from 'react';
+// ConversationsScreen - Modern messages list
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
+  Pressable,
   RefreshControl,
-  Image,
+  Platform,
+  Animated,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Swipeable } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { UserAvatar, LoadingSpinner, EmptyState } from '../../components';
-import { getConversations, subscribeToConversations } from '../../services/messagingService';
+import { getConversations, subscribeToConversations, archiveConversation } from '../../services/messagingService';
 import { supabase } from '../../config/supabase';
 import { Conversation, User } from '../../types';
-import Colors from '../../utils/colors';
+import { useColors } from '../../context/ThemeContext';
+import { Typography } from '../../utils/typography';
+import { Spacing, BorderRadius, Shadows } from '../../utils/spacing';
 
 const ConversationsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const colors = useColors();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -37,9 +44,19 @@ const ConversationsScreen: React.FC = () => {
   );
 
   useEffect(() => {
-    // Subscribe to conversation updates
     const unsubscribe = subscribeToConversations((updatedConv) => {
       setConversations(prev => {
+        // Check if this conversation is archived by current user
+        const isArchivedByMe = currentUserId && (
+          (updatedConv.buyer_id === currentUserId && updatedConv.archived_by_buyer) ||
+          (updatedConv.seller_id === currentUserId && updatedConv.archived_by_seller)
+        );
+
+        // If archived, remove it from the list
+        if (isArchivedByMe) {
+          return prev.filter(c => c.id !== updatedConv.id);
+        }
+
         const index = prev.findIndex(c => c.id === updatedConv.id);
         if (index >= 0) {
           const updated = [...prev];
@@ -54,7 +71,7 @@ const ConversationsScreen: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUserId]);
 
   const loadUserId = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -109,48 +126,138 @@ const ConversationsScreen: React.FC = () => {
     );
   };
 
+  const handleConversationPress = useCallback((conversationId: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.selectionAsync();
+    }
+    navigation.navigate('Chat', { conversationId });
+  }, [navigation]);
+
+  const handleArchiveConversation = useCallback(async (conversation: Conversation) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    try {
+      // Optimistically remove from UI
+      setConversations(prev => prev.filter(c => c.id !== conversation.id));
+      
+      // Archive in database
+      await archiveConversation(conversation.id);
+      console.log('✅ Conversation archived successfully:', conversation.id);
+    } catch (error: any) {
+      console.error('❌ Error archiving conversation:', error);
+      console.error('Error details:', error.message || error);
+      
+      // Check if it's a column doesn't exist error
+      if (error.message?.includes('column') || error.message?.includes('archived_by')) {
+        Alert.alert(
+          'Database Update Required',
+          'The archive feature requires a database update. Please run the SQL migration in Supabase dashboard.\n\nFile: docs/sql/add_conversation_archive_fields.sql',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', `Failed to archive conversation: ${error.message || 'Unknown error'}`);
+      }
+      
+      // Reload conversations on error
+      loadConversations();
+    }
+  }, []);
+
+  const renderRightActions = (
+    conversation: Conversation,
+    progress: Animated.AnimatedInterpolation<number>
+  ) => {
+    const translateX = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [80, 0],
+    });
+
+    return (
+      <Animated.View
+        style={[
+          styles.swipeAction,
+          { transform: [{ translateX }] },
+        ]}
+      >
+        <Pressable
+          style={[styles.deleteButton, { backgroundColor: colors.error }]}
+          onPress={() => handleArchiveConversation(conversation)}
+        >
+          <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
+          <Text style={styles.deleteText}>Delete</Text>
+        </Pressable>
+      </Animated.View>
+    );
+  };
+
   const renderConversation = ({ item }: { item: Conversation }) => {
     const otherUser = getOtherUser(item);
     const unread = isUnread(item);
     const timeStr = getRelativeTime(item.last_message_at || item.created_at);
 
     return (
-      <TouchableOpacity
-        style={styles.conversationRow}
-        onPress={() => navigation.navigate('Chat', { conversationId: item.id })}
+      <Swipeable
+        renderRightActions={(progress) => renderRightActions(item, progress)}
+        overshootRight={false}
+        friction={2}
       >
-        <UserAvatar user={otherUser} size={56} />
-        
-        <View style={styles.conversationContent}>
-          <View style={styles.conversationHeader}>
-            <Text style={[styles.userName, unread && styles.unreadText]} numberOfLines={1}>
-              {otherUser?.name || 'Unknown'}
-            </Text>
-            <Text style={styles.timeText}>{timeStr}</Text>
+        <Pressable
+          style={({ pressed }) => [
+            styles.conversationRow,
+            { backgroundColor: pressed ? colors.surfaceSecondary : colors.background },
+          ]}
+          onPress={() => handleConversationPress(item.id)}
+        >
+          <View style={styles.avatarWrapper}>
+            <UserAvatar user={otherUser} size={56} />
+            {unread && (
+              <View style={[styles.unreadBadge, { backgroundColor: colors.primary }]} />
+            )}
           </View>
           
-          <View style={styles.previewRow}>
+          <View style={styles.conversationContent}>
+            <View style={styles.conversationHeader}>
+              <Text
+                style={[
+                  styles.userName,
+                  { color: colors.textPrimary },
+                  unread && styles.unreadText,
+                ]}
+                numberOfLines={1}
+              >
+                {otherUser?.name || 'Unknown'}
+              </Text>
+              <Text style={[styles.timeText, { color: colors.textTertiary }]}>
+                {timeStr}
+              </Text>
+            </View>
+            
             <Text 
-              style={[styles.previewText, unread && styles.unreadText]} 
+              style={[
+                styles.previewText,
+                { color: unread ? colors.textPrimary : colors.textSecondary },
+                unread && styles.unreadText,
+              ]} 
               numberOfLines={2}
             >
               {item.last_message?.content || 'No messages yet'}
             </Text>
-            {unread && <View style={styles.unreadDot} />}
+            
+            {item.listing && (
+              <View style={[styles.listingBadge, { backgroundColor: colors.primaryMuted }]}>
+                <Ionicons name="pricetag" size={10} color={colors.primary} />
+                <Text style={[styles.listingTitle, { color: colors.primary }]} numberOfLines={1}>
+                  {item.listing.title}
+                </Text>
+              </View>
+            )}
           </View>
           
-          {item.listing && (
-            <View style={styles.listingRow}>
-              <Ionicons name="pricetag" size={12} color={Colors.primary} />
-              <Text style={styles.listingTitle} numberOfLines={1}>
-                {item.listing.title}
-              </Text>
-            </View>
-          )}
-        </View>
-        
-        <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
-      </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </Pressable>
+      </Swipeable>
     );
   };
 
@@ -159,13 +266,21 @@ const ConversationsScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Messages</Text>
-        <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
-          <Ionicons name="refresh" size={24} color={Colors.primary} />
-        </TouchableOpacity>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          Messages
+        </Text>
+        <Pressable
+          onPress={handleRefresh}
+          style={({ pressed }) => [
+            styles.refreshButton,
+            { backgroundColor: colors.primaryMuted, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Ionicons name="refresh" size={20} color={colors.primary} />
+        </Pressable>
       </View>
 
       {conversations.length === 0 ? (
@@ -180,14 +295,17 @@ const ConversationsScreen: React.FC = () => {
           renderItem={renderConversation}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={Colors.primary}
+              tintColor={colors.primary}
             />
           }
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ItemSeparatorComponent={() => (
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+          )}
         />
       )}
     </SafeAreaView>
@@ -197,92 +315,107 @@ const ConversationsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    ...Typography.largeTitle,
   },
   refreshButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: Spacing.xl,
   },
   conversationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  avatarWrapper: {
+    position: 'relative',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   conversationContent: {
     flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
+    marginLeft: Spacing.md,
+    marginRight: Spacing.sm,
+    gap: 4,
   },
   conversationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
   },
   userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    ...Typography.headline,
     flex: 1,
   },
   timeText: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    marginLeft: 8,
-  },
-  previewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    ...Typography.caption2,
+    marginLeft: Spacing.sm,
   },
   previewText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    flex: 1,
+    ...Typography.subheadline,
     lineHeight: 20,
   },
   unreadText: {
     fontWeight: '600',
-    color: Colors.textPrimary,
   },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-    marginLeft: 8,
-  },
-  listingRow: {
+  listingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
     gap: 4,
+    marginTop: 2,
   },
   listingTitle: {
-    fontSize: 12,
-    color: Colors.primary,
-    flex: 1,
+    ...Typography.caption2,
+    fontWeight: '500',
   },
   separator: {
     height: 1,
-    backgroundColor: Colors.border,
     marginLeft: 84,
+  },
+  swipeAction: {
+    width: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    flex: 1,
+    width: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  deleteText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

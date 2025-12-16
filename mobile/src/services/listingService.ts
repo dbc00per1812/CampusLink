@@ -41,13 +41,41 @@ export const getListings = async (
     excludeSold = true,
   } = options;
 
+  // Get current user's campus for filtering (before building query)
+  let currentUserCampus: string | null = null;
+  if (filterByCampus) {
+    const userId = await getCurrentUserId();
+    if (userId) {
+      try {
+        const { data: currentUser, error: userError } = await supabase
+          .from('users')
+          .select('campus')
+          .eq('id', userId)
+          .single();
+        
+        if (!userError && currentUser?.campus) {
+          currentUserCampus = currentUser.campus;
+          console.log(`🔍 Campus Filter (Server-Side): Filtering by campus: ${currentUserCampus}`);
+        } else {
+          console.log('🔍 Campus Filter: Current user has no campus set, showing all listings');
+        }
+      } catch (err) {
+        console.error('❌ Campus Filter: Error fetching user campus:', err);
+      }
+    }
+  }
+
   let query = supabase
     .from('listings')
-    .select('*, user:users(*)');
+    .select('*, user:users!inner(*)'); // Use inner join to enable filtering on user fields
 
-  // Apply filters
+  // Apply filters - match iOS implementation exactly
+  // Always filter for active status (excludes deleted/inactive posts)
+  query = query.eq('status', 'active');
+  
   if (excludeArchived) {
-    query = query.or('archived.eq.false,archived.is.null');
+    // Match iOS: .neq("archived", value: true) - excludes archived posts
+    query = query.neq('archived', true);
   }
 
   if (excludeSold) {
@@ -66,21 +94,29 @@ export const getListings = async (
     query = query.eq('intent', intent);
   }
 
-  // Campus filter - filter by user email domain
-  if (filterByCampus) {
-    const domain = await getCurrentUserDomain();
-    if (domain) {
-      // This requires the user's email to be joined
-      // For now, we'll filter client-side if needed
-    }
+  // Server-side campus filter - filter at database level BEFORE pagination
+  // Using inner join allows us to filter on the related user's campus field
+  if (currentUserCampus) {
+    query = query.eq('user.campus', currentUserCampus);
+    console.log(`🔍 Campus Filter: Applied server-side filter for campus: ${currentUserCampus}`);
   }
 
   const { data, error } = await query
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) throw error;
-  return data ?? [];
+  if (error) {
+    console.error('❌ Database query error:', error);
+    throw error;
+  }
+  
+  const listings = data ?? [];
+  
+  if (currentUserCampus) {
+    console.log(`✅ Campus Filter: Fetched ${listings.length} listings for campus ${currentUserCampus}`);
+  }
+  
+  return listings;
 };
 
 // Get a single listing by ID
@@ -112,8 +148,11 @@ export const getMyListings = async (
     .select('*')
     .eq('user_id', userId);
 
+  // Match iOS: always filter for active status by default
+  // Only show non-active when explicitly including archived
   if (!includeArchived) {
-    query = query.or('archived.eq.false,archived.is.null');
+    query = query.eq('status', 'active');
+    query = query.neq('archived', true);
   }
 
   if (!includeSold) {
@@ -171,17 +210,66 @@ export const updateListing = async (
 // Delete (archive) a listing
 export const deleteListing = async (listingId: string): Promise<void> => {
   const userId = await getCurrentUserId();
-  if (!userId) throw new Error('Not authenticated');
+  if (!userId) {
+    console.error('❌ Archive failed: Not authenticated');
+    throw new Error('Not authenticated');
+  }
 
-  // Soft delete by archiving
-  const { error } = await supabase
+  console.log('🗄️ Archiving listing:', listingId, 'for user:', userId);
+
+  // First verify the listing exists and user owns it
+  try {
+    const { data: listing, error: fetchError } = await supabase
+      .from('listings')
+      .select('id, user_id, title')
+      .eq('id', listingId)
+      .single();
+
+    if (fetchError) {
+      console.error('❌ Error fetching listing:', fetchError);
+      throw new Error(`Failed to fetch listing: ${fetchError.message}`);
+    }
+
+    if (!listing) {
+      console.error('❌ Listing not found:', listingId);
+      throw new Error('Listing not found');
+    }
+
+    if (listing.user_id !== userId) {
+      console.error('❌ Unauthorized: User', userId, 'does not own listing', listingId);
+      throw new Error('You do not have permission to archive this listing');
+    }
+
+    console.log('✅ Ownership verified for listing:', listing.title);
+  } catch (err) {
+    console.error('❌ Verification failed:', err);
+    throw err;
+  }
+
+  // Now archive the listing
+  const { data, error } = await supabase
     .from('listings')
     .update({ archived: true })
     .eq('id', listingId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select();
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ Archive database error:', error);
+    console.error('❌ Error details:', JSON.stringify(error, null, 2));
+    throw new Error(`Failed to archive listing: ${error.message}`);
+  }
+
+  if (!data || data.length === 0) {
+    console.error('❌ Update returned no data - possible RLS policy issue');
+    throw new Error('Failed to archive listing - no rows updated');
+  }
+
+  console.log('✅ Listing archived successfully:', data[0].title);
 };
+
+// Alias for archiveListing (same as deleteListing)
+export const archiveListing = deleteListing;
 
 // Mark listing as sold
 export const markAsSold = async (listingId: string): Promise<Listing> => {
@@ -241,8 +329,9 @@ const fallbackSearch = async (
     .from('listings')
     .select('*, user:users(*)')
     .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+    .eq('status', 'active')
     .eq('is_sold', false)
-    .or('archived.eq.false,archived.is.null');
+    .neq('archived', true);
 
   if (category) {
     dbQuery = dbQuery.eq('category', category);
@@ -273,8 +362,9 @@ export const getListingsByCategory = async (
     .from('listings')
     .select('*, user:users(*)')
     .eq('category', category)
+    .eq('status', 'active')
     .eq('is_sold', false)
-    .or('archived.eq.false,archived.is.null')
+    .neq('archived', true)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -289,6 +379,7 @@ export default {
   createListing,
   updateListing,
   deleteListing,
+  archiveListing,
   markAsSold,
   searchListings,
   getListingsByCategory,

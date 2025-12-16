@@ -119,6 +119,32 @@ export const getPayouts = async (limit = 50): Promise<Payout[]> => {
   return data ?? [];
 };
 
+// Get REAL balance from Stripe (source of truth)
+export const getStripeBalance = async (): Promise<{
+  available: number;
+  pending: number;
+  error?: string;
+}> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('get-stripe-balance');
+    
+    if (error) {
+      console.error('Error fetching Stripe balance:', error);
+      return { available: 0, pending: 0, error: error.message };
+    }
+
+    // Convert cents to dollars
+    return {
+      available: (data?.available_for_standard_cents || 0) / 100,
+      pending: (data?.pending_cents || 0) / 100,
+      error: data?.error,
+    };
+  } catch (err: any) {
+    console.error('Error invoking get-stripe-balance:', err);
+    return { available: 0, pending: 0, error: err.message };
+  }
+};
+
 // Request a payout
 export const requestPayout = async (
   amountCents: number,
@@ -126,10 +152,12 @@ export const requestPayout = async (
 ): Promise<Payout> => {
   const userId = await getCurrentUserId();
 
-  // Verify sufficient balance
-  const wallet = await getOrCreateWallet();
-  if (wallet.available_cents < amountCents) {
-    throw new Error('Insufficient funds');
+  // Verify sufficient balance using REAL Stripe balance
+  const stripeBalance = await getStripeBalance();
+  const availableCents = Math.round(stripeBalance.available * 100);
+  
+  if (amountCents > availableCents) {
+    throw new Error(`Insufficient funds. Available: $${stripeBalance.available.toFixed(2)}`);
   }
 
   // Call RPC to process payout
@@ -190,10 +218,25 @@ export const getPendingPayoutAmount = async (): Promise<number> => {
   return (data ?? []).reduce((sum, p) => sum + p.amount_cents, 0);
 };
 
-// Alias for getBalance
+// Alias for getBalance - NOW USES REAL STRIPE BALANCE
 export const getWalletBalance = async () => {
-  const balance = await getBalance();
-  return { available: balance.available, pending: 0, escrow: balance.escrow };
+  // Get the REAL balance from Stripe
+  const stripeBalance = await getStripeBalance();
+  
+  // Fallback to local wallet for escrow info only
+  let escrow = 0;
+  try {
+    const wallet = await getWallet();
+    escrow = wallet ? wallet.escrow_cents / 100 : 0;
+  } catch (e) {
+    console.warn('Could not fetch local wallet:', e);
+  }
+  
+  return { 
+    available: stripeBalance.available, 
+    pending: stripeBalance.pending, 
+    escrow 
+  };
 };
 
 // Alias for getTransactions
@@ -206,6 +249,7 @@ export default {
   getWallet,
   getOrCreateWallet,
   getBalance,
+  getStripeBalance,
   getWalletBalance,
   getTransactions,
   getTransactionHistory,

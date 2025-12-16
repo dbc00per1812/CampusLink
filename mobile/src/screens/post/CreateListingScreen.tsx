@@ -185,7 +185,7 @@ const CreateListingScreen: React.FC = () => {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <Text style={styles.backButtonText}>back</Text>
+              <Ionicons name="chevron-back" size={28} color={Colors.primary} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Create Listing</Text>
             <View style={styles.backButton} />

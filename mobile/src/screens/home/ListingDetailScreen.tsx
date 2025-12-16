@@ -22,9 +22,15 @@ import { getListing, deleteListing } from '../../services/listingService';
 import { getCurrentUserId } from '../../services/authService';
 import { ListingWithUser, ListingTypeDisplay, DeliveryMethodDisplay, ServiceLocationDisplay } from '../../types';
 import { useColors } from '../../context/ThemeContext';
+import { useOrderMonitor } from '../../context/OrderMonitorContext';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
-import { ImageGallery, UserAvatar, Button, SellerRatingSummary, ReportUserModal, TicketGuaranteeInfo, ProductVerificationInfo, ServiceVerificationInfo } from '../../components';
+import { ImageGallery, UserAvatar, Button, SellerRatingSummary, ReportUserModal, TicketGuaranteeInfo, ProductVerificationInfo, ServiceVerificationInfo, PaymentMethodSheet, MakeOfferSheet } from '../../components';
+import { configurePaymentSheet, presentStripePaymentSheet } from '../../services/stripeService';
+import { createOrder } from '../../services/orderService';
+import { getWallet } from '../../services/walletService';
+import { createOffer } from '../../services/offerService';
+import type { Wallet } from '../../types';
 
 type Props = HomeScreenProps<'ListingDetail'>;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,12 +38,29 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const { listingId } = route.params;
   const colors = useColors();
+  const { refreshActiveOrders } = useOrderMonitor();
   const [listing, setListing] = useState<ListingWithUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showPaymentMethodSheet, setShowPaymentMethodSheet] = useState(false);
+  const [showMakeOfferSheet, setShowMakeOfferSheet] = useState(false);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
+
+  const loadWalletBalance = async () => {
+    setIsLoadingWallet(true);
+    try {
+      const walletData = await getWallet();
+      setWallet(walletData);
+    } catch (error) {
+      console.error('Failed to load wallet:', error);
+    } finally {
+      setIsLoadingWallet(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -48,6 +71,11 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         ]);
         setListing(data);
         setCurrentUserId(userId);
+        
+        // Load wallet balance for payment method selection (for buyers only)
+        if (userId && data && data.user_id !== userId) {
+          loadWalletBalance();
+        }
       } catch (error) {
         console.error('Failed to load listing:', error);
       } finally {
@@ -162,22 +190,204 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [listing, navigation]);
 
   const handleBuyNow = useCallback(() => {
-    if (!listing) return;
+    if (!listing || !currentUserId) return;
+    
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
-    // Handle purchase flow
-    Alert.alert('Coming Soon', 'Purchase flow will be implemented');
-  }, [listing]);
+
+    // Show payment method selection sheet first
+    setShowPaymentMethodSheet(true);
+  }, [listing, currentUserId]);
+
+  const handlePaymentMethodSelected = useCallback(async (paymentMethod: 'wallet' | 'card' | 'apple_pay' | 'google_pay') => {
+    if (!listing || !currentUserId) return;
+    
+    // Close the payment method sheet
+    setShowPaymentMethodSheet(false);
+    
+    try {
+      setLoading(true);
+
+      if (paymentMethod === 'wallet') {
+        // Wallet payment flow
+        await handleWalletPayment();
+      } else {
+        // Card, Apple Pay, and Google Pay all use Stripe PaymentSheet
+        // The PaymentSheet will automatically show the appropriate methods
+        await handleCardPayment();
+      }
+    } catch (error: any) {
+      console.error('❌ Payment error:', error);
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      
+      Alert.alert(
+        'Payment Failed',
+        error.message || 'Unable to complete payment. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [listing, currentUserId, navigation]);
+
+  const handleWalletPayment = useCallback(async () => {
+    if (!listing || !currentUserId || !wallet) return;
+
+    const priceCents = Math.round((listing.price ?? 0) * 100);
+    const stripeFeeCents = Math.round(priceCents * 0.029 + 30);
+    const totalCents = priceCents + stripeFeeCents;
+
+    // Check wallet balance
+    if (wallet.available_cents < totalCents) {
+      throw new Error('Insufficient wallet balance');
+    }
+
+    console.log('💰 Processing wallet payment...');
+
+    // Create order with wallet payment
+    const newOrder = await createOrder({
+      listing_id: listing.id,
+      buyer_id: currentUserId,
+      seller_id: listing.user_id,
+      price_cents: priceCents,
+      seller_price_cents: priceCents,
+      buyer_price_cents: totalCents,
+      payment_method: 'wallet',
+      quantity: 1,
+    });
+
+    console.log('✅ Order created with wallet payment:', newOrder.id);
+
+    // Refresh active orders in the context
+    refreshActiveOrders();
+
+    // Show success feedback
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    Alert.alert(
+      '🎉 Purchase Complete!',
+      listing.listing_type === 'service' 
+        ? 'Your booking has been confirmed. The seller will contact you shortly.'
+        : 'Your order has been placed. The seller will be notified.',
+      [
+        {
+          text: 'View Order',
+          onPress: () => {
+            navigation.navigate('Orders', {
+              screen: 'OrderDetail',
+              params: { orderId: newOrder.id }
+            });
+          },
+        },
+        { text: 'OK', style: 'cancel' },
+      ]
+    );
+
+    // Reload wallet balance
+    loadWalletBalance();
+  }, [listing, currentUserId, wallet, navigation]);
+
+  const handleCardPayment = useCallback(async () => {
+    if (!listing || !currentUserId) return;
+
+    // Step 1: Configure Stripe PaymentSheet
+    console.log('💳 Configuring payment for listing:', listing.id);
+    const paymentIntentData = await configurePaymentSheet(listing.id);
+
+    // Step 2: Present PaymentSheet to user
+    const paymentResult = await presentStripePaymentSheet();
+
+    if (!paymentResult.success) {
+      // User cancelled or payment failed
+      if (paymentResult.error === 'Payment cancelled') {
+        console.log('ℹ️ User cancelled payment');
+        return;
+      }
+      throw new Error(paymentResult.error || 'Payment failed');
+    }
+
+    // Step 3: Payment succeeded - Create the order
+    console.log('✅ Payment succeeded, creating order...');
+    
+    const newOrder = await createOrder({
+      listing_id: listing.id,
+      buyer_id: currentUserId,
+      seller_id: listing.user_id,
+      price_cents: paymentIntentData.seller_price_cents,
+      seller_price_cents: paymentIntentData.seller_price_cents,
+      buyer_price_cents: paymentIntentData.buyer_price_cents,
+      payment_method: 'card',
+      stripe_payment_intent_id: paymentIntentData.payment_intent_id,
+      quantity: 1,
+    });
+
+    console.log('✅ Order created:', newOrder.id);
+
+    // Refresh active orders in the context
+    refreshActiveOrders();
+
+    // Show success feedback
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    Alert.alert(
+      '🎉 Purchase Complete!',
+      listing.listing_type === 'service' 
+        ? 'Your booking has been confirmed. The seller will contact you shortly.'
+        : 'Your order has been placed. The seller will be notified.',
+      [
+        {
+          text: 'View Order',
+          onPress: () => {
+            navigation.navigate('Orders', {
+              screen: 'OrderDetail',
+              params: { orderId: newOrder.id }
+            });
+          },
+        },
+        { text: 'OK', style: 'cancel' },
+      ]
+    );
+  }, [listing, currentUserId, navigation]);
 
   const handleMakeOffer = useCallback(() => {
     if (!listing) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    // Handle offer flow
-    Alert.alert('Coming Soon', 'Offer flow will be implemented');
+    setShowMakeOfferSheet(true);
   }, [listing]);
+
+  const handleSubmitOffer = useCallback(async (offerAmount: number, message: string) => {
+    if (!listing || !currentUserId) return;
+
+    // Convert to cents for the API
+    const offerAmountCents = Math.round(offerAmount * 100);
+
+    await createOffer(
+      listing.id,
+      listing.user_id,
+      offerAmountCents,
+      message || undefined
+    );
+
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    Alert.alert(
+      'Offer Sent!',
+      'Your offer has been sent to the seller. You\'ll be notified when they respond.',
+      [{ text: 'OK' }]
+    );
+  }, [listing, currentUserId]);
 
   const handleSellerPress = useCallback(() => {
     if (!listing) return;
@@ -614,6 +824,26 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         reportedListingTitle={listing?.title}
         onBlockUser={handleBlockUser}
       />
+
+      {/* Payment Method Sheet */}
+      {listing && (
+        <PaymentMethodSheet
+          visible={showPaymentMethodSheet}
+          listing={listing}
+          wallet={wallet}
+          isLoadingWallet={isLoadingWallet}
+          onClose={() => setShowPaymentMethodSheet(false)}
+          onPaymentMethodSelected={handlePaymentMethodSelected}
+        />
+      )}
+
+      {/* Make Offer Sheet */}
+      <MakeOfferSheet
+        visible={showMakeOfferSheet}
+        listing={listing}
+        onClose={() => setShowMakeOfferSheet(false)}
+        onSubmit={handleSubmitOffer}
+      />
     </SafeAreaView>
   );
 };
@@ -627,7 +857,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.xs,
     borderBottomWidth: 1,
   },
   headerButton: {

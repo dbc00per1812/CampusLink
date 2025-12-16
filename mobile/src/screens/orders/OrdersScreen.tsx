@@ -137,12 +137,7 @@ const OrdersScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Orders</Text>
-      </View>
-
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       {/* Tabs */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
@@ -208,18 +203,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
+    marginTop: 8,
     marginBottom: 8,
     gap: 8,
   },
