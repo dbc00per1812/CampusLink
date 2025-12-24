@@ -8,6 +8,7 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,7 @@ import { Listing } from '../../types';
 import { getMyListings, updateListing, archiveListing } from '../../services/listingService';
 import ListingCard from '../../components/ListingCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { UnifiedHeader } from '../../components';
 import Colors from '../../utils/colors';
 
 const MyListingsScreen: React.FC = () => {
@@ -100,7 +102,9 @@ const MyListingsScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <UnifiedHeader title="My Listings" />
+      
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
         <TouchableOpacity
@@ -197,7 +201,7 @@ const MyListingsScreen: React.FC = () => {
           </View>
         }
       />
-    </View>
+    </SafeAreaView>
   );
 };
 

@@ -115,7 +115,7 @@ extension ProfileTabView {
                     .accessibleButton("Open settings")
                 }
         .responsiveHorizontalSpacing(16)
-        .responsiveSpacing(10)
+        .responsiveSpacing(4)
     }
     
     private var profileInfoSection: some View {

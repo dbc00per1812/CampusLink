@@ -20,9 +20,11 @@ import ProfileScreen from '../screens/profile/ProfileScreen';
 import SettingsScreen from '../screens/profile/SettingsScreen';
 import MyListingsScreen from '../screens/profile/MyListingsScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
+import EditInterestsScreen from '../screens/profile/EditInterestsScreen';
 import WalletScreen from '../screens/wallet/WalletScreen';
 import PayoutRequestScreen from '../screens/wallet/PayoutRequestScreen';
 import PayoutHistoryScreen from '../screens/wallet/PayoutHistoryScreen';
+import OffersScreen from '../screens/offers/OffersScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -64,9 +66,11 @@ const WalletNavigator: React.FC = () => (
   <WalletStack.Navigator
     screenOptions={{
       headerStyle: { backgroundColor: Colors.background },
-      headerTintColor: Colors.textPrimary,
+      headerTintColor: Colors.primary,
+      headerTitleStyle: { color: Colors.textPrimary, fontWeight: '600' },
       headerShadowVisible: false,
-      headerBackTitle: 'back',
+      headerBackTitleVisible: false,
+      headerBackTitle: '',
     }}
   >
     <WalletStack.Screen
@@ -77,22 +81,22 @@ const WalletNavigator: React.FC = () => (
     <WalletStack.Screen
       name="PayoutRequest"
       component={PayoutRequestScreen}
-      options={{ title: 'Request Payout' }}
+      options={{ headerShown: false }}
     />
     <WalletStack.Screen
       name="PayoutHistory"
       component={PayoutHistoryScreen}
-      options={{ title: 'Payout History' }}
+      options={{ headerShown: false }}
     />
     <WalletStack.Screen
       name="OrdersList"
       component={OrdersScreen}
-      options={{ title: 'Orders' }}
+      options={{ headerShown: false }}
     />
     <WalletStack.Screen
       name="OrderDetail"
       component={OrderDetailScreen}
-      options={{ title: 'Order Details' }}
+      options={{ headerShown: false }}
     />
   </WalletStack.Navigator>
 );
@@ -103,9 +107,11 @@ const ProfileNavigator: React.FC = () => (
   <ProfileStack.Navigator
     screenOptions={{
       headerStyle: { backgroundColor: Colors.background },
-      headerTintColor: Colors.textPrimary,
+      headerTintColor: Colors.primary,
+      headerTitleStyle: { color: Colors.textPrimary, fontWeight: '600' },
       headerShadowVisible: false,
-      headerBackTitle: 'back',
+      headerBackTitleVisible: false,
+      headerBackTitle: '',
     }}
   >
     <ProfileStack.Screen
@@ -121,12 +127,22 @@ const ProfileNavigator: React.FC = () => (
     <ProfileStack.Screen
       name="MyListings"
       component={MyListingsScreen}
-      options={{ title: 'My Listings' }}
+      options={{ headerShown: false }}
+    />
+    <ProfileStack.Screen
+      name="MyOffers"
+      component={OffersScreen}
+      options={{ headerShown: false }}
     />
     <ProfileStack.Screen
       name="EditProfile"
       component={EditProfileScreen}
-      options={{ title: 'Edit Profile' }}
+      options={{ headerShown: false }}
+    />
+    <ProfileStack.Screen
+      name="EditInterests"
+      component={EditInterestsScreen}
+      options={{ headerShown: false }}
     />
   </ProfileStack.Navigator>
 );

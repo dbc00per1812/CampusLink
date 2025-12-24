@@ -1,5 +1,5 @@
 // CampusLink - React Native App Entry Point
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 import { ThemeProvider, useIsDarkMode, OrderMonitorProvider } from './src/context';
 import RootNavigator from './src/navigation/RootNavigator';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config/secrets';
+import { initializeNotifications } from './src/services/notificationService';
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -33,6 +34,20 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  // Initialize OneSignal on app startup
+  useEffect(() => {
+    const initPushNotifications = async () => {
+      try {
+        await initializeNotifications();
+        console.log('✅ Push notifications initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize push notifications:', error);
+      }
+    };
+
+    initPushNotifications();
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

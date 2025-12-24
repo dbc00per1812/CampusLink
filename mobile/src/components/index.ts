@@ -8,6 +8,7 @@ export { default as EmptyState } from './EmptyState';
 export { default as OrderStatusBadge } from './OrderStatusBadge';
 export { SellerRatingSummary } from './SellerRatingSummary';
 export { ReportUserModal } from './ReportUserModal';
+export { UnifiedHeader } from './UnifiedHeader';
 
 // Modern UI Components
 export { default as ListingCardModern, ListingCardSkeleton } from './ListingCardModern';

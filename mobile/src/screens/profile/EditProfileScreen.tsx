@@ -25,7 +25,7 @@ import { User } from '../../types';
 import { useColors } from '../../context/ThemeContext';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
-import { Button, UserAvatar } from '../../components';
+import { Button, UserAvatar, UnifiedHeader } from '../../components';
 
 type Props = ProfileScreenProps<'EditProfile'>;
 
@@ -253,7 +253,9 @@ const EditProfileScreen: React.FC<Props> = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+      <UnifiedHeader title="Edit Profile" />
+      
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}

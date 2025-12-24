@@ -28,7 +28,7 @@ import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
 import { ImageGallery, UserAvatar, Button, SellerRatingSummary, ReportUserModal, TicketGuaranteeInfo, ProductVerificationInfo, ServiceVerificationInfo, PaymentMethodSheet, MakeOfferSheet } from '../../components';
 import { configurePaymentSheet, presentStripePaymentSheet } from '../../services/stripeService';
 import { createOrder } from '../../services/orderService';
-import { getWallet } from '../../services/walletService';
+import { getWallet, getWalletBalance } from '../../services/walletService';
 import { createOffer } from '../../services/offerService';
 import type { Wallet } from '../../types';
 
@@ -36,7 +36,7 @@ type Props = HomeScreenProps<'ListingDetail'>;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { listingId } = route.params;
+  const { listingId, returnTo, returnParams } = route.params;
   const colors = useColors();
   const { refreshActiveOrders } = useOrderMonitor();
   const [listing, setListing] = useState<ListingWithUser | null>(null);
@@ -53,14 +53,41 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const loadWalletBalance = async () => {
     setIsLoadingWallet(true);
     try {
-      const walletData = await getWallet();
+      // Get REAL balance from Stripe (source of truth)
+      const balance = await getWalletBalance();
+      
+      // Convert to Wallet type format for PaymentMethodSheet compatibility
+      // We need to convert dollars back to cents for the Wallet type
+      const walletData: Wallet = {
+        id: '', // Not needed for payment display
+        user_id: '', // Not needed for payment display
+        available_cents: Math.round(balance.available * 100),
+        escrow_cents: Math.round(balance.escrow * 100),
+        created_at: '',
+        updated_at: '',
+      };
+      
       setWallet(walletData);
+      console.log('💰 Loaded Stripe balance:', balance.available, '→', walletData.available_cents, 'cents');
     } catch (error) {
       console.error('Failed to load wallet:', error);
     } finally {
       setIsLoadingWallet(false);
     }
   };
+
+  const handleBack = useCallback(() => {
+    if (returnTo === 'Chat' && returnParams?.conversationId) {
+      // Navigate back to the chat screen
+      navigation.navigate('Messages', {
+        screen: 'Chat',
+        params: { conversationId: returnParams.conversationId }
+      });
+    } else {
+      // Default back behavior
+      navigation.goBack();
+    }
+  }, [returnTo, returnParams, navigation]);
 
   useEffect(() => {
     const load = async () => {
@@ -161,7 +188,7 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-              navigation.goBack();
+              handleBack();
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to delete listing');
             } finally {
@@ -454,7 +481,7 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         </Text>
         <Button
           title="Go Back"
-          onPress={() => navigation.goBack()}
+          onPress={handleBack}
           variant="outline"
           size="medium"
           fullWidth={false}
@@ -469,7 +496,7 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <Pressable
-          onPress={() => navigation.goBack()}
+          onPress={handleBack}
           style={({ pressed }) => [styles.headerButton, { opacity: pressed ? 0.5 : 1 }]}
         >
           <Ionicons name="chevron-back" size={28} color={colors.primary} />

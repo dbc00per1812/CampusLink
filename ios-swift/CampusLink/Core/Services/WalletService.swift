@@ -206,6 +206,53 @@ final class WalletService: ObservableObject {
         
         return try await getTransactionHistoryForUser(session.user.id, limit: limit)
     }
+    
+    // Fetch REAL balance from Stripe (source of truth for available funds)
+    func fetchStripeBalance() async throws -> Wallet {
+        struct StripeBalanceResponse: Decodable {
+            let available_for_standard_cents: Int
+            let available_for_instant_cents: Int
+            let pending_cents: Int
+            let total_cents: Int
+        }
+        
+        do {
+            let response: StripeBalanceResponse = try await supabase.functions.invoke(
+                "get-stripe-balance",
+                options: FunctionInvokeOptions(method: .post)
+            )
+            
+            print("💰 Fetched Stripe balance: $\(Double(response.available_for_standard_cents)/100) available")
+            
+            // Get user ID for the wallet object
+            let session = try await supabase.auth.session
+            let userId = session.user.id
+            
+            // Also fetch database wallet for escrow_cents (not in Stripe)
+            let escrowCents: Int
+            do {
+                let dbWallet = try await fetchBalanceForUser(userId)
+                escrowCents = dbWallet.escrowCents
+            } catch {
+                print("⚠️ Could not fetch escrow from database, defaulting to 0")
+                escrowCents = 0
+            }
+            
+            // Return a Wallet object with Stripe balance as available_cents
+            // This ensures checkout sees the real-time Stripe balance
+            return Wallet(
+                id: UUID(), // Not critical for display
+                userId: userId,
+                availableCents: response.available_for_standard_cents,
+                escrowCents: escrowCents,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+        } catch {
+            print("❌ Failed to fetch Stripe balance: \(error)")
+            throw error
+        }
+    }
 }
 
 // MARK: - Errors

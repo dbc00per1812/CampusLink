@@ -246,7 +246,14 @@ const ChatScreen: React.FC = () => {
           
           <Pressable
             style={({ pressed }) => [styles.headerCenter, { opacity: pressed ? 0.7 : 1 }]}
-            onPress={() => otherUser && navigation.navigate('PublicProfile', { userId: otherUser.id })}
+            onPress={() => otherUser && navigation.navigate('Home', {
+              screen: 'PublicProfile',
+              params: { 
+                userId: otherUser.id,
+                returnTo: 'Chat',
+                returnParams: { conversationId }
+              }
+            })}
           >
             {otherUser && <UserAvatar user={otherUser} size={36} />}
             <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>
@@ -274,8 +281,13 @@ const ChatScreen: React.FC = () => {
               styles.listingBar,
               { backgroundColor: colors.surfaceSecondary, opacity: pressed ? 0.8 : 1 },
             ]}
-            onPress={() => navigation.navigate('ListingDetail', { 
-              listingId: conversation.listing!.id 
+            onPress={() => navigation.navigate('Home', { 
+              screen: 'ListingDetail',
+              params: { 
+                listingId: conversation.listing!.id,
+                returnTo: 'Chat',
+                returnParams: { conversationId }
+              }
             })}
           >
             {conversation.listing.photo && (

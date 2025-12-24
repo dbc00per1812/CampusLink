@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LoadingSpinner, EmptyState } from '../../components';
+import { LoadingSpinner, EmptyState, UnifiedHeader } from '../../components';
 import { supabase } from '../../config/supabase';
 import { Offer } from '../../types';
 import Colors from '../../utils/colors';
@@ -170,10 +170,7 @@ const OffersScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Offers</Text>
-      </View>
+      <UnifiedHeader title="My Offers" />
 
       {/* Tabs */}
       <View style={styles.tabContainer}>

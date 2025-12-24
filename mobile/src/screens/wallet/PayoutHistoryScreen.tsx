@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LoadingSpinner } from '../../components';
+import { LoadingSpinner, UnifiedHeader } from '../../components';
 import { getPayoutHistory } from '../../services/walletService';
 import Colors from '../../utils/colors';
 
@@ -112,10 +112,7 @@ const PayoutHistoryScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Payout History</Text>
-      </View>
+      <UnifiedHeader title="Payout History" />
 
       <ScrollView
         style={styles.scrollView}

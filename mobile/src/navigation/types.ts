@@ -10,6 +10,7 @@ export type AuthStackParamList = {
   SignIn: undefined;
   SignUp: undefined;
   OTPVerification: { email: string; name: string; campus: string };
+  InterestSelection: undefined;
   ForgotPassword: undefined;
   ResetPassword: { email: string };
 };
@@ -17,8 +18,16 @@ export type AuthStackParamList = {
 // Home Stack
 export type HomeStackParamList = {
   HomeMain: undefined;
-  ListingDetail: { listingId: string };
-  PublicProfile: { userId: string };
+  ListingDetail: { 
+    listingId: string;
+    returnTo?: 'Chat';
+    returnParams?: { conversationId: string };
+  };
+  PublicProfile: { 
+    userId: string;
+    returnTo?: 'Chat';
+    returnParams?: { conversationId: string };
+  };
   CategoryBrowse: { category?: string };
   Search: undefined;
   TransactionGuide: undefined;
@@ -55,7 +64,9 @@ export type ProfileStackParamList = {
   ProfileMain: undefined;
   Settings: undefined;
   MyListings: undefined;
+  MyOffers: undefined;
   EditProfile: undefined;
+  EditInterests: undefined;
   Notifications: undefined;
 };
 

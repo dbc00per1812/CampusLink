@@ -287,11 +287,12 @@ struct OffersListView: View {
     
     private func loadWalletBalance() async {
         do {
-            let wallet = try await walletService.fetchBalance()
+            // Fetch REAL balance from Stripe (source of truth)
+            let wallet = try await walletService.fetchStripeBalance()
             await MainActor.run {
                 currentWallet = wallet
             }
-            print("🔄 Wallet balance loaded: \(wallet.formattedAvailableBalance)")
+            print("💰 Loaded Stripe balance for checkout: \(wallet.formattedAvailableBalance)")
         } catch {
             print("❌ Failed to load wallet balance: \(error)")
         }

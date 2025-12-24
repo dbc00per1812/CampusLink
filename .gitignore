@@ -20,6 +20,7 @@ mobile/android/
 # Secrets (both platforms)
 Secrets.swift
 mobile/src/config/secrets.ts
+mobile/android/app/google-services.json
 
 # Build artifacts
 *.log

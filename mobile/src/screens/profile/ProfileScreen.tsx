@@ -137,6 +137,9 @@ const ProfileScreen: React.FC = () => {
       case 'myListings':
         navigation.navigate('MyListings');
         break;
+      case 'myOffers':
+        navigation.navigate('MyOffers');
+        break;
       case 'orders':
         navigation.navigate('Wallet', { screen: 'OrdersList' });
         break;
@@ -304,6 +307,14 @@ const ProfileScreen: React.FC = () => {
             iconBgColor={colors.primaryMuted}
             label="My Listings"
             onPress={() => handleMenuPress('myListings')}
+          />
+          
+          <MenuItem
+            icon="pricetag-outline"
+            iconColor="#8B5CF6"
+            iconBgColor="#EDE9FE"
+            label="My Offers"
+            onPress={() => handleMenuPress('myOffers')}
           />
           
           <MenuItem

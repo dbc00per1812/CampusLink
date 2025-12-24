@@ -21,7 +21,8 @@ import {
   OrderStatusBadge, 
   UserAvatar, 
   LoadingSpinner,
-  CircularProgress 
+  CircularProgress,
+  UnifiedHeader
 } from '../../components';
 import { 
   getOrder, 
@@ -775,7 +776,9 @@ const OrderDetailScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <UnifiedHeader title="Order Details" />
+      
       {/* Success Overlay */}
       {renderSuccessOverlay()}
       

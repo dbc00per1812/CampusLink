@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { OrderStatusBadge, LoadingSpinner, EmptyState } from '../../components';
+import { OrderStatusBadge, LoadingSpinner, EmptyState, UnifiedHeader } from '../../components';
 import { getMyOrders } from '../../services/orderService';
 import { supabase } from '../../config/supabase';
 import { Order, OrderStatus } from '../../types';
@@ -137,7 +137,9 @@ const OrdersScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <UnifiedHeader title="Orders" />
+      
       {/* Tabs */}
       <View style={styles.tabContainer}>
         <TouchableOpacity

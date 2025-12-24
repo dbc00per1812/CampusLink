@@ -457,10 +457,14 @@ struct ListingDetailView: View {
         isWalletLoading = true
         Task {
             do {
-                let wallet = try await walletService.fetchBalance()
+                // Fetch REAL balance from Stripe (source of truth)
+                let wallet = try await walletService.fetchStripeBalance()
                 await MainActor.run {
                     currentWallet = wallet
                     isWalletLoading = false
+                    #if DEBUG
+                    print("💰 Loaded Stripe balance for checkout: $\(Double(wallet.availableCents)/100)")
+                    #endif
                 }
             } catch {
                 await MainActor.run {

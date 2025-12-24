@@ -107,6 +107,20 @@ const SettingsScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Preferences */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => (navigation as any).navigate('EditInterests')}
+          >
+            <Ionicons name="heart-outline" size={22} color={Colors.textPrimary} />
+            <Text style={styles.menuText}>My Interests</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+
         {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>

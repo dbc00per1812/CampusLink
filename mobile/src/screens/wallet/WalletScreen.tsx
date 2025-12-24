@@ -361,15 +361,22 @@ const WalletScreen: React.FC = () => {
           ) : (
             <View style={[styles.transactionsList, { backgroundColor: colors.surface }, Shadows.sm]}>
               {transactions.slice(0, 5).map((tx: OrderTransaction, index: number) => (
-                <View
+                <Pressable
                   key={tx.id}
-                  style={[
+                  style={({ pressed }) => [
                     styles.transactionItem,
                     index < Math.min(transactions.length, 5) - 1 && {
                       borderBottomWidth: 1,
                       borderBottomColor: colors.border,
                     },
+                    { opacity: pressed ? 0.6 : 1 },
                   ]}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    navigation.navigate('OrderDetail', { orderId: tx.id });
+                  }}
                 >
                   <View
                     style={[
@@ -407,7 +414,13 @@ const WalletScreen: React.FC = () => {
                     {tx.type === 'sale' ? '+' : ''}
                     {formatCurrency(tx.amount)}
                   </Text>
-                </View>
+                  <Ionicons 
+                    name="chevron-forward" 
+                    size={20} 
+                    color={colors.textTertiary}
+                    style={styles.transactionChevron}
+                  />
+                </Pressable>
               ))}
             </View>
           )}
@@ -595,6 +608,9 @@ const styles = StyleSheet.create({
   },
   transactionAmount: {
     ...Typography.headline,
+  },
+  transactionChevron: {
+    marginLeft: Spacing.xs,
   },
 });
 

@@ -32,8 +32,9 @@ const OTPVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
     setLoading(false);
 
     if (result.success) {
-      Alert.alert('Success', 'Email verified! Welcome to CampusLink.');
-      // Auth state change will redirect to main app
+      console.log('✅ Email verified, navigating to interest selection');
+      // Navigate to interest selection screen
+      navigation.navigate('InterestSelection');
     } else {
       Alert.alert('Verification Failed', result.error?.message || 'Invalid code');
     }

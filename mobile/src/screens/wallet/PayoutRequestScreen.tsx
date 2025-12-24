@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { Button, LoadingSpinner } from '../../components';
+import { Button, LoadingSpinner, UnifiedHeader } from '../../components';
 import { getWalletBalance, requestPayout } from '../../services/walletService';
 import Colors from '../../utils/colors';
 
@@ -77,6 +77,7 @@ const PayoutRequestScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <UnifiedHeader title="Request Payout" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}

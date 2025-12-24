@@ -27,7 +27,7 @@ import { UserAvatar, ListingCard, ReportUserModal } from '../../components';
 type Props = HomeScreenProps<'PublicProfile'>;
 
 const PublicProfileScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { userId } = route.params;
+  const { userId, returnTo, returnParams } = route.params;
   const colors = useColors();
   
   const [user, setUser] = useState<User | null>(null);
@@ -40,6 +40,19 @@ const PublicProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const [showReportModal, setShowReportModal] = useState(false);
 
   const isOwnProfile = currentUserId === userId;
+
+  const handleBack = useCallback(() => {
+    if (returnTo === 'Chat' && returnParams?.conversationId) {
+      // Navigate back to the chat screen
+      navigation.navigate('Messages', {
+        screen: 'Chat',
+        params: { conversationId: returnParams.conversationId }
+      });
+    } else {
+      // Default back behavior
+      navigation.goBack();
+    }
+  }, [returnTo, returnParams, navigation]);
 
   const loadData = useCallback(async () => {
     try {
@@ -124,6 +137,22 @@ const PublicProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       year: 'numeric',
     });
   };
+
+  // Set custom back button handler if returning to chat
+  useEffect(() => {
+    if (returnTo === 'Chat') {
+      navigation.setOptions({
+        headerLeft: () => (
+          <Pressable
+            onPress={handleBack}
+            style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, marginLeft: 8 })}
+          >
+            <Ionicons name="chevron-back" size={28} color={colors.primary} />
+          </Pressable>
+        ),
+      });
+    }
+  }, [returnTo, handleBack, colors, navigation]);
 
   // Set header with three-dot menu for non-own profiles
   useEffect(() => {

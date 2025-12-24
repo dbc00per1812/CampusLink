@@ -18,6 +18,8 @@ CREATE TABLE public.conversations (
   last_message_at timestamp with time zone DEFAULT now(),
   created_at timestamp with time zone DEFAULT now(),
   order_id uuid,
+  archived_by_buyer boolean DEFAULT false,
+  archived_by_seller boolean DEFAULT false,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
   CONSTRAINT conversations_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT conversations_buyer_fkey FOREIGN KEY (buyer_id) REFERENCES public.users(id),
@@ -66,6 +68,7 @@ CREATE TABLE public.listings (
   quantity_sold integer DEFAULT 0,
   embedding USER-DEFINED,
   accepts_offers boolean DEFAULT false,
+  campus text CHECK (campus IS NULL OR (campus = ANY (ARRAY['Indiana University Bloomington'::text, 'Purdue University'::text]))),
   CONSTRAINT listings_pkey PRIMARY KEY (id),
   CONSTRAINT listings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
