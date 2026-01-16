@@ -1,0 +1,52 @@
+# EAS Build Ignore File (root level)
+# This overrides .gitignore for EAS builds
+# Note: secrets.ts is intentionally NOT excluded here
+
+# Swift / iOS
+.swiftpm/
+DerivedData/
+.DerivedData/
+ios-swift/CampusLink/App/Secrets.swift
+ios-swift/Pods/
+ios-swift/*.xcworkspace
+ios-swift/build/
+*.xcuserstate
+
+# React Native / Expo
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/.expo-shared/
+mobile/*.log
+mobile/ios/
+mobile/android/
+
+# Secrets (Swift only - React Native secrets.ts is ALLOWED for EAS)
+Secrets.swift
+mobile/android/app/google-services.json
+
+# Build artifacts
+*.log
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keys and certs
+*.p8
+*.p12
+cert_base64.txt
+key_base64.txt
+

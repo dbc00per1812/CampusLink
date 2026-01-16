@@ -265,10 +265,12 @@ struct ShareListingSheet: View {
             await MainActor.run {
                 print("📤 Sending to Snapchat...")
                 
-                // Try Snap Kit SDK first
-                let photo = SCSDKSnapPhoto(image: stickerImage)
+                // Use SCSDKNoSnapContent for Reddit-style sticker sharing
+                // This opens the camera with the sticker ready to position (not a photo overlay)
                 let sticker = SCSDKSnapSticker(stickerImage: stickerImage)
-                let content = SCSDKPhotoSnapContent(snapPhoto: photo)
+                sticker.posX = 0.5  // Center horizontally
+                sticker.posY = 0.5  // Center vertically
+                let content = SCSDKNoSnapContent()
                 content.sticker = sticker
                 content.attachmentUrl = generateShareURL().absoluteString
                 

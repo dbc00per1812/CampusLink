@@ -1,6 +1,7 @@
 // Messaging Service - Handle conversations and messages
 import { supabase } from '../config/supabase';
 import { Conversation, Message, MessageCreate } from '../types';
+import { getBlockedUserIds, hasBlockingRelationship } from './userService';
 
 // Get current user ID
 const getCurrentUserId = async (): Promise<string | null> => {
@@ -12,6 +13,9 @@ const getCurrentUserId = async (): Promise<string | null> => {
 export const getConversations = async (): Promise<Conversation[]> => {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error('Not authenticated');
+
+  // Get blocked user IDs to filter conversations
+  const blockedIds = await getBlockedUserIds(userId);
 
   const { data, error } = await supabase
     .from('conversations')
@@ -27,7 +31,7 @@ export const getConversations = async (): Promise<Conversation[]> => {
 
   if (error) throw error;
   
-  // Process and filter out archived conversations
+  // Process and filter out archived conversations and blocked users
   return (data ?? [])
     .map(conv => ({
       ...conv,
@@ -44,6 +48,14 @@ export const getConversations = async (): Promise<Conversation[]> => {
         console.log('📌 Filtering out archived conversation (seller):', conv.id);
         return false;
       }
+      
+      // Filter out conversations with blocked users
+      const otherUserId = conv.buyer_id === userId ? conv.seller_id : conv.buyer_id;
+      if (blockedIds.includes(otherUserId)) {
+        console.log('🚫 Filtering out conversation with blocked user:', otherUserId);
+        return false;
+      }
+      
       return true;
     });
 };
@@ -207,6 +219,18 @@ export const sendMessage = async (
   const userId = await getCurrentUserId();
   if (!userId) throw new Error('Not authenticated');
 
+  console.log('📤 Sending message:', { userId, conversationId });
+
+  // Check if there's a blocking relationship with the other user
+  const conversation = await getConversation(conversationId);
+  if (conversation) {
+    const otherUserId = conversation.buyer_id === userId ? conversation.seller_id : conversation.buyer_id;
+    const isBlocked = await hasBlockingRelationship(userId, otherUserId);
+    if (isBlocked) {
+      throw new Error('You cannot send messages to this user.');
+    }
+  }
+
   const { data, error } = await supabase
     .from('messages')
     .insert({
@@ -218,7 +242,17 @@ export const sendMessage = async (
     .select('*, sender:users!sender_id(*)')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ Error sending message:', error);
+    // Provide helpful error messages based on error type
+    if (error.code === '42501') {
+      throw new Error('Permission denied. Please sign out and sign back in, then try again.');
+    }
+    if (error.code === '23503') {
+      throw new Error('Conversation not found or your profile is incomplete.');
+    }
+    throw error;
+  }
 
   // Update conversation's last_message_at
   await supabase
@@ -246,6 +280,21 @@ export const markMessagesAsRead = async (conversationId: string): Promise<void> 
   }
 };
 
+// Delete a message (only own messages)
+export const deleteMessage = async (messageId: string): Promise<void> => {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+
+  // Only delete if the message belongs to the current user
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId)
+    .eq('sender_id', userId);
+
+  if (error) throw error;
+};
+
 // Subscribe to new messages in a conversation
 export const subscribeToMessages = (
   conversationId: string,
@@ -262,6 +311,19 @@ export const subscribeToMessages = (
         filter: `conversation_id=eq.${conversationId}`,
       },
       async (payload) => {
+        // Get current user ID to check blocking
+        const { data: { session } } = await supabase.auth.getSession();
+        const currentUserId = session?.user.id;
+        
+        // Check if message is from a blocked user
+        if (currentUserId && payload.new.sender_id !== currentUserId) {
+          const isBlocked = await hasBlockingRelationship(currentUserId, payload.new.sender_id);
+          if (isBlocked) {
+            console.log('🚫 Ignoring real-time message from blocked user');
+            return;
+          }
+        }
+        
         // Fetch the complete message with sender info
         const { data } = await supabase
           .from('messages')
@@ -279,6 +341,71 @@ export const subscribeToMessages = (
   return () => {
     subscription.unsubscribe();
   };
+};
+
+// Get or create a direct conversation with another user (no listing required)
+// Used for personal DMs from forum, profile views, etc.
+export const getOrCreateDirectConversation = async (
+  otherUserId: string
+): Promise<Conversation> => {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+
+  if (userId === otherUserId) {
+    throw new Error('Cannot start a conversation with yourself');
+  }
+
+  // Check if there's a blocking relationship
+  const isBlocked = await hasBlockingRelationship(userId, otherUserId);
+  if (isBlocked) {
+    throw new Error('You cannot message this user.');
+  }
+
+  // Check if a direct conversation already exists (no listing)
+  // We check both directions since either user could be buyer/seller
+  const { data: existing, error: searchError } = await supabase
+    .from('conversations')
+    .select(`
+      *,
+      buyer:users!buyer_id(*),
+      seller:users!seller_id(*),
+      listing:listings(*)
+    `)
+    .is('listing_id', null)
+    .or(`and(buyer_id.eq.${userId},seller_id.eq.${otherUserId}),and(buyer_id.eq.${otherUserId},seller_id.eq.${userId})`)
+    .limit(1);
+
+  if (searchError && searchError.code !== 'PGRST116') {
+    throw searchError;
+  }
+
+  if (existing && existing.length > 0) {
+    console.log('✅ Found existing direct conversation:', existing[0].id);
+    return existing[0];
+  }
+
+  console.log('📝 Creating new direct conversation with user:', otherUserId);
+
+  // Create new direct conversation (current user as buyer, other as seller)
+  const { data: created, error: createError } = await supabase
+    .from('conversations')
+    .insert({
+      buyer_id: userId,
+      seller_id: otherUserId,
+      listing_id: null,
+    })
+    .select(`
+      *,
+      buyer:users!buyer_id(*),
+      seller:users!seller_id(*),
+      listing:listings(*)
+    `)
+    .single();
+
+  if (createError) throw createError;
+
+  console.log('✅ Created new direct conversation:', created.id);
+  return created;
 };
 
 // Archive a conversation
@@ -364,9 +491,11 @@ export default {
   getConversation,
   getOrCreateConversation,
   getOrCreateConversationForOrder,
+  getOrCreateDirectConversation,
   getMessages,
   sendMessage,
   markMessagesAsRead,
+  deleteMessage,
   subscribeToMessages,
   subscribeToConversations,
   archiveConversation,

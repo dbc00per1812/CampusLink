@@ -67,7 +67,18 @@ export const signUp = async (
 
     // Ensure user profile exists
     if (signInData.user) {
-      await ensureUserProfileExists(signInData.user.id, email, name);
+      try {
+        await ensureUserProfileExists(signInData.user.id, email, name);
+      } catch (profileError) {
+        console.error('❌ Profile creation failed:', profileError);
+        return {
+          success: false,
+          error: {
+            type: 'signUpFailed',
+            message: 'Failed to create your profile. Please try again or contact support.',
+          },
+        };
+      }
     }
 
     console.log('🎉 Signup completed successfully!');
@@ -138,7 +149,18 @@ export const signUpWithEmailConfirmation = async (
       console.log('⚠️ User already confirmed');
       
       if (data.user) {
-        await ensureUserProfileExists(data.user.id, email, name, campus);
+        try {
+          await ensureUserProfileExists(data.user.id, email, name, campus);
+        } catch (profileError) {
+          console.error('❌ Profile creation failed:', profileError);
+          return {
+            success: false,
+            error: {
+              type: 'signUpFailed',
+              message: 'Failed to create your profile. Please try again or contact support.',
+            },
+          };
+        }
       }
 
       return { success: true, data: false }; // false = auto-confirmed
@@ -159,7 +181,8 @@ export const signUpWithEmailConfirmation = async (
 export const verifyEmailAndCompleteSignup = async (
   email: string,
   otp: string,
-  name: string
+  name: string,
+  campus: string
 ): Promise<AuthResult> => {
   try {
     console.log('🔄 Verifying email OTP...');
@@ -176,8 +199,18 @@ export const verifyEmailAndCompleteSignup = async (
 
     // Create user profile after successful email verification
     if (data.user) {
-      const campus = (data.user.user_metadata?.campus as string) ?? '';
-      await ensureUserProfileExists(data.user.id, email, name, campus);
+      try {
+        await ensureUserProfileExists(data.user.id, email, name, campus);
+      } catch (profileError) {
+        console.error('❌ Profile creation failed:', profileError);
+        return {
+          success: false,
+          error: {
+            type: 'emailConfirmationFailed',
+            message: 'Failed to create your profile. Please try again or contact support.',
+          },
+        };
+      }
     }
 
     console.log('✅ Signup completed successfully');
@@ -358,43 +391,66 @@ const ensureUserProfileExists = async (
   name: string,
   campus: string = ''
 ): Promise<void> => {
-  try {
-    console.log('🔧 Ensuring user profile exists for', userId);
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 1000;
 
-    const { error } = await supabase.from('users').insert({
-      id: userId,
-      email,
-      name,
-      campus: campus || null,
-      campus_email_verified: false,
-      trust_score: 100, // Default 5-star rating
-    });
+  console.log('🔧 Ensuring user profile exists for', userId);
+  console.log('📍 Campus value being saved:', campus ? `"${campus}"` : '(empty/null)');
 
-    if (error) {
-      // Check if user already exists
-      if (error.message?.includes('duplicate') || error.message?.includes('unique')) {
-        console.log('ℹ️ User profile already exists');
-        
-        // Update campus if provided
-        if (campus) {
-          await updateUserCampus(userId, campus);
+  // Retry logic with exponential backoff
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const { error } = await supabase.from('users').insert({
+        id: userId,
+        email,
+        name,
+        campus: campus || null,
+        campus_email_verified: false,
+        trust_score: 100, // Default 5-star rating
+      });
+
+      if (error) {
+        // Check if user already exists
+        if (error.message?.includes('duplicate') || error.message?.includes('unique')) {
+          console.log('ℹ️ User profile already exists');
+          
+          // Update campus if provided
+          if (campus) {
+            await updateUserCampus(userId, campus);
+          }
+          return;
         }
-        return;
+        throw error;
       }
-      throw error;
+
+      console.log('✅ User profile created successfully');
+      
+      // Verify campus was saved correctly
+      const { data: verifyUser } = await supabase
+        .from('users')
+        .select('campus')
+        .eq('id', userId)
+        .single();
+      console.log('📍 Verified saved campus:', verifyUser?.campus ? `"${verifyUser.campus}"` : '(null)');
+
+      // Create notification preferences
+      await supabase.from('user_notification_preferences').insert({
+        user_id: userId,
+      });
+
+      console.log('✅ Notification preferences created');
+      return; // Success - exit retry loop
+    } catch (error) {
+      console.error(`❌ Failed to create user profile (attempt ${attempt + 1}/${MAX_RETRIES}):`, error);
+      
+      // If this is the last attempt, re-throw the error
+      if (attempt === MAX_RETRIES - 1) {
+        throw error;
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
     }
-
-    console.log('✅ User profile created successfully');
-
-    // Create notification preferences
-    await supabase.from('user_notification_preferences').insert({
-      user_id: userId,
-    });
-
-    console.log('✅ Notification preferences created');
-  } catch (error) {
-    console.error('❌ Failed to create user profile:', error);
-    // Don't throw - signup already succeeded
   }
 };
 

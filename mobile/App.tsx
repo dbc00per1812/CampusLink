@@ -1,69 +1,76 @@
-// CampusLink - React Native App Entry Point
 import React, { useEffect } from 'react';
-import { StatusBar } from 'expo-status-bar';
+import { StatusBar, LogBox, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StripeProvider } from '@stripe/stripe-react-native';
-
-import { ThemeProvider, useIsDarkMode, OrderMonitorProvider } from './src/context';
+import * as SplashScreen from 'expo-splash-screen';
+import { ThemeProvider } from './src/context/ThemeContext';
+import { OrderMonitorProvider } from './src/context/OrderMonitorContext';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RootNavigator from './src/navigation/RootNavigator';
+import { configureImageCache } from './src/config/imageConfig';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config/secrets';
 import { initializeNotifications } from './src/services/notificationService';
 
-// Create a client for React Query
+// Prevent splash screen from auto-hiding until app is ready
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Ignore errors - splash screen might already be hidden
+});
+
+// Configure React Query for optimal caching
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      // Keep data fresh for 5 minutes
+      staleTime: 5 * 60 * 1000,
+      // Cache for 10 minutes
+      gcTime: 10 * 60 * 1000,
+      // Retry failed requests
       retry: 2,
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      // Refetch on window focus
+      refetchOnWindowFocus: true,
+      // Don't refetch on reconnect (we handle this manually)
+      refetchOnReconnect: false,
     },
   },
 });
 
-// App content with theme-aware status bar
-const AppContent: React.FC = () => {
-  const isDarkMode = useIsDarkMode();
-  
-  return (
-    <>
-      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      <RootNavigator />
-    </>
-  );
-};
+// Ignore specific warnings
+LogBox.ignoreLogs([
+  'Non-serializable values were found in the navigation state',
+  'Sending `onAnimatedValueUpdate` with no listeners registered',
+]);
 
 export default function App() {
-  // Initialize OneSignal on app startup
   useEffect(() => {
-    const initPushNotifications = async () => {
-      try {
-        await initializeNotifications();
-        console.log('✅ Push notifications initialized');
-      } catch (error) {
-        console.error('❌ Failed to initialize push notifications:', error);
-      }
-    };
+    // Initialize OneSignal for push notifications
+    initializeNotifications().catch((error) => {
+      console.error('Failed to initialize notifications:', error);
+    });
 
-    initPushNotifications();
+    // Configure image cache on app start for lightning-fast loading
+    configureImageCache();
   }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StripeProvider
-          publishableKey={STRIPE_PUBLISHABLE_KEY}
-          merchantIdentifier="merchant.com.campuslink"
-        >
-          <QueryClientProvider client={queryClient}>
-            <ThemeProvider>
-              <OrderMonitorProvider>
-                <AppContent />
-              </OrderMonitorProvider>
-            </ThemeProvider>
-          </QueryClientProvider>
-        </StripeProvider>
-      </SafeAreaProvider>
+      <StripeProvider
+        publishableKey={STRIPE_PUBLISHABLE_KEY}
+        merchantIdentifier="merchant.campuslink.com.campuslink"
+        urlScheme="campuslink"
+      >
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <OrderMonitorProvider>
+              <StatusBar
+                barStyle="dark-content"
+                backgroundColor="transparent"
+                translucent={Platform.OS === 'android'}
+              />
+              <RootNavigator />
+            </OrderMonitorProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </StripeProvider>
     </GestureHandlerRootView>
   );
 }

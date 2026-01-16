@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Dimensions,
   Alert,
-  Share,
   Platform,
   Modal,
   TouchableOpacity,
@@ -25,12 +24,13 @@ import { useColors } from '../../context/ThemeContext';
 import { useOrderMonitor } from '../../context/OrderMonitorContext';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
-import { ImageGallery, UserAvatar, Button, SellerRatingSummary, ReportUserModal, TicketGuaranteeInfo, ProductVerificationInfo, ServiceVerificationInfo, PaymentMethodSheet, MakeOfferSheet } from '../../components';
-import { configurePaymentSheet, presentStripePaymentSheet } from '../../services/stripeService';
-import { createOrder } from '../../services/orderService';
-import { getWallet, getWalletBalance } from '../../services/walletService';
+import { ImageGallery, UserAvatar, Button, SellerRatingSummary, ReportUserModal, TicketGuaranteeInfo, ProductVerificationInfo, ServiceVerificationInfo, PaymentMethodSheet, MakeOfferSheet, PurchaseConfirmationModal, ShareListingSheet } from '../../components';
+import { configurePaymentSheet, configurePaymentSheetForOrder, presentStripePaymentSheet } from '../../services/stripeService';
+import { createOrder, deletePendingOrder, updateOrderPaymentStatus } from '../../services/orderService';
 import { createOffer } from '../../services/offerService';
-import type { Wallet } from '../../types';
+import { blockUser } from '../../services/userService';
+import { getOrCreateConversation } from '../../services/messagingService';
+import type { Order } from '../../types';
 
 type Props = HomeScreenProps<'ListingDetail'>;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -47,34 +47,10 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPaymentMethodSheet, setShowPaymentMethodSheet] = useState(false);
   const [showMakeOfferSheet, setShowMakeOfferSheet] = useState(false);
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
-
-  const loadWalletBalance = async () => {
-    setIsLoadingWallet(true);
-    try {
-      // Get REAL balance from Stripe (source of truth)
-      const balance = await getWalletBalance();
-      
-      // Convert to Wallet type format for PaymentMethodSheet compatibility
-      // We need to convert dollars back to cents for the Wallet type
-      const walletData: Wallet = {
-        id: '', // Not needed for payment display
-        user_id: '', // Not needed for payment display
-        available_cents: Math.round(balance.available * 100),
-        escrow_cents: Math.round(balance.escrow * 100),
-        created_at: '',
-        updated_at: '',
-      };
-      
-      setWallet(walletData);
-      console.log('💰 Loaded Stripe balance:', balance.available, '→', walletData.available_cents, 'cents');
-    } catch (error) {
-      console.error('Failed to load wallet:', error);
-    } finally {
-      setIsLoadingWallet(false);
-    }
-  };
+  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+  const [showPurchaseConfirmation, setShowPurchaseConfirmation] = useState(false);
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const handleBack = useCallback(() => {
     if (returnTo === 'Chat' && returnParams?.conversationId) {
@@ -98,11 +74,6 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         ]);
         setListing(data);
         setCurrentUserId(userId);
-        
-        // Load wallet balance for payment method selection (for buyers only)
-        if (userId && data && data.user_id !== userId) {
-          loadWalletBalance();
-        }
       } catch (error) {
         console.error('Failed to load listing:', error);
       } finally {
@@ -145,21 +116,15 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     });
   };
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(() => {
     if (!listing) return;
     
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     
-    try {
-      await Share.share({
-        message: `Check out ${listing.title} on CampusLink! ${formatPrice()}`,
-        title: listing.title,
-      });
-    } catch (error) {
-      console.error('Share error:', error);
-    }
+    // Open the new share sheet with Snapchat/Instagram options
+    setShowShareSheet(true);
   }, [listing]);
 
   const handleEdit = useCallback(() => {
@@ -200,24 +165,43 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     );
   }, [listing, navigation]);
 
-  const handleMessage = useCallback(() => {
+  const handleMessage = useCallback(async () => {
     if (!listing) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    // Navigate to Messages tab and then to Chat screen with return info
-    navigation.navigate('Messages', { 
-      screen: 'Chat', 
-      params: { 
-        conversationId: listing.id,
-        returnScreen: 'ListingDetail',
-        returnParams: { listingId: listing.id }
-      }
-    });
+    
+    try {
+      // Get or create conversation for this listing
+      const conversation = await getOrCreateConversation(listing.id, listing.user_id);
+      
+      // Navigate to Messages tab and then to Chat screen with the actual conversation ID
+      navigation.navigate('Messages', { 
+        screen: 'Chat', 
+        params: { 
+          conversationId: conversation.id,
+          returnScreen: 'ListingDetail',
+          returnParams: { listingId: listing.id }
+        }
+      });
+    } catch (error: any) {
+      console.error('Error creating conversation:', error);
+      Alert.alert('Error', error.message || 'Failed to start conversation. Please try again.');
+    }
   }, [listing, navigation]);
 
   const handleBuyNow = useCallback(() => {
     if (!listing || !currentUserId) return;
+    
+    // Validate that listing has a valid price before proceeding
+    if (listing.price === null || listing.price === undefined || listing.price <= 0) {
+      Alert.alert(
+        'Price Not Set',
+        'This listing doesn\'t have a valid price. Please contact the seller or make an offer instead.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -227,23 +211,19 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     setShowPaymentMethodSheet(true);
   }, [listing, currentUserId]);
 
-  const handlePaymentMethodSelected = useCallback(async (paymentMethod: 'wallet' | 'card' | 'apple_pay' | 'google_pay') => {
+  const handlePaymentMethodSelected = useCallback(async (paymentMethod: 'card' | 'apple_pay' | 'google_pay') => {
     if (!listing || !currentUserId) return;
+    
+    // Set processing state (doesn't affect main screen rendering)
+    setIsProcessingPayment(true);
     
     // Close the payment method sheet
     setShowPaymentMethodSheet(false);
     
     try {
-      setLoading(true);
-
-      if (paymentMethod === 'wallet') {
-        // Wallet payment flow
-        await handleWalletPayment();
-      } else {
-        // Card, Apple Pay, and Google Pay all use Stripe PaymentSheet
-        // The PaymentSheet will automatically show the appropriate methods
-        await handleCardPayment();
-      }
+      // Card, Apple Pay, and Google Pay all use Stripe PaymentSheet
+      // The PaymentSheet will automatically show the appropriate methods
+      await handleCardPayment();
     } catch (error: any) {
       console.error('❌ Payment error:', error);
       
@@ -257,132 +237,107 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         [{ text: 'OK' }]
       );
     } finally {
-      setLoading(false);
+      setIsProcessingPayment(false);
     }
   }, [listing, currentUserId, navigation]);
-
-  const handleWalletPayment = useCallback(async () => {
-    if (!listing || !currentUserId || !wallet) return;
-
-    const priceCents = Math.round((listing.price ?? 0) * 100);
-    const stripeFeeCents = Math.round(priceCents * 0.029 + 30);
-    const totalCents = priceCents + stripeFeeCents;
-
-    // Check wallet balance
-    if (wallet.available_cents < totalCents) {
-      throw new Error('Insufficient wallet balance');
-    }
-
-    console.log('💰 Processing wallet payment...');
-
-    // Create order with wallet payment
-    const newOrder = await createOrder({
-      listing_id: listing.id,
-      buyer_id: currentUserId,
-      seller_id: listing.user_id,
-      price_cents: priceCents,
-      seller_price_cents: priceCents,
-      buyer_price_cents: totalCents,
-      payment_method: 'wallet',
-      quantity: 1,
-    });
-
-    console.log('✅ Order created with wallet payment:', newOrder.id);
-
-    // Refresh active orders in the context
-    refreshActiveOrders();
-
-    // Show success feedback
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-
-    Alert.alert(
-      '🎉 Purchase Complete!',
-      listing.listing_type === 'service' 
-        ? 'Your booking has been confirmed. The seller will contact you shortly.'
-        : 'Your order has been placed. The seller will be notified.',
-      [
-        {
-          text: 'View Order',
-          onPress: () => {
-            navigation.navigate('Orders', {
-              screen: 'OrderDetail',
-              params: { orderId: newOrder.id }
-            });
-          },
-        },
-        { text: 'OK', style: 'cancel' },
-      ]
-    );
-
-    // Reload wallet balance
-    loadWalletBalance();
-  }, [listing, currentUserId, wallet, navigation]);
 
   const handleCardPayment = useCallback(async () => {
     if (!listing || !currentUserId) return;
 
-    // Step 1: Configure Stripe PaymentSheet
-    console.log('💳 Configuring payment for listing:', listing.id);
-    const paymentIntentData = await configurePaymentSheet(listing.id);
+    // SAFETY CHECK: Validate price before proceeding
+    // This prevents creating orders with $0 price which would fail in the edge function
+    if (listing.price === null || listing.price === undefined || listing.price <= 0) {
+      throw new Error('This listing doesn\'t have a valid price. Please contact the seller.');
+    }
 
-    // Step 2: Present PaymentSheet to user
-    const paymentResult = await presentStripePaymentSheet();
+    // ORDER-FIRST FLOW: Create order before payment to avoid orphaned PaymentIntents
+    let pendingOrderId: string | null = null;
 
-    if (!paymentResult.success) {
-      // User cancelled or payment failed
-      if (paymentResult.error === 'Payment cancelled') {
-        console.log('ℹ️ User cancelled payment');
+    try {
+      // Step 1: Calculate prices locally
+      // Stripe fee: 2.9% + $0.30
+      const sellerPriceCents = Math.round(listing.price * 100);
+      const stripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
+      const buyerPriceCents = sellerPriceCents + stripeFeeCents;
+
+      console.log('💳 Creating pending order for listing:', listing.id);
+      console.log(`   Seller price: $${sellerPriceCents / 100}`);
+      console.log(`   Buyer pays: $${buyerPriceCents / 100}`);
+
+      // Step 2: Create order with payment_status: 'pending'
+      const pendingOrder = await createOrder({
+        listing_id: listing.id,
+        buyer_id: currentUserId,
+        seller_id: listing.user_id,
+        price_cents: sellerPriceCents,
+        seller_price_cents: sellerPriceCents,
+        buyer_price_cents: buyerPriceCents,
+        payment_method: 'card',
+        payment_status: 'pending',
+        quantity: 1,
+      });
+      pendingOrderId = pendingOrder.id;
+      console.log('✅ Pending order created:', pendingOrderId);
+
+      // Step 3: Configure Stripe PaymentSheet for the order
+      console.log('💳 Configuring payment sheet for order:', pendingOrderId);
+      const paymentIntentData = await configurePaymentSheetForOrder(pendingOrderId);
+
+      // Step 4: Present PaymentSheet to user
+      const paymentResult = await presentStripePaymentSheet();
+
+      if (!paymentResult.success) {
+        // User cancelled or payment failed - clean up the pending order
+        if (paymentResult.error === 'Payment cancelled') {
+          console.log('ℹ️ User cancelled payment - cleaning up pending order');
+        } else {
+          console.log('❌ Payment failed - cleaning up pending order');
+        }
+        
+        // Delete the pending order since payment was not completed
+        await deletePendingOrder(pendingOrderId);
+        pendingOrderId = null;
+        
+        if (paymentResult.error !== 'Payment cancelled') {
+          throw new Error(paymentResult.error || 'Payment failed');
+        }
         return;
       }
-      throw new Error(paymentResult.error || 'Payment failed');
+
+      // Step 5: Payment succeeded - Update order with payment_intent_id and status
+      console.log('✅ Payment succeeded, updating order...');
+      const updatedOrder = await updateOrderPaymentStatus(
+        pendingOrderId,
+        paymentIntentData.payment_intent_id
+      );
+      pendingOrderId = null; // Clear since order is now confirmed
+
+      console.log('✅ Order updated with payment:', updatedOrder.id);
+
+      // Refresh active orders in the context
+      refreshActiveOrders();
+
+      // Show success feedback
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Show purchase confirmation modal
+      setCreatedOrder(updatedOrder);
+      setShowPurchaseConfirmation(true);
+    } catch (error) {
+      // If an error occurred and we have a pending order, try to clean it up
+      if (pendingOrderId) {
+        console.log('⚠️ Error occurred - attempting to clean up pending order:', pendingOrderId);
+        try {
+          await deletePendingOrder(pendingOrderId);
+        } catch (cleanupError) {
+          console.error('❌ Failed to clean up pending order:', cleanupError);
+        }
+      }
+      throw error;
     }
-
-    // Step 3: Payment succeeded - Create the order
-    console.log('✅ Payment succeeded, creating order...');
-    
-    const newOrder = await createOrder({
-      listing_id: listing.id,
-      buyer_id: currentUserId,
-      seller_id: listing.user_id,
-      price_cents: paymentIntentData.seller_price_cents,
-      seller_price_cents: paymentIntentData.seller_price_cents,
-      buyer_price_cents: paymentIntentData.buyer_price_cents,
-      payment_method: 'card',
-      stripe_payment_intent_id: paymentIntentData.payment_intent_id,
-      quantity: 1,
-    });
-
-    console.log('✅ Order created:', newOrder.id);
-
-    // Refresh active orders in the context
-    refreshActiveOrders();
-
-    // Show success feedback
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-
-    Alert.alert(
-      '🎉 Purchase Complete!',
-      listing.listing_type === 'service' 
-        ? 'Your booking has been confirmed. The seller will contact you shortly.'
-        : 'Your order has been placed. The seller will be notified.',
-      [
-        {
-          text: 'View Order',
-          onPress: () => {
-            navigation.navigate('Orders', {
-              screen: 'OrderDetail',
-              params: { orderId: newOrder.id }
-            });
-          },
-        },
-        { text: 'OK', style: 'cancel' },
-      ]
-    );
-  }, [listing, currentUserId, navigation]);
+  }, [listing, currentUserId, navigation, refreshActiveOrders]);
 
   const handleMakeOffer = useCallback(() => {
     if (!listing) return;
@@ -441,26 +396,33 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const handleBlockUser = useCallback(() => {
     setShowMenuModal(false);
-    if (!listing) return;
+    if (!listing || !currentUserId || !listing.user?.id) return;
     
     Alert.alert(
       'Block User',
-      `Are you sure you want to block ${listing.user?.name || 'this user'}?`,
+      `Are you sure you want to block ${listing.user?.name || 'this user'}? You won't see their listings or be able to message them.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Block',
           style: 'destructive',
-          onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          onPress: async () => {
+            try {
+              await blockUser(currentUserId, listing.user!.id);
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              }
+              Alert.alert('Success', 'User blocked successfully');
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
             }
-            Alert.alert('Success', 'User blocked successfully');
           },
         },
       ]
     );
-  }, [listing]);
+  }, [listing, currentUserId, navigation]);
 
   // Loading state
   if (loading) {
@@ -655,12 +617,16 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
           {/* Description Section */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              Description
-            </Text>
-            <Text style={[styles.description, { color: colors.textSecondary }]}>
-              {listing.description}
-            </Text>
+            {listing.description && (
+              <>
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                  Description
+                </Text>
+                <Text style={[styles.description, { color: colors.textSecondary }]}>
+                  {listing.description}
+                </Text>
+              </>
+            )}
 
             {/* Show ticket guarantee info when Tickets category is selected */}
             {listing.category === 'Tickets' && (
@@ -857,12 +823,12 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         <PaymentMethodSheet
           visible={showPaymentMethodSheet}
           listing={listing}
-          wallet={wallet}
-          isLoadingWallet={isLoadingWallet}
           onClose={() => setShowPaymentMethodSheet(false)}
           onPaymentMethodSelected={handlePaymentMethodSelected}
         />
       )}
+
+      {/* Payment Processing - Listing remains visible in background while payment sheet is configured */}
 
       {/* Make Offer Sheet */}
       <MakeOfferSheet
@@ -871,6 +837,54 @@ const ListingDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         onClose={() => setShowMakeOfferSheet(false)}
         onSubmit={handleSubmitOffer}
       />
+
+      {/* Purchase Confirmation Modal */}
+      {listing && createdOrder && (
+        <PurchaseConfirmationModal
+          visible={showPurchaseConfirmation}
+          listing={listing}
+          order={createdOrder}
+          paymentMethod="card"
+          onClose={() => {
+            setShowPurchaseConfirmation(false);
+            setCreatedOrder(null);
+          }}
+          onViewOrder={() => {
+            setShowPurchaseConfirmation(false);
+            setCreatedOrder(null);
+            navigation.navigate('Wallet', {
+              screen: 'OrderDetail',
+              params: { orderId: createdOrder.id }
+            });
+          }}
+          onContactSeller={async () => {
+            setShowPurchaseConfirmation(false);
+            setCreatedOrder(null);
+            try {
+              const conversation = await getOrCreateConversation(listing.id, listing.user_id);
+              navigation.navigate('Messages', {
+                screen: 'Chat',
+                params: { conversationId: conversation.id }
+              });
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to start conversation.');
+            }
+          }}
+        />
+      )}
+
+      {/* Share Listing Sheet - Snapchat/Instagram/etc */}
+      {listing && (
+        <ShareListingSheet
+          visible={showShareSheet}
+          onClose={() => setShowShareSheet(false)}
+          listingId={listing.id}
+          listingTitle={listing.title}
+          listingDescription={listing.description || ''}
+          listingPrice={formatPrice()}
+          listingImageUrl={listing.photos?.[0] || listing.photo}
+        />
+      )}
     </SafeAreaView>
   );
 };

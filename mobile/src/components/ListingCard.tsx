@@ -1,13 +1,14 @@
 // ListingCard Component - Reusable grid card for listings
+// OPTIMIZED FOR LIGHTNING-FAST PERFORMANCE
 import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ListingWithUser } from '../types';
 import Colors from '../utils/colors';
@@ -45,7 +46,15 @@ const ListingCard: React.FC<ListingCardProps> = ({
       {/* Image */}
       <View style={styles.imageContainer}>
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+          <Image 
+            source={{ uri: imageUrl }} 
+            style={styles.image} 
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+            priority="normal"
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+          />
         ) : (
           <View style={styles.imagePlaceholder}>
             <Ionicons

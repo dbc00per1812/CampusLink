@@ -62,7 +62,7 @@ serve(async (req) => {
       
       const { data: order, error: orderError } = await supabaseAdmin
         .from("orders")
-        .select("id, buyer_id, seller_id, buyer_price_cents, seller_price_cents, listing_id, payment_status")
+        .select("id, buyer_id, seller_id, buyer_price_cents, seller_price_cents, price_cents, listing_id, payment_status")
         .eq("id", order_id)
         .single();
 
@@ -82,9 +82,21 @@ serve(async (req) => {
       }
 
       sellerUserId = order.seller_id;
-      sellerPriceCents = order.seller_price_cents;
-      buyerPriceCents = order.buyer_price_cents;
       listingId = order.listing_id;
+      
+      // Handle potentially null pricing fields by calculating from price_cents
+      // This ensures backward compatibility with orders created before pricing fields were added
+      if (order.seller_price_cents !== null && order.buyer_price_cents !== null) {
+        sellerPriceCents = order.seller_price_cents;
+        buyerPriceCents = order.buyer_price_cents;
+      } else {
+        // Fallback: calculate prices from base price_cents
+        console.log(`⚠️ Order missing pricing fields, calculating from price_cents: ${order.price_cents}`);
+        sellerPriceCents = order.price_cents;
+        // Calculate Stripe processing fee (2.9% + $0.30)
+        const calculatedStripeFeeCents = Math.round((sellerPriceCents * 0.029) + 30);
+        buyerPriceCents = sellerPriceCents + calculatedStripeFeeCents;
+      }
       
       // Get listing title separately
       const { data: listing } = await supabaseAdmin
@@ -142,6 +154,14 @@ serve(async (req) => {
       
     } else {
       throw new Error("Either listing_id or order_id is required");
+    }
+
+    // Validate pricing values before proceeding
+    if (!sellerPriceCents || !buyerPriceCents || 
+        isNaN(sellerPriceCents) || isNaN(buyerPriceCents) ||
+        sellerPriceCents <= 0 || buyerPriceCents <= 0) {
+      console.error(`❌ Invalid pricing: seller=${sellerPriceCents}, buyer=${buyerPriceCents}`);
+      throw new Error(`Invalid pricing data. Please contact support. (seller: ${sellerPriceCents}, buyer: ${buyerPriceCents})`);
     }
 
     // Initialize Stripe (needed for capability checks)

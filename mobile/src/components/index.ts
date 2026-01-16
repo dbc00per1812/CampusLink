@@ -26,10 +26,20 @@ export { default as ServiceVerificationInfo } from './ServiceVerificationInfo';
 // Payment Components
 export { default as PaymentMethodSheet } from './PaymentMethodSheet';
 export { default as MakeOfferSheet } from './MakeOfferSheet';
+export { default as PurchaseConfirmationModal } from './PurchaseConfirmationModal';
+
+// Social Sharing Components
+export { default as ShareListingSheet } from './ShareListingSheet';
+export { default as ListingStickerView } from './ListingStickerView';
 
 // Animation Components
 export { default as AnimatedPressable } from './AnimatedPressable';
 export { default as ShimmerPlaceholder } from './ShimmerPlaceholder';
+
+// Performance utilities
+export * from '../config/imageConfig';
+export * from '../hooks/useImagePrefetch';
+export * from '../utils/performanceOptimizations';
 export { default as FadeInView } from './FadeInView';
 export { default as StaggeredList } from './StaggeredList';
 export { default as CircularProgress } from './CircularProgress';

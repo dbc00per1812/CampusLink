@@ -1,10 +1,10 @@
 // Image Gallery Component - Full-featured image viewer
+// OPTIMIZED FOR LIGHTNING-FAST PERFORMANCE
 import React, { memo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Image,
   ScrollView,
   Dimensions,
   Pressable,
@@ -12,6 +12,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '../context/ThemeContext';
@@ -109,7 +110,11 @@ const ImageGallery: React.FC<ImageGalleryProps> = memo(({
             <Image
               source={{ uri }}
               style={[styles.image, { aspectRatio }]}
-              resizeMode="cover"
+              contentFit="cover"
+              transition={200}
+              cachePolicy="memory-disk"
+              priority={index === 0 ? 'high' : 'normal'}
+              placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
             />
           </Pressable>
         ))}
@@ -165,7 +170,9 @@ const ImageGallery: React.FC<ImageGalleryProps> = memo(({
                       : 'transparent',
                   },
                 ]}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={100}
               />
             </Pressable>
           ))}
@@ -203,7 +210,10 @@ const ImageGallery: React.FC<ImageGalleryProps> = memo(({
                 <Image
                   source={{ uri }}
                   style={styles.fullScreenImage}
-                  resizeMode="contain"
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                  transition={150}
+                  priority="high"
                 />
               </View>
             ))}

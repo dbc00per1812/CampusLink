@@ -31,7 +31,7 @@ import { Order, OrderStatus } from '../../types/order';
 interface WalletBalance {
   available: number;
   pending: number;
-  escrow: number;
+  pendingOnboarding: number; // Funds waiting for Stripe setup
 }
 
 interface OrderTransaction {
@@ -46,7 +46,7 @@ interface OrderTransaction {
 const WalletScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const colors = useColors();
-  const [balance, setBalance] = useState<WalletBalance>({ available: 0, pending: 0, escrow: 0 });
+  const [balance, setBalance] = useState<WalletBalance>({ available: 0, pending: 0, pendingOnboarding: 0 });
   const [transactions, setTransactions] = useState<OrderTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -80,47 +80,72 @@ const WalletScreen: React.FC = () => {
       const walletData = await getWalletBalance();
       setBalance(walletData);
 
-      // Get recent orders where user is buyer or seller
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          buyer_id,
-          seller_id,
-          price_cents,
-          buyer_price_cents,
-          seller_price_cents,
-          order_status,
-          payment_status,
-          created_at,
-          listing:listings(title)
-        `)
-        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // Fetch buyer and seller orders separately to avoid duplicates
+      // (prevents issues when user is both buyer and seller on same order)
+      const orderSelectFields = `
+        id,
+        buyer_id,
+        seller_id,
+        price_cents,
+        buyer_price_cents,
+        seller_price_cents,
+        order_status,
+        payment_status,
+        created_at,
+        listing:listings(title)
+      `;
 
-      if (error) {
-        console.error('Error fetching orders:', error);
+      const [buyerResult, sellerResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select(orderSelectFields)
+          .eq('buyer_id', userId)
+          .neq('seller_id', userId) // Exclude if user is also seller
+          .order('created_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('orders')
+          .select(orderSelectFields)
+          .eq('seller_id', userId)
+          .neq('buyer_id', userId) // Exclude if user is also buyer
+          .order('created_at', { ascending: false })
+          .limit(10),
+      ]);
+
+      if (buyerResult.error || sellerResult.error) {
+        console.error('Error fetching orders:', buyerResult.error || sellerResult.error);
         setTransactions([]);
       } else {
-        // Transform orders into transactions
-        const orderTransactions: OrderTransaction[] = (orders || []).map((order: any) => {
-          const isSale = order.seller_id === userId;
-          const amount = isSale 
-            ? (order.seller_price_cents || order.price_cents) / 100
-            : (order.buyer_price_cents || order.price_cents) / 100;
+        // Transform purchases (buyer orders)
+        const purchases: OrderTransaction[] = (buyerResult.data || []).map((order: any) => ({
+          id: order.id,
+          type: 'purchase' as const,
+          amount: (order.buyer_price_cents || order.price_cents) / 100,
+          listingTitle: order.listing?.title || 'Unknown Item',
+          status: order.order_status,
+          created_at: order.created_at,
+        }));
 
-          return {
-            id: order.id,
-            type: isSale ? 'sale' : 'purchase',
-            amount: amount,
-            listingTitle: order.listing?.title || 'Unknown Item',
-            status: order.order_status,
-            created_at: order.created_at,
-          };
-        });
+        // Transform sales (seller orders)
+        const sales: OrderTransaction[] = (sellerResult.data || []).map((order: any) => ({
+          id: order.id,
+          type: 'sale' as const,
+          amount: (order.seller_price_cents || order.price_cents) / 100,
+          listingTitle: order.listing?.title || 'Unknown Item',
+          status: order.order_status,
+          created_at: order.created_at,
+        }));
 
-        setTransactions(orderTransactions);
+        // Merge, dedupe by ID (in case same order appears in both), sort by date, take top 10
+        const allTransactions = [...purchases, ...sales];
+        const uniqueTransactions = Array.from(
+          new Map(allTransactions.map(tx => [tx.id, tx])).values()
+        );
+        const sortedTransactions = uniqueTransactions
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 10);
+
+        setTransactions(sortedTransactions);
       }
     } catch (error) {
       console.error('Error loading wallet data:', error);
@@ -141,14 +166,21 @@ const WalletScreen: React.FC = () => {
     }
     
     try {
-      const { data, error } = await supabase.functions.invoke('create-connect-account-link', {
-        body: { refreshUrl: 'campuslink://wallet', returnUrl: 'campuslink://wallet' }
+      // Use HTTPS redirect URLs that Stripe accepts, then redirect to app deep link
+      // This matches the Swift implementation
+      const { data, error } = await supabase.functions.invoke('connect_onboarding', {
+        body: { 
+          return_url: 'https://stripe-redirect.netlify.app/stripe-return.html', 
+          refresh_url: 'https://stripe-redirect.netlify.app/stripe-refresh.html' 
+        }
       });
 
       if (error) throw error;
 
-      if (data?.url) {
-        Linking.openURL(data.url);
+      if (data?.onboarding_url) {
+        Linking.openURL(data.onboarding_url);
+      } else if (data?.onboarding_complete) {
+        Alert.alert('Success', 'Your payout account is already set up!');
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to start Stripe setup');
@@ -176,18 +208,28 @@ const WalletScreen: React.FC = () => {
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
-  const getTransactionIcon = (type: string): keyof typeof Ionicons.glyphMap => {
-    switch (type) {
-      case 'sale': return 'arrow-down-circle';
-      case 'purchase': return 'arrow-up-circle';
+  const getTransactionIcon = (status: OrderStatus): keyof typeof Ionicons.glyphMap => {
+    switch (status) {
+      case 'completed': return 'checkmark-circle';
+      case 'placed': 
+      case 'seller_confirmed':
+      case 'in_progress': return 'time';
+      case 'cancelled':
+      case 'refunded': return 'close-circle';
+      case 'disputed': return 'warning';
       default: return 'cash-outline';
     }
   };
 
-  const getTransactionColor = (type: string): string => {
-    switch (type) {
-      case 'sale': return colors.success;
-      case 'purchase': return colors.primary;
+  const getTransactionColor = (status: OrderStatus): string => {
+    switch (status) {
+      case 'completed': return colors.success; // green
+      case 'placed':
+      case 'seller_confirmed':
+      case 'in_progress': return colors.primary; // blue
+      case 'disputed': return colors.warning; // orange
+      case 'cancelled':
+      case 'refunded': return colors.error; // red
       default: return colors.textSecondary;
     }
   };
@@ -246,11 +288,11 @@ const WalletScreen: React.FC = () => {
             <View style={styles.balanceStats}>
               <View style={styles.balanceStat}>
                 <View style={styles.balanceStatIcon}>
-                  <Ionicons name="hourglass-outline" size={16} color="#FFFFFF" />
+                  <Ionicons name="time-outline" size={16} color="#FFFFFF" />
                 </View>
                 <View>
-                  <Text style={styles.balanceStatLabel}>In Escrow</Text>
-                  <Text style={styles.balanceStatValue}>{formatCurrency(balance.escrow)}</Text>
+                  <Text style={styles.balanceStatLabel}>Pending</Text>
+                  <Text style={styles.balanceStatValue}>{formatCurrency(balance.pending + balance.pendingOnboarding)}</Text>
                 </View>
               </View>
               <View style={styles.balanceStatDivider} />
@@ -261,7 +303,7 @@ const WalletScreen: React.FC = () => {
                 <View>
                   <Text style={styles.balanceStatLabel}>Total</Text>
                   <Text style={styles.balanceStatValue}>
-                    {formatCurrency(balance.available + balance.escrow)}
+                    {formatCurrency(balance.available + balance.pending + balance.pendingOnboarding)}
                   </Text>
                 </View>
               </View>
@@ -312,6 +354,26 @@ const WalletScreen: React.FC = () => {
             </Pressable>
           )}
         </View>
+
+        {/* Pending Onboarding Banner - Funds waiting for Stripe setup */}
+        {balance.pendingOnboarding > 0 && !stripeAccountEnabled && (
+          <View style={[styles.setupBanner, { backgroundColor: colors.warningLight, borderColor: colors.warning }]}>
+            <Ionicons name="cash" size={22} color={colors.warning} />
+            <Text style={[styles.setupBannerText, { color: colors.textSecondary }]}>
+              You have {formatCurrency(balance.pendingOnboarding)} waiting! Complete payout setup to receive your earnings. Funds may take up to 7 days to become available after setup.
+            </Text>
+          </View>
+        )}
+
+        {/* Pending Balance Banner - Funds clearing through Stripe */}
+        {balance.pending > 0 && (
+          <View style={[styles.setupBanner, { backgroundColor: colors.successLight, borderColor: colors.success }]}>
+            <Ionicons name="time" size={22} color={colors.success} />
+            <Text style={[styles.setupBannerText, { color: colors.textSecondary }]}>
+              {formatCurrency(balance.pending)} is on the way! Funds typically become available in 2-7 business days.
+            </Text>
+          </View>
+        )}
 
         {/* Setup Banner */}
         {!hasStripeAccount && (
@@ -381,13 +443,13 @@ const WalletScreen: React.FC = () => {
                   <View
                     style={[
                       styles.transactionIcon,
-                      { backgroundColor: `${getTransactionColor(tx.type)}20` },
+                      { backgroundColor: `${getTransactionColor(tx.status)}20` },
                     ]}
                   >
                     <Ionicons 
-                      name={getTransactionIcon(tx.type)} 
+                      name={getTransactionIcon(tx.status)} 
                       size={24} 
-                      color={getTransactionColor(tx.type)} 
+                      color={getTransactionColor(tx.status)} 
                     />
                   </View>
                   <View style={styles.transactionInfo}>

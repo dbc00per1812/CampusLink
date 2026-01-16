@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { HomeScreenProps } from '../../navigation/types';
-import { getUserById, getUserListings } from '../../services/userService';
+import { getUserById, getUserListings, blockUser } from '../../services/userService';
 import { getRatingsSummary } from '../../services/ratingService';
 import { getCurrentUserId } from '../../services/authService';
 import { User, ListingWithUser, UserRatingsSummary, getTrustLevelFromScore, TrustLevelEmoji } from '../../types';
@@ -109,26 +109,33 @@ const PublicProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   }, []);
 
   const handleBlock = useCallback(() => {
-    if (!user) return;
+    if (!user || !currentUserId) return;
     
     Alert.alert(
       'Block User',
-      `Are you sure you want to block ${user.name || 'this user'}?`,
+      `Are you sure you want to block ${user.name || 'this user'}? You won't see their listings or be able to message them.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Block',
           style: 'destructive',
-          onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          onPress: async () => {
+            try {
+              await blockUser(currentUserId, user.id);
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              }
+              Alert.alert('Success', 'User blocked successfully');
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
             }
-            Alert.alert('Success', 'User blocked successfully');
           },
         },
       ]
     );
-  }, [user]);
+  }, [user, currentUserId, navigation]);
 
   const formatMemberSince = (dateString: string): string => {
     const date = new Date(dateString);

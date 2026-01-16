@@ -1,6 +1,6 @@
 // Image Upload Service - Handle image uploads to Supabase Storage
 import { supabase } from '../config/supabase';
-import * as FileSystem from 'expo-file-system';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
 
 interface UploadResult {
@@ -15,33 +15,49 @@ export const uploadImage = async (
   folder: string = ''
 ): Promise<UploadResult> => {
   try {
-    // Read the file as base64
-    const base64 = await FileSystem.readAsStringAsync(localUri, {
-      encoding: 'base64',
-    });
+    const startTime = Date.now();
+    console.log('📸 Starting image upload:', localUri.substring(localUri.lastIndexOf('/') + 1));
+    
+    // Compress and get base64 directly from manipulator
+    const manipResult = await manipulateAsync(
+      localUri,
+      [{ resize: { width: 1080, height: 1080 } }],
+      { compress: 0.7, format: SaveFormat.JPEG, base64: true }
+    );
+    
+    console.log(`  ✅ Image resized in ${Date.now() - startTime}ms`);
+    const uploadStart = Date.now();
+
+    if (!manipResult.base64) {
+      throw new Error('Failed to get base64 from image');
+    }
+
+    const blobSize = ((manipResult.base64.length * 0.75) / 1024 / 1024).toFixed(2);
+    console.log(`  📦 File size: ~${blobSize}MB`);
+    
+    // Convert base64 to ArrayBuffer for upload
+    const arrayBuffer = decode(manipResult.base64);
 
     // Generate unique filename
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
-    const extension = localUri.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = folder 
-      ? `${folder}/${timestamp}_${randomId}.${extension}`
-      : `${timestamp}_${randomId}.${extension}`;
+      ? `${folder}/${timestamp}_${randomId}.jpg`
+      : `${timestamp}_${randomId}.jpg`;
 
-    // Determine content type
-    const contentType = extension === 'png' ? 'image/png' : 'image/jpeg';
-
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage using binary data
     const { error: uploadError } = await supabase.storage
       .from(bucket)
-      .upload(fileName, decode(base64), {
-        contentType,
+      .upload(fileName, arrayBuffer, {
+        contentType: 'image/jpeg',
         upsert: false,
       });
 
     if (uploadError) {
       throw uploadError;
     }
+
+    console.log(`  ⬆️  Uploaded in ${Date.now() - uploadStart}ms (total: ${Date.now() - startTime}ms)`);
 
     // Get public URL
     const { data: urlData } = supabase.storage
@@ -58,19 +74,20 @@ export const uploadImage = async (
   }
 };
 
-// Upload multiple images
+// Upload multiple images in parallel (much faster)
 export const uploadMultipleImages = async (
   localUris: string[],
   bucket: string = 'listings',
   folder: string = ''
 ): Promise<UploadResult[]> => {
-  const results: UploadResult[] = [];
-
-  for (const uri of localUris) {
-    const result = await uploadImage(uri, bucket, folder);
-    results.push(result);
-  }
-
+  const startTime = Date.now();
+  console.log(`🚀 Starting upload of ${localUris.length} images in parallel...`);
+  
+  // Upload all images in parallel instead of sequentially
+  const uploadPromises = localUris.map(uri => uploadImage(uri, bucket, folder));
+  const results = await Promise.all(uploadPromises);
+  
+  console.log(`✅ All ${localUris.length} images uploaded in ${Date.now() - startTime}ms`);
   return results;
 };
 
@@ -79,7 +96,7 @@ export const uploadProfilePicture = async (
   localUri: string,
   userId: string
 ): Promise<string> => {
-  const result = await uploadImage(localUri, 'profile-pics', userId);
+  const result = await uploadImage(localUri, 'profile-pictures', userId);
   return result.url;
 };
 

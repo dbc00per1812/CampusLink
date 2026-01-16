@@ -1,4 +1,4 @@
-// ConversationsScreen - Modern messages list
+// ConversationsScreen - Modern messages list with Community tab
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -24,10 +24,14 @@ import { Conversation, User } from '../../types';
 import { useColors } from '../../context/ThemeContext';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows } from '../../utils/spacing';
+import CommunityForumScreen from './CommunityForumScreen';
+
+type TabType = 'messages' | 'community';
 
 const ConversationsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const colors = useColors();
+  const [activeTab, setActiveTab] = useState<TabType>('messages');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -130,7 +134,10 @@ const ConversationsScreen: React.FC = () => {
     if (Platform.OS !== 'web') {
       Haptics.selectionAsync();
     }
-    navigation.navigate('Chat', { conversationId });
+    navigation.navigate('Chat', { 
+      conversationId,
+      returnScreen: 'ConversationsList'
+    });
   }, [navigation]);
 
   const handleArchiveConversation = useCallback(async (conversation: Conversation) => {
@@ -261,10 +268,16 @@ const ConversationsScreen: React.FC = () => {
     );
   };
 
-  if (isLoading) {
+  if (isLoading && activeTab === 'messages') {
     return <LoadingSpinner fullScreen message="Loading conversations..." />;
   }
 
+  // Render Community tab
+  if (activeTab === 'community') {
+    return <CommunityForumScreen onBack={() => setActiveTab('messages')} />;
+  }
+
+  // Render Messages tab
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
@@ -280,6 +293,53 @@ const ConversationsScreen: React.FC = () => {
           ]}
         >
           <Ionicons name="refresh" size={20} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      {/* Tab Switcher */}
+      <View style={[styles.tabContainer, { backgroundColor: colors.background }]}>
+        <Pressable
+          onPress={() => {
+            setActiveTab('messages');
+            if (Platform.OS !== 'web') {
+              Haptics.selectionAsync();
+            }
+          }}
+          style={[
+            styles.tab,
+            activeTab === 'messages' && [styles.tabActive, { borderBottomColor: colors.primary }],
+          ]}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'messages' ? colors.primary : colors.textSecondary },
+            ]}
+          >
+            Direct Messages
+          </Text>
+        </Pressable>
+        
+        <Pressable
+          onPress={() => {
+            setActiveTab('community');
+            if (Platform.OS !== 'web') {
+              Haptics.selectionAsync();
+            }
+          }}
+          style={[
+            styles.tab,
+            activeTab === 'community' && [styles.tabActive, { borderBottomColor: colors.primary }],
+          ]}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'community' ? colors.primary : colors.textSecondary },
+            ]}
+          >
+            Community
+          </Text>
         </Pressable>
       </View>
 
@@ -415,6 +475,26 @@ const styles = StyleSheet.create({
   deleteText: {
     color: '#FFFFFF',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+  },
+  tabText: {
+    ...Typography.subheadline,
     fontWeight: '600',
   },
 });

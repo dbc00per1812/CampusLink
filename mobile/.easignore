@@ -1,0 +1,36 @@
+# EAS Build Ignore File
+# Note: This file allows secrets.ts to be uploaded to EAS (unlike .gitignore)
+
+# Node modules (installed during build)
+node_modules/
+
+# Expo cache
+.expo/
+dist/
+.expo-shared/
+
+# Logs
+*.log
+
+# Native folders (regenerated during build)
+ios/
+android/
+
+# Build artifacts
+build/
+
+# Environment files (use EAS secrets instead)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+

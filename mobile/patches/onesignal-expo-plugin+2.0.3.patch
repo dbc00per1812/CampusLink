@@ -1,0 +1,89 @@
+diff --git a/node_modules/onesignal-expo-plugin/build/onesignal/withOneSignalIos.js b/node_modules/onesignal-expo-plugin/build/onesignal/withOneSignalIos.js
+index 39d0321..f4ece65 100644
+--- a/node_modules/onesignal-expo-plugin/build/onesignal/withOneSignalIos.js
++++ b/node_modules/onesignal-expo-plugin/build/onesignal/withOneSignalIos.js
+@@ -83,7 +83,7 @@ const withAppGroupPermissions = (config) => {
+             newConfig.modResults[APP_GROUP_KEY] = [];
+         }
+         const modResultsArray = newConfig.modResults[APP_GROUP_KEY];
+-        const entitlement = `group.${((_a = newConfig === null || newConfig === void 0 ? void 0 : newConfig.ios) === null || _a === void 0 ? void 0 : _a.bundleIdentifier) || ""}.onesignal`;
++        const entitlement = `group.${(((_a = newConfig === null || newConfig === void 0 ? void 0 : newConfig.ios) === null || _a === void 0 ? void 0 : _a.bundleIdentifier) || "").toLowerCase()}.onesignal`;
+         if (modResultsArray.indexOf(entitlement) !== -1) {
+             return newConfig;
+         }
+@@ -130,7 +130,7 @@ const withOneSignalNSE = (config, props) => {
+             await FileManager_1.FileManager.copyFile(`${sourcePath}`, targetFile);
+             /* MODIFY COPIED EXTENSION FILES */
+             const nseUpdater = new NseUpdaterManager_1.default(iosPath);
+-            await nseUpdater.updateNSEEntitlements(`group.${(_b = config.ios) === null || _b === void 0 ? void 0 : _b.bundleIdentifier}.onesignal`);
++            await nseUpdater.updateNSEEntitlements(`group.${((_b = config.ios) === null || _b === void 0 ? void 0 : _b.bundleIdentifier || "").toLowerCase()}.onesignal`);
+             await nseUpdater.updateNSEBundleVersion((_d = (_c = config.ios) === null || _c === void 0 ? void 0 : _c.buildNumber) !== null && _d !== void 0 ? _d : iosConstants_1.DEFAULT_BUNDLE_VERSION);
+             await nseUpdater.updateNSEBundleShortVersion((_e = config === null || config === void 0 ? void 0 : config.version) !== null && _e !== void 0 ? _e : iosConstants_1.DEFAULT_BUNDLE_SHORT_VERSION);
+             return config;
+@@ -164,7 +164,7 @@ const withOneSignalXcodeProject = (config, props) => {
+         projObjects['PBXContainerItemProxy'] = projObjects['PBXTargetDependency'] || {};
+         // Add the NSE target
+         // This adds PBXTargetDependency and PBXContainerItemProxy for you
+-        const nseTarget = xcodeProject.addTarget(iosConstants_1.NSE_TARGET_NAME, "app_extension", iosConstants_1.NSE_TARGET_NAME, `${(_a = config.ios) === null || _a === void 0 ? void 0 : _a.bundleIdentifier}.${iosConstants_1.NSE_TARGET_NAME}`);
++        const nseTarget = xcodeProject.addTarget(iosConstants_1.NSE_TARGET_NAME, "app_extension", iosConstants_1.NSE_TARGET_NAME, `${((_a = config.ios) === null || _a === void 0 ? void 0 : _a.bundleIdentifier || "").toLowerCase()}.${iosConstants_1.NSE_TARGET_NAME}`);
+         // Add build phases to the new target
+         xcodeProject.addBuildPhase(["NotificationService.m"], "PBXSourcesBuildPhase", "Sources", nseTarget.uuid);
+         xcodeProject.addBuildPhase([], "PBXResourcesBuildPhase", "Resources", nseTarget.uuid);
+@@ -192,11 +192,12 @@ const withOneSignalXcodeProject = (config, props) => {
+ const withOneSignalIos = (config, props) => {
+     config = withAppEnvironment(config, props);
+     config = withRemoteNotificationsPermissions(config, props);
+-    config = withAppGroupPermissions(config, props);
++    // PATCHED: Skip NSE-related functions due to Apple bundle ID case sensitivity issue
++    // config = withAppGroupPermissions(config, props);
+     config = withOneSignalPodfile(config, props);
+-    config = withOneSignalNSE(config, props);
+-    config = withOneSignalXcodeProject(config, props);
+-    config = withEasManagedCredentials(config, props);
++    // config = withOneSignalNSE(config, props);
++    // config = withOneSignalXcodeProject(config, props);
++    // config = withEasManagedCredentials(config, props);
+     return config;
+ };
+ exports.withOneSignalIos = withOneSignalIos;
+diff --git a/node_modules/onesignal-expo-plugin/build/support/eas/getEasManagedCredentialsConfigExtra.js b/node_modules/onesignal-expo-plugin/build/support/eas/getEasManagedCredentialsConfigExtra.js
+index 2822b73..d8e6808 100644
+--- a/node_modules/onesignal-expo-plugin/build/support/eas/getEasManagedCredentialsConfigExtra.js
++++ b/node_modules/onesignal-expo-plugin/build/support/eas/getEasManagedCredentialsConfigExtra.js
+@@ -18,10 +18,10 @@ function getEasManagedCredentialsConfigExtra(config) {
+                             {
+                                 // keep in sync with native changes in NSE
+                                 targetName: iosConstants_1.NSE_TARGET_NAME,
+-                                bundleIdentifier: `${(_s = config === null || config === void 0 ? void 0 : config.ios) === null || _s === void 0 ? void 0 : _s.bundleIdentifier}.${iosConstants_1.NSE_TARGET_NAME}`,
++                                bundleIdentifier: `${(((_s = config === null || config === void 0 ? void 0 : config.ios) === null || _s === void 0 ? void 0 : _s.bundleIdentifier) || "").toLowerCase()}.${iosConstants_1.NSE_TARGET_NAME}`,
+                                 entitlements: {
+                                     'com.apple.security.application-groups': [
+-                                        `group.${(_t = config === null || config === void 0 ? void 0 : config.ios) === null || _t === void 0 ? void 0 : _t.bundleIdentifier}.onesignal`
++                                        `group.${(((_t = config === null || config === void 0 ? void 0 : config.ios) === null || _t === void 0 ? void 0 : _t.bundleIdentifier) || "").toLowerCase()}.onesignal`
+                                     ]
+                                 },
+                             }
+diff --git a/node_modules/onesignal-expo-plugin/build/support/updatePodfile.js b/node_modules/onesignal-expo-plugin/build/support/updatePodfile.js
+index 929cf39..347f0cf 100644
+--- a/node_modules/onesignal-expo-plugin/build/support/updatePodfile.js
++++ b/node_modules/onesignal-expo-plugin/build/support/updatePodfile.js
+@@ -9,17 +9,7 @@ const iosConstants_1 = require("./iosConstants");
+ const OneSignalLog_1 = require("./OneSignalLog");
+ const FileManager_1 = require("./FileManager");
+ async function updatePodfile(iosPath) {
+-    const podfile = await FileManager_1.FileManager.readFile(`${iosPath}/Podfile`);
+-    const matches = podfile.match(iosConstants_1.NSE_PODFILE_REGEX);
+-    if (matches) {
+-        OneSignalLog_1.OneSignalLog.log("OneSignalNotificationServiceExtension target already added to Podfile. Skipping...");
+-    }
+-    else {
+-        fs_1.default.appendFile(`${iosPath}/Podfile`, iosConstants_1.NSE_PODFILE_SNIPPET, (err) => {
+-            if (err) {
+-                OneSignalLog_1.OneSignalLog.error("Error writing to Podfile");
+-            }
+-        });
+-    }
++    // PATCHED: Skip NSE Podfile modification due to Apple bundle ID case sensitivity issue
++    OneSignalLog_1.OneSignalLog.log("Skipping OneSignalNotificationServiceExtension Podfile modification (patched)");
+ }
+ exports.updatePodfile = updatePodfile;

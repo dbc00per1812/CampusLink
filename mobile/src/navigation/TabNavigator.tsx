@@ -21,6 +21,8 @@ import SettingsScreen from '../screens/profile/SettingsScreen';
 import MyListingsScreen from '../screens/profile/MyListingsScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import EditInterestsScreen from '../screens/profile/EditInterestsScreen';
+import BlockedUsersScreen from '../screens/profile/BlockedUsersScreen';
+import LegalDocumentScreen from '../screens/legal/LegalDocumentScreen';
 import WalletScreen from '../screens/wallet/WalletScreen';
 import PayoutRequestScreen from '../screens/wallet/PayoutRequestScreen';
 import PayoutHistoryScreen from '../screens/wallet/PayoutHistoryScreen';
@@ -144,6 +146,16 @@ const ProfileNavigator: React.FC = () => (
       component={EditInterestsScreen}
       options={{ headerShown: false }}
     />
+    <ProfileStack.Screen
+      name="BlockedUsers"
+      component={BlockedUsersScreen}
+      options={{ headerShown: false }}
+    />
+    <ProfileStack.Screen
+      name="LegalDocument"
+      component={LegalDocumentScreen}
+      options={{ headerShown: false }}
+    />
   </ProfileStack.Navigator>
 );
 
@@ -183,7 +195,19 @@ export const TabNavigator: React.FC = () => {
       })}
     >
       <Tab.Screen name="Home" component={HomeNavigator} />
-      <Tab.Screen name="Messages" component={MessagesNavigator} />
+      <Tab.Screen 
+        name="Messages" 
+        component={MessagesNavigator}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Always navigate to ConversationsList when Messages tab is pressed
+            // This prevents getting stuck on Chat when accessed from other screens
+            e.preventDefault();
+            // @ts-ignore - TypeScript doesn't recognize nested state reset
+            navigation.navigate('Messages', { screen: 'ConversationsList' });
+          },
+        })}
+      />
       <Tab.Screen name="Post" component={PostNavigator} options={{ title: 'Sell' }} />
       <Tab.Screen 
         name="Wallet" 
@@ -200,6 +224,15 @@ export const TabNavigator: React.FC = () => {
             marginTop: 2,
           },
         }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Always navigate to WalletMain when tab is pressed
+            // This prevents getting stuck on OrdersList when coming from active order banner
+            e.preventDefault();
+            // @ts-ignore - TypeScript doesn't recognize nested state reset
+            navigation.navigate('Wallet', { screen: 'WalletMain' });
+          },
+        })}
       />
       <Tab.Screen name="Profile" component={ProfileNavigator} />
     </Tab.Navigator>

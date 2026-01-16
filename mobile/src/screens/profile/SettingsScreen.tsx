@@ -13,13 +13,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../config/supabase';
 import Colors from '../../utils/colors';
+import { ProfileStackParamList, LegalDocumentType } from '../../navigation/types';
 
 const SettingsScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
+
+  const openLegalDocument = (documentType: LegalDocumentType) => {
+    navigation.navigate('LegalDocument', { documentType });
+  };
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -42,7 +48,7 @@ const SettingsScreen: React.FC = () => {
                   onPress: async () => {
                     try {
                       // Call edge function to delete account
-                      const { error } = await supabase.functions.invoke('delete-account');
+                      const { error } = await supabase.functions.invoke('delete_user');
                       if (error) throw error;
                       await supabase.auth.signOut();
                     } catch (error: any) {
@@ -131,13 +137,10 @@ const SettingsScreen: React.FC = () => {
             <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="shield-checkmark-outline" size={22} color={Colors.textPrimary} />
-            <Text style={styles.menuText}>Privacy Settings</Text>
-            <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => (navigation as any).navigate('BlockedUsers')}
+          >
             <Ionicons name="ban-outline" size={22} color={Colors.textPrimary} />
             <Text style={styles.menuText}>Blocked Users</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
@@ -156,10 +159,15 @@ const SettingsScreen: React.FC = () => {
             <Text style={styles.menuText}>Help & Support</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
           </TouchableOpacity>
+        </View>
+
+        {/* Legal */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Legal</Text>
 
           <TouchableOpacity 
             style={styles.menuItem}
-            onPress={() => openLink('https://campuslink.app/terms')}
+            onPress={() => openLegalDocument('terms')}
           >
             <Ionicons name="document-text-outline" size={22} color={Colors.textPrimary} />
             <Text style={styles.menuText}>Terms of Service</Text>
@@ -168,10 +176,19 @@ const SettingsScreen: React.FC = () => {
 
           <TouchableOpacity 
             style={styles.menuItem}
-            onPress={() => openLink('https://campuslink.app/privacy')}
+            onPress={() => openLegalDocument('privacy')}
           >
-            <Ionicons name="eye-outline" size={22} color={Colors.textPrimary} />
+            <Ionicons name="shield-checkmark-outline" size={22} color={Colors.textPrimary} />
             <Text style={styles.menuText}>Privacy Policy</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => openLegalDocument('community')}
+          >
+            <Ionicons name="people-outline" size={22} color={Colors.textPrimary} />
+            <Text style={styles.menuText}>Community Guidelines</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
           </TouchableOpacity>
         </View>

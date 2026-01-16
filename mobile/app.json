@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
-    "version": "1.0.0",
+    "name": "CampusLink",
+    "slug": "campuslink",
+    "version": "2.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -10,22 +10,56 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#4285F4"
     },
     "plugins": [
       [
         "onesignal-expo-plugin",
         {
-          "mode": "production"
+          "mode": "production",
+          "devTeam": "57658NFUM9"
         }
-      ]
+      ],
+      "./plugins/fix-onesignal-appgroup.js",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.campuslink.com.campuslink",
+          "enableGooglePay": false
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "./plugins/snapkit-fix.js",
+      "expo-asset"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.darragh.buckley1812.mobile",
+      "bundleIdentifier": "darragh.CampusLink",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
-      }
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "LSApplicationQueriesSchemes": [
+          "snapchat",
+          "bitmoji-sdk",
+          "instagram-stories"
+        ],
+        "SCSDKClientId": "238ff824-004b-4df6-8a8d-ec8e067a5cf5",
+        "SCSDKRedirectUrl": "campuslink://snapkit/oauth2",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "campuslink"
+            ]
+          }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      },
+      "buildNumber": "26",
+      "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
@@ -38,6 +72,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b0d32018-e9db-4736-8c4f-2b28965d609f"
+      }
+    },
+    "owner": "darragh.buckley1812"
   }
 }

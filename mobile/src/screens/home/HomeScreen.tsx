@@ -37,9 +37,11 @@ import {
   ActiveOrderBanner,
   ListingGridSkeleton,
 } from '../../components';
+import { prefetchListingImages } from '../../hooks/useImagePrefetch';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = Spacing.md;
+const CARD_WIDTH = (SCREEN_WIDTH - Spacing.lg * 2 - CARD_GAP) / 2;
 
 type Props = HomeScreenProps<'HomeMain'>;
 
@@ -50,7 +52,7 @@ const PAGE_SIZE = 20; // Match iOS implementation
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const colors = useColors();
-  const { activeOrderCount } = useOrderMonitor();
+  const { activeOrderCount, activeOrders } = useOrderMonitor();
   const flatListRef = useRef<FlatList>(null);
   const [listings, setListings] = useState<ListingWithUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +110,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       
       // Check if we have more pages
       setHasMorePages(data.length === PAGE_SIZE);
+      
+      // PERFORMANCE: Prefetch images for faster rendering
+      if (data.length > 0) {
+        prefetchListingImages(data);
+      }
     } catch (error) {
       console.error('Failed to load listings:', error);
     } finally {
@@ -205,9 +212,18 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    // Navigate to orders screen
-    navigation.navigate('Orders');
-  }, [navigation]);
+    
+    // If there's exactly one active order, navigate directly to it
+    // Otherwise, navigate to the orders list
+    if (activeOrders.length === 1) {
+      navigation.navigate('Wallet', { 
+        screen: 'OrderDetail', 
+        params: { orderId: activeOrders[0].id }
+      });
+    } else {
+      navigation.navigate('Wallet', { screen: 'OrdersList' });
+    }
+  }, [navigation, activeOrders]);
 
   const handleSellNow = useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -231,17 +247,22 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         return 'IU';
       case 'Purdue University':
         return 'Purdue';
+      case 'UIUC':
+        return 'UIUC';
       default:
         return campus;
     }
   };
 
-  // Load user's campus for display
-  const loadUserCampus = useCallback(async () => {
+  // Load user's campus for display (with retry for new users)
+  const loadUserCampus = useCallback(async (retryCount = 0): Promise<string | null> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1000;
+    
     const userId = await getCurrentUserId();
     if (!userId) {
       console.log('🔍 No user ID found, cannot load campus');
-      return;
+      return null;
     }
     
     try {
@@ -253,32 +274,63 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       
       if (error) {
         console.error('❌ Error loading user campus:', error);
-        return;
+        // Retry for new users whose profile might not be created yet
+        if (retryCount < MAX_RETRIES) {
+          console.log(`🔄 Retrying campus load (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          return loadUserCampus(retryCount + 1);
+        }
+        return null;
       }
       
       if (user?.campus) {
         console.log(`✅ Loaded user campus: ${user.campus}`);
         setUserCampus(user.campus);
+        return user.campus;
       } else {
         console.log('⚠️ User has no campus set');
+        // Retry in case profile is being created
+        if (retryCount < MAX_RETRIES) {
+          console.log(`🔄 Campus not set, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          return loadUserCampus(retryCount + 1);
+        }
         setUserCampus(null);
+        return null;
       }
     } catch (err) {
       console.error('❌ Error fetching user campus:', err);
+      return null;
     }
   }, []);
 
   useEffect(() => {
     const init = async () => {
+      console.log('🏠 HomeScreen initializing...');
       const userId = await getCurrentUserId();
       setCurrentUserId(userId);
-      await loadUserCampus();
+      console.log('🏠 Current user ID:', userId);
+      
+      // Load campus first, THEN load listings (so listings are filtered correctly)
+      const campus = await loadUserCampus();
+      console.log('🏠 Campus loaded for filtering:', campus);
+      
+      // Now load listings - they will be filtered by campus in listingService
       await loadListings();
+      console.log('🏠 Listings loaded');
       
       // TODO: Load active order count
     };
     init();
   }, []);
+  
+  // Reload listings if userCampus changes (e.g., after new user signup)
+  useEffect(() => {
+    if (userCampus !== null && !loading) {
+      console.log('🏠 Campus changed, reloading listings for:', userCampus);
+      loadListings(selectedFilter, 0, false);
+    }
+  }, [userCampus]);
 
   // Scroll to top when tab is pressed (React Navigation built-in hook)
   useScrollToTop(flatListRef);
@@ -370,27 +422,26 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         />
       )}
       
-      {/* Section Header with subtle loading indicator */}
-      {selectedFilter === 'forYou' && (
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              Today's picks
-            </Text>
-            {filterTransitioning && (
-              <ActivityIndicator size="small" color={colors.primary} style={styles.filterLoader} />
-            )}
-          </View>
-          {userCampus && (
-            <View style={styles.campusBadge}>
-              <Ionicons name="location" size={12} color={colors.primary} />
-              <Text style={[styles.campusText, { color: colors.primary }]}>
-                {getCampusAbbreviation(userCampus)}
-              </Text>
-            </View>
+      {/* Section Header - Always visible with campus badge (matching iOS) */}
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            {selectedFilter === 'wanted' ? 'Wanted items' : selectedFilter === 'selling' ? 'For sale' : "Today's picks"}
+          </Text>
+          {filterTransitioning && (
+            <ActivityIndicator size="small" color={colors.primary} style={styles.filterLoader} />
           )}
         </View>
-      )}
+        {/* Campus Badge - on same line as section title like iOS */}
+        {userCampus && (
+          <View style={styles.campusBadge}>
+            <Text style={[styles.campusText, { color: colors.primary }]}>
+              {getCampusAbbreviation(userCampus)}
+            </Text>
+            <Ionicons name="location" size={14} color={colors.primary} />
+          </View>
+        )}
+      </View>
     </View>
   );
 
@@ -469,7 +520,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         {renderStickyHeader()}
       </View>
       
-      {/* Scrollable Content */}
+      {/* Scrollable Content - OPTIMIZED FOR PERFORMANCE */}
       <FlatList
         ref={flatListRef}
         data={displayListings}
@@ -492,6 +543,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         }
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
+        // PERFORMANCE OPTIMIZATIONS (tuned to prevent white space)
+        removeClippedSubviews={Platform.OS === 'ios'}
+        maxToRenderPerBatch={12}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={12}
+        windowSize={10}
       />
 
       {/* Backdrop overlay when search is focused */}
@@ -586,7 +643,7 @@ const styles = StyleSheet.create({
   },
   campusText: {
     ...Typography.subheadline,
-    fontWeight: '400',
+    fontWeight: '500',
   },
   listContent: {
     paddingHorizontal: Spacing.lg,

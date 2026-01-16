@@ -36,6 +36,16 @@ CREATE TABLE public.disputes (
   CONSTRAINT disputes_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
   CONSTRAINT disputes_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.users(id)
 );
+CREATE TABLE public.forum_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  channel text NOT NULL CHECK (channel = ANY (ARRAY['general'::text, 'support'::text])),
+  sender_id uuid NOT NULL,
+  content text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone,
+  CONSTRAINT forum_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT forum_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.listings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -223,6 +233,22 @@ CREATE TABLE public.payouts (
   CONSTRAINT payouts_pkey PRIMARY KEY (id),
   CONSTRAINT payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.pending_seller_payouts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  seller_id uuid NOT NULL,
+  order_id uuid NOT NULL,
+  amount_cents integer NOT NULL,
+  payment_intent_id text NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'transferred'::text, 'failed'::text])),
+  transfer_id text,
+  error_message text,
+  transferred_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT pending_seller_payouts_pkey PRIMARY KEY (id),
+  CONSTRAINT pending_seller_payouts_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id),
+  CONSTRAINT pending_seller_payouts_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
 );
 CREATE TABLE public.push_notification_queue (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

@@ -1,6 +1,7 @@
 // Listing Service - Core listing operations
 import { supabase } from '../config/supabase';
 import { Listing, ListingCreate, ListingWithUser } from '../types';
+import { getBlockedUserIds } from './userService';
 
 // Get current user ID
 const getCurrentUserId = async (): Promise<string | null> => {
@@ -15,6 +16,50 @@ const getCurrentUserDomain = async (): Promise<string | null> => {
   if (!email) return null;
   const domain = email.split('@')[1];
   return domain ?? null;
+};
+
+// Get current user's campus for filtering (with retry for new users)
+const getCurrentUserCampus = async (retryCount = 0): Promise<string | null> => {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 500;
+  
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+  
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('campus')
+      .eq('id', userId)
+      .single();
+    
+    if (error) {
+      console.log('🔍 Campus Filter: Error fetching user:', error.message);
+      // Retry for new users whose profile might not exist yet
+      if (retryCount < MAX_RETRIES) {
+        console.log(`🔄 Campus Filter: Retrying (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        return getCurrentUserCampus(retryCount + 1);
+      }
+      return null;
+    }
+    
+    if (!user?.campus) {
+      console.log('🔍 Campus Filter: Current user has no campus set');
+      // Retry in case profile is still being created
+      if (retryCount < MAX_RETRIES) {
+        console.log(`🔄 Campus Filter: Campus not set, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        return getCurrentUserCampus(retryCount + 1);
+      }
+      return null;
+    }
+    
+    return user.campus;
+  } catch (err) {
+    console.error('❌ Campus Filter: Error fetching user campus:', err);
+    return null;
+  }
 };
 
 // Get all listings (with optional campus filter)
@@ -96,8 +141,9 @@ export const getListings = async (
 
   // Server-side campus filter - filter at database level BEFORE pagination
   // Using inner join allows us to filter on the related user's campus field
+  // Note: Use table name 'users' not alias 'user' for PostgREST filters
   if (currentUserCampus) {
-    query = query.eq('user.campus', currentUserCampus);
+    query = query.eq('users.campus', currentUserCampus);
     console.log(`🔍 Campus Filter: Applied server-side filter for campus: ${currentUserCampus}`);
   }
 
@@ -110,10 +156,23 @@ export const getListings = async (
     throw error;
   }
   
-  const listings = data ?? [];
+  let listings = data ?? [];
   
   if (currentUserCampus) {
     console.log(`✅ Campus Filter: Fetched ${listings.length} listings for campus ${currentUserCampus}`);
+  }
+  
+  // Filter out listings from blocked users
+  const userId = await getCurrentUserId();
+  if (userId) {
+    const blockedIds = await getBlockedUserIds(userId);
+    if (blockedIds.length > 0) {
+      const beforeCount = listings.length;
+      listings = listings.filter(listing => !blockedIds.includes(listing.user_id));
+      if (beforeCount !== listings.length) {
+        console.log(`🚫 Blocked Users Filter: Removed ${beforeCount - listings.length} listings from blocked users`);
+      }
+    }
   }
   
   return listings;
@@ -271,6 +330,29 @@ export const deleteListing = async (listingId: string): Promise<void> => {
 // Alias for archiveListing (same as deleteListing)
 export const archiveListing = deleteListing;
 
+// Unarchive a listing (used when order is cancelled)
+export const unarchiveListing = async (listingId: string): Promise<void> => {
+  console.log('📦 Unarchiving listing:', listingId);
+
+  const { data, error } = await supabase
+    .from('listings')
+    .update({ archived: false })
+    .eq('id', listingId)
+    .select();
+
+  if (error) {
+    console.error('❌ Unarchive database error:', error);
+    throw new Error(`Failed to unarchive listing: ${error.message}`);
+  }
+
+  if (!data || data.length === 0) {
+    console.error('❌ Unarchive returned no data');
+    throw new Error('Failed to unarchive listing - no rows updated');
+  }
+
+  console.log('✅ Listing unarchived successfully:', data[0].title);
+};
+
 // Mark listing as sold
 export const markAsSold = async (listingId: string): Promise<Listing> => {
   const userId = await getCurrentUserId();
@@ -296,9 +378,19 @@ export const searchListings = async (
     minPrice?: number;
     maxPrice?: number;
     limit?: number;
+    filterByCampus?: boolean;
   } = {}
 ): Promise<ListingWithUser[]> => {
-  const { category, minPrice, maxPrice, limit = 20 } = options;
+  const { category, minPrice, maxPrice, limit = 20, filterByCampus = true } = options;
+
+  // Get current user's campus for filtering
+  let campusFilter: string | null = null;
+  if (filterByCampus) {
+    campusFilter = await getCurrentUserCampus();
+    if (campusFilter) {
+      console.log(`🔍 Search: Filtering by campus: ${campusFilter}`);
+    }
+  }
 
   // Use RPC for full-text search
   const { data, error } = await supabase.rpc('search_listings', {
@@ -307,27 +399,54 @@ export const searchListings = async (
     p_min_price: minPrice,
     p_max_price: maxPrice,
     p_limit: limit,
+    p_campus: campusFilter, // Add campus filter to RPC
   });
 
   if (error) {
     console.error('Search RPC error:', error);
     // Fallback to simple ILIKE search
-    return fallbackSearch(query, options);
+    return fallbackSearch(query, { ...options, filterByCampus, campus: campusFilter });
   }
 
-  return data ?? [];
+  let listings = data ?? [];
+  
+  // Filter out listings from blocked users
+  const userId = await getCurrentUserId();
+  if (userId) {
+    const blockedIds = await getBlockedUserIds(userId);
+    if (blockedIds.length > 0) {
+      const beforeCount = listings.length;
+      listings = listings.filter((listing: ListingWithUser) => !blockedIds.includes(listing.user_id));
+      if (beforeCount !== listings.length) {
+        console.log(`🚫 Search Blocked Filter: Removed ${beforeCount - listings.length} listings from blocked users`);
+      }
+    }
+  }
+
+  return listings;
 };
 
 // Fallback search using ILIKE
 const fallbackSearch = async (
   query: string,
-  options: { category?: string; minPrice?: number; maxPrice?: number; limit?: number }
+  options: { category?: string; minPrice?: number; maxPrice?: number; limit?: number; filterByCampus?: boolean; campus?: string | null }
 ): Promise<ListingWithUser[]> => {
-  const { category, minPrice, maxPrice, limit = 20 } = options;
+  const { category, minPrice, maxPrice, limit = 20, filterByCampus = true, campus } = options;
+
+  // Get campus filter if not provided
+  let campusFilter = campus;
+  if (filterByCampus && !campusFilter) {
+    campusFilter = await getCurrentUserCampus();
+  }
+
+  // Use inner join when filtering by campus
+  const selectQuery = campusFilter 
+    ? '*, user:users!inner(*)' 
+    : '*, user:users(*)';
 
   let dbQuery = supabase
     .from('listings')
-    .select('*, user:users(*)')
+    .select(selectQuery)
     .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
     .eq('status', 'active')
     .eq('is_sold', false)
@@ -345,31 +464,85 @@ const fallbackSearch = async (
     dbQuery = dbQuery.lte('price', maxPrice);
   }
 
+  // Apply campus filter
+  if (campusFilter) {
+    dbQuery = dbQuery.eq('users.campus', campusFilter);
+    console.log(`🔍 Fallback Search: Applied campus filter: ${campusFilter}`);
+  }
+
   const { data, error } = await dbQuery
     .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) throw error;
-  return data ?? [];
+  
+  let listings = data ?? [];
+  
+  // Filter out listings from blocked users
+  const userId = await getCurrentUserId();
+  if (userId) {
+    const blockedIds = await getBlockedUserIds(userId);
+    if (blockedIds.length > 0) {
+      listings = listings.filter(listing => !blockedIds.includes(listing.user_id));
+    }
+  }
+  
+  return listings;
 };
 
 // Get listings by category
 export const getListingsByCategory = async (
   category: string,
-  limit = 20
+  limit = 20,
+  filterByCampus = true
 ): Promise<ListingWithUser[]> => {
-  const { data, error } = await supabase
+  // Get campus filter
+  let campusFilter: string | null = null;
+  if (filterByCampus) {
+    campusFilter = await getCurrentUserCampus();
+  }
+
+  // Use inner join when filtering by campus
+  const selectQuery = campusFilter 
+    ? '*, user:users!inner(*)' 
+    : '*, user:users(*)';
+
+  let query = supabase
     .from('listings')
-    .select('*, user:users(*)')
+    .select(selectQuery)
     .eq('category', category)
     .eq('status', 'active')
     .eq('is_sold', false)
-    .neq('archived', true)
+    .neq('archived', true);
+
+  // Apply campus filter
+  if (campusFilter) {
+    query = query.eq('users.campus', campusFilter);
+    console.log(`🔍 Category Listings: Applied campus filter: ${campusFilter}`);
+  }
+
+  const { data, error } = await query
     .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) throw error;
-  return data ?? [];
+  
+  let listings = data ?? [];
+  
+  // Filter out listings from blocked users
+  const userId = await getCurrentUserId();
+  if (userId) {
+    const blockedIds = await getBlockedUserIds(userId);
+    if (blockedIds.length > 0) {
+      const beforeCount = listings.length;
+      listings = listings.filter(listing => !blockedIds.includes(listing.user_id));
+      if (beforeCount !== listings.length) {
+        console.log(`🚫 Category Blocked Filter: Removed ${beforeCount - listings.length} listings from blocked users`);
+      }
+    }
+  }
+  
+  return listings;
 };
 
 export default {
@@ -380,6 +553,7 @@ export default {
   updateListing,
   deleteListing,
   archiveListing,
+  unarchiveListing,
   markAsSold,
   searchListings,
   getListingsByCategory,

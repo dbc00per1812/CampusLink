@@ -111,13 +111,25 @@ function handleNotificationNavigation(data: any, navigation: any) {
     // Navigate based on notification type
     if (data.order_id) {
       console.log('Navigating to OrderDetail:', data.order_id);
-      navigation.navigate('OrderDetail', { orderId: data.order_id });
+      navigation.navigate('Wallet', {
+        screen: 'OrderDetail',
+        params: { orderId: data.order_id }
+      });
     } else if (data.conversation_id) {
       console.log('Navigating to Chat:', data.conversation_id);
-      navigation.navigate('Chat', { conversationId: data.conversation_id });
+      navigation.navigate('Messages', {
+        screen: 'Chat',
+        params: { 
+          conversationId: data.conversation_id,
+          returnScreen: 'ConversationsList'
+        }
+      });
     } else if (data.listing_id) {
       console.log('Navigating to ListingDetail:', data.listing_id);
-      navigation.navigate('ListingDetail', { listingId: data.listing_id });
+      navigation.navigate('Home', {
+        screen: 'ListingDetail',
+        params: { listingId: data.listing_id }
+      });
     } else if (data.screen) {
       // Generic screen navigation
       console.log('Navigating to screen:', data.screen);

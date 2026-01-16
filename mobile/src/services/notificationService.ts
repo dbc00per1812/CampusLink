@@ -1,14 +1,14 @@
-// OneSignal Notification Service - Unified iOS & Android Push Notifications
-import OneSignal, { LogLevel } from 'react-native-onesignal';
+// Notification Service - OneSignal Implementation
 import { Platform } from 'react-native';
+import OneSignal from 'react-native-onesignal';
 import { supabase } from '../config/supabase';
-import { ONESIGNAL_APP_ID } from '../config/secrets';
+
+const ONESIGNAL_APP_ID = 'cb72afc9-84c6-4cfc-8cc3-64f63d1700c1';
 
 let isInitialized = false;
 
 /**
- * Initialize OneSignal push notifications
- * Call this once during app startup, before user authentication
+ * Initialize OneSignal SDK
  */
 export const initializeNotifications = async (): Promise<void> => {
   if (isInitialized) {
@@ -18,74 +18,50 @@ export const initializeNotifications = async (): Promise<void> => {
 
   try {
     console.log('🔔 Initializing OneSignal...');
-    console.log('OneSignal App ID:', ONESIGNAL_APP_ID);
-    
-    // Set log level for debugging (remove in production)
-    OneSignal.Debug.setLogLevel(LogLevel.Verbose);
 
     // Initialize OneSignal with App ID
     OneSignal.initialize(ONESIGNAL_APP_ID);
 
-    // Request notification permissions (iOS)
-    // Android permissions are granted by default
-    if (Platform.OS === 'ios') {
-      // Request permission (won't show prompt if already granted)
-      const permission = await OneSignal.Notifications.requestPermission(false);
-      console.log('OneSignal permission status:', permission);
-    }
+    // iOS: Request permission when user is logged in (done separately)
+    // Android: Prompts automatically on first app launch
+
+    // Enable verbose logging for debugging (disable in production)
+    OneSignal.Debug.setLogLevel(6);
 
     isInitialized = true;
     console.log('✅ OneSignal initialized successfully');
   } catch (error) {
-    console.error('❌ Failed to initialize OneSignal:', error);
+    console.error('❌ Error initializing OneSignal:', error);
     throw error;
   }
 };
 
 /**
- * Register user and save OneSignal player ID to database
- * Call this after user authentication
+ * Register user for notifications after authentication
  */
 export const registerUserForNotifications = async (userId: string): Promise<void> => {
   try {
     console.log('📝 Registering user for notifications:', userId);
 
-    // Set external user ID (links OneSignal player to your user ID)
+    // Set external user ID (Supabase user ID)
     OneSignal.login(userId);
-    console.log('✅ External user ID set successfully');
 
-    // Get OneSignal subscription ID (device token)
-    const subscriptionId = OneSignal.User.pushSubscription.id;
-    
-    if (subscriptionId) {
-      const platform = Platform.OS as 'ios' | 'android';
+    // Get subscription ID (player ID)
+    const deviceState = await OneSignal.User.pushSubscription.getIdAsync();
+    console.log('Device subscription ID:', deviceState);
 
-      console.log('OneSignal Subscription ID:', subscriptionId);
-
-      // Save to database
-      const { error } = await supabase
-        .from('user_notification_preferences')
-        .upsert(
-          {
-            user_id: userId,
-            push_token: subscriptionId,
-            push_platform: platform,
-            push_enabled: true,
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id',
-          }
-        );
-
-      if (error) {
-        console.error('Failed to save OneSignal subscription ID:', error);
-      } else {
-        console.log('✅ OneSignal subscription ID saved to database');
-      }
-    } else {
-      console.warn('⚠️ No OneSignal subscription ID available yet');
+    // Save subscription ID to database
+    if (deviceState) {
+      await updateUserPushToken(userId, deviceState);
     }
+
+    // Add user tags for segmentation
+    OneSignal.User.addTags({
+      platform: Platform.OS,
+      app_version: '2.3.0',
+    });
+
+    console.log('✅ User registered for notifications');
   } catch (error) {
     console.error('❌ Error registering user for notifications:', error);
     throw error;
@@ -93,64 +69,170 @@ export const registerUserForNotifications = async (userId: string): Promise<void
 };
 
 /**
- * Unregister user from notifications (e.g., on logout)
+ * Unregister user from notifications on logout
  */
 export const unregisterUserNotifications = async (userId: string): Promise<void> => {
   try {
     console.log('📤 Unregistering user from notifications:', userId);
 
-    // Logout from OneSignal
+    // Logout from OneSignal (clears external user ID)
     OneSignal.logout();
 
-    // Update database
-    const { error } = await supabase
-      .from('user_notification_preferences')
-      .update({
-        push_token: null,
-        push_enabled: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId);
+    // Clear push token in database
+    await clearUserPushToken(userId);
 
-    if (error) {
-      console.error('Failed to unregister user:', error);
-    } else {
-      console.log('✅ User unregistered from notifications');
-    }
-
-    // Clear notifications (iOS)
-    if (Platform.OS === 'ios') {
-      OneSignal.Notifications.clearAll();
-    }
+    console.log('✅ User unregistered from notifications');
   } catch (error) {
-    console.error('❌ Error unregistering user notifications:', error);
+    console.error('❌ Error unregistering user:', error);
   }
 };
 
 /**
- * Request notification permissions (call after user logs in)
+ * Request notification permissions (iOS only - Android grants automatically)
  */
 export const requestNotificationPermissions = async (): Promise<boolean> => {
   try {
-    const hasPermission = OneSignal.Notifications.hasPermission();
+    console.log('🔔 Requesting notification permissions...');
+
+    const hasPermission = await OneSignal.Notifications.getPermissionAsync();
     
-    if (hasPermission) {
-      console.log('✅ Notification permissions already granted');
-      return true;
+    if (!hasPermission) {
+      const granted = await OneSignal.Notifications.requestPermission(true);
+      console.log('Permission granted:', granted);
+      return granted;
     }
 
-    // Request permission
-    const granted = await OneSignal.Notifications.requestPermission(true);
-    console.log('Notification permission response:', granted);
-    return granted;
+    console.log('Permission already granted');
+    return true;
   } catch (error) {
-    console.error('❌ Error requesting notification permissions:', error);
+    console.error('❌ Error requesting permissions:', error);
     return false;
   }
 };
 
 /**
- * Update notification preferences in database
+ * Set up notification event handlers
+ */
+export const setupNotificationHandlers = (
+  onNotificationReceived?: (notification: any) => void,
+  onNotificationOpened?: (openedEvent: any) => void
+): void => {
+  try {
+    console.log('📬 Setting up notification handlers...');
+
+    // Handle notification received while app is in foreground
+    OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
+      console.log('📬 Notification received in foreground:', event.notification);
+      
+      if (onNotificationReceived) {
+        onNotificationReceived(event.notification);
+      }
+
+      // Display notification even when app is in foreground
+      event.preventDefault();
+      event.notification.display();
+    });
+
+    // Handle notification tap/click
+    OneSignal.Notifications.addEventListener('click', (event) => {
+      console.log('👆 Notification clicked:', event.notification);
+      console.log('Additional data:', event.notification.additionalData);
+      
+      if (onNotificationOpened) {
+        onNotificationOpened({
+          notification: event.notification,
+          data: event.notification.additionalData || {},
+        });
+      }
+    });
+
+    // Handle permission changes
+    OneSignal.Notifications.addEventListener('permissionChange', (granted) => {
+      console.log('🔔 Notification permission changed:', granted);
+    });
+
+    console.log('✅ Notification handlers set up successfully');
+  } catch (error) {
+    console.error('❌ Error setting up notification handlers:', error);
+  }
+};
+
+/**
+ * Get device state (subscription ID and permission status)
+ */
+export const getDeviceState = async () => {
+  try {
+    const subscriptionId = await OneSignal.User.pushSubscription.getIdAsync();
+    const hasPermission = await OneSignal.Notifications.getPermissionAsync();
+    const optedIn = OneSignal.User.pushSubscription.getOptedIn();
+
+    return {
+      subscriptionId,
+      hasPermission,
+      optedIn,
+    };
+  } catch (error) {
+    console.error('❌ Error getting device state:', error);
+    return {
+      subscriptionId: null,
+      hasPermission: false,
+      optedIn: false,
+    };
+  }
+};
+
+/**
+ * Check if user has granted notification permissions
+ */
+export const hasNotificationPermissions = async (): Promise<boolean> => {
+  try {
+    return await OneSignal.Notifications.getPermissionAsync();
+  } catch (error) {
+    console.error('❌ Error checking permissions:', error);
+    return false;
+  }
+};
+
+/**
+ * Set notification badge count (iOS only)
+ */
+export const setBadgeCount = async (count: number): Promise<void> => {
+  try {
+    if (Platform.OS === 'ios') {
+      // OneSignal handles badge count automatically based on unread notifications
+      console.log('Badge count set to:', count);
+    }
+  } catch (error) {
+    console.error('❌ Error setting badge count:', error);
+  }
+};
+
+/**
+ * Add tags to user for segmentation
+ */
+export const addUserTags = async (tags: Record<string, string>): Promise<void> => {
+  try {
+    OneSignal.User.addTags(tags);
+    console.log('✅ User tags added:', tags);
+  } catch (error) {
+    console.error('❌ Error adding user tags:', error);
+  }
+};
+
+/**
+ * Remove user tags
+ */
+export const removeUserTags = async (tagKeys: string[]): Promise<void> => {
+  try {
+    OneSignal.User.removeTags(tagKeys);
+    console.log('✅ User tags removed:', tagKeys);
+  } catch (error) {
+    console.error('❌ Error removing user tags:', error);
+  }
+};
+
+/**
+ * Update user notification preferences in database
  */
 export const updateNotificationPreferences = async (
   userId: string,
@@ -199,110 +281,65 @@ export const getNotificationPreferences = async (userId: string) => {
 };
 
 /**
- * Set up notification event handlers
- * Call this once during app initialization
+ * Update user's push token in database
  */
-export const setupNotificationHandlers = (
-  onNotificationReceived?: (notification: any) => void,
-  onNotificationOpened?: (openedEvent: any) => void
-): void => {
-  // Handle notification received (foreground)
-  OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
-    console.log('📬 Notification received in foreground:', event);
-    
-    const notification = event.notification;
-    
-    // Call custom handler if provided
-    if (onNotificationReceived) {
-      onNotificationReceived(notification);
+const updateUserPushToken = async (userId: string, pushToken: string): Promise<void> => {
+  try {
+    // Check if preferences exist
+    const { data: existing } = await supabase
+      .from('user_notification_preferences')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (existing) {
+      // Update existing record
+      const { error } = await supabase
+        .from('user_notification_preferences')
+        .update({
+          push_token: pushToken,
+          push_enabled: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } else {
+      // Create new record
+      const { error } = await supabase
+        .from('user_notification_preferences')
+        .insert({
+          user_id: userId,
+          push_token: pushToken,
+          push_enabled: true,
+        });
+
+      if (error) throw error;
     }
 
-    // Display the notification
-    event.preventDefault();
-    event.notification.display();
-  });
-
-  // Handle notification tapped
-  OneSignal.Notifications.addEventListener('click', (event) => {
-    console.log('👆 Notification tapped:', event);
-    
-    const notification = event.notification;
-    const data = notification.additionalData;
-
-    // Call custom handler if provided
-    if (onNotificationOpened) {
-      onNotificationOpened({ notification, data });
-    }
-  });
-
-  console.log('✅ Notification handlers set up');
-};
-
-/**
- * Get device state (subscription ID, permission status, etc.)
- */
-export const getDeviceState = async () => {
-  try {
-    const subscriptionId = OneSignal.User.pushSubscription.id;
-    const hasPermission = OneSignal.Notifications.hasPermission();
-    const optedIn = OneSignal.User.pushSubscription.optedIn;
-    
-    return {
-      subscriptionId,
-      hasPermission,
-      optedIn,
-    };
+    console.log('✅ Push token saved to database');
   } catch (error) {
-    console.error('❌ Error getting device state:', error);
-    return null;
+    console.error('❌ Error saving push token:', error);
   }
 };
 
 /**
- * Set notification badge count (iOS only)
+ * Clear user's push token in database
  */
-export const setBadgeCount = async (count: number): Promise<void> => {
-  if (Platform.OS === 'ios') {
-    // OneSignal automatically manages badges, but you can clear them
-    if (count === 0) {
-      OneSignal.Notifications.clearAll();
-    }
-  }
-};
-
-/**
- * Check if user has granted notification permissions
- */
-export const hasNotificationPermissions = async (): Promise<boolean> => {
+const clearUserPushToken = async (userId: string): Promise<void> => {
   try {
-    return OneSignal.Notifications.hasPermission();
-  } catch (error) {
-    console.error('❌ Error checking notification permissions:', error);
-    return false;
-  }
-};
+    const { error } = await supabase
+      .from('user_notification_preferences')
+      .update({
+        push_token: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
 
-/**
- * Add tags to user for segmentation
- */
-export const addUserTags = async (tags: Record<string, string>): Promise<void> => {
-  try {
-    OneSignal.User.addTags(tags);
-    console.log('✅ User tags added:', tags);
+    if (error) throw error;
+    console.log('✅ Push token cleared from database');
   } catch (error) {
-    console.error('❌ Error adding user tags:', error);
-  }
-};
-
-/**
- * Remove user tags
- */
-export const removeUserTags = async (tagKeys: string[]): Promise<void> => {
-  try {
-    OneSignal.User.removeTags(tagKeys);
-    console.log('✅ User tags removed:', tagKeys);
-  } catch (error) {
-    console.error('❌ Error removing user tags:', error);
+    console.error('❌ Error clearing push token:', error);
   }
 };
 

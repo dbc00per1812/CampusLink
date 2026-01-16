@@ -17,7 +17,7 @@ import Colors from '../../utils/colors';
 type Props = AuthScreenProps<'OTPVerification'>;
 
 const OTPVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { email, name } = route.params;
+  const { email, name, campus } = route.params;
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -28,7 +28,7 @@ const OTPVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
     }
 
     setLoading(true);
-    const result = await verifyEmailAndCompleteSignup(email, otp, name);
+    const result = await verifyEmailAndCompleteSignup(email, otp, name, campus);
     setLoading(false);
 
     if (result.success) {

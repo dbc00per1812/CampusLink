@@ -14,9 +14,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Button, ImagePickerComponent, LoadingSpinner } from '../../components';
+import { 
+  Button, 
+  ImagePickerComponent, 
+  LoadingSpinner,
+  ProductVerificationInfo,
+  ServiceVerificationInfo,
+  TicketGuaranteeInfo,
+} from '../../components';
 import { createListing } from '../../services/listingService';
 import { uploadMultipleImages } from '../../services/imageUploadService';
 import { ListingType, ListingIntent, DeliveryMethod, ServiceLocation, ListingCreate } from '../../types';
@@ -80,7 +87,7 @@ const CreateListingScreen: React.FC = () => {
 
   // Validation
   const isFormValid = (): boolean => {
-    if (!title.trim() || !description.trim()) return false;
+    if (!title.trim()) return false;
     if (!selectedCategory) return false;
     if (selectedCategory === 'Other' && !customCategory.trim()) return false;
     
@@ -88,6 +95,8 @@ const CreateListingScreen: React.FC = () => {
       if (!budgetMax.trim()) return false;
     } else {
       if (!price.trim()) return false;
+      // Require at least one photo for offer listings (selling/offering)
+      if (images.length === 0) return false;
     }
     
     // Event date is required for tickets
@@ -97,6 +106,19 @@ const CreateListingScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // Provide specific error messages for missing fields
+    if (!title.trim()) {
+      Alert.alert('Missing Information', 'Please fill in the title.');
+      return;
+    }
+    if (!selectedCategory) {
+      Alert.alert('Missing Information', 'Please select a category.');
+      return;
+    }
+    if (intent !== 'seek' && images.length === 0) {
+      Alert.alert('Photos Required', 'Please add at least one photo of your item or service.');
+      return;
+    }
     if (!isFormValid()) {
       Alert.alert('Missing Information', 'Please fill in all required fields.');
       return;
@@ -112,14 +134,19 @@ const CreateListingScreen: React.FC = () => {
       }
     }
 
+    const totalStartTime = Date.now();
+    console.log('🏁 Starting listing creation...');
     setIsLoading(true);
 
     try {
       // Upload images first
       let photoUrls: string[] = [];
       if (images.length > 0) {
+        const uploadStart = Date.now();
+        console.log(`📸 Uploading ${images.length} images...`);
         const uploadResults = await uploadMultipleImages(images);
         photoUrls = uploadResults.map(r => r.url);
+        console.log(`✅ Images uploaded in ${Date.now() - uploadStart}ms`);
       }
 
       // Determine expiration date based on listing type
@@ -134,7 +161,7 @@ const CreateListingScreen: React.FC = () => {
       // Build listing data
       const listingData: ListingCreate = {
         title: title.trim(),
-        description: description.trim(),
+        description: description.trim() || null,
         category: selectedCategory === 'Other' ? customCategory.trim() : selectedCategory,
         listing_type: listingType,
         intent,
@@ -152,12 +179,27 @@ const CreateListingScreen: React.FC = () => {
         service_availability: listingType === 'service' ? serviceAvailability || null : null,
       };
 
+      const dbStart = Date.now();
+      console.log('💾 Creating listing in database...');
       await createListing(listingData);
+      console.log(`✅ Listing created in ${Date.now() - dbStart}ms`);
+      console.log(`🎉 Total time: ${Date.now() - totalStartTime}ms`);
 
       Alert.alert(
         'Success!',
         intent === 'seek' ? 'Your wanted post has been created.' : 'Your listing has been posted.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Navigate to Home tab instead of goBack (which doesn't work from tab root)
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              })
+            );
+          }
+        }]
       );
     } catch (error: any) {
       console.error('Create listing error:', error);
@@ -329,6 +371,27 @@ const CreateListingScreen: React.FC = () => {
                 placeholder="Enter custom category"
                 placeholderTextColor={Colors.textTertiary}
               />
+            )}
+            
+            {/* Ticket Transaction Info */}
+            {selectedCategory === 'Tickets' && intent === 'offer' && (
+              <View style={styles.infoViewContainer}>
+                <TicketGuaranteeInfo isOwnListing={true} />
+              </View>
+            )}
+            
+            {/* Product Transaction Info (non-ticket products) */}
+            {listingType === 'product' && selectedCategory !== 'Tickets' && selectedCategory !== '' && intent === 'offer' && (
+              <View style={styles.infoViewContainer}>
+                <ProductVerificationInfo isForSeller={true} />
+              </View>
+            )}
+            
+            {/* Service Transaction Info */}
+            {listingType === 'service' && selectedCategory !== '' && intent === 'offer' && (
+              <View style={styles.infoViewContainer}>
+                <ServiceVerificationInfo isForSeller={true} />
+              </View>
             )}
           </View>
 
@@ -643,6 +706,9 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   customCategoryInput: {
+    marginTop: 12,
+  },
+  infoViewContainer: {
     marginTop: 12,
   },
   segmentedControl: {

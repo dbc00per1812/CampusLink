@@ -22,7 +22,6 @@ interface PaymentIntentResponse {
 export interface PaymentResult {
   success: boolean;
   error?: string;
-  paymentIntentId?: string;
 }
 
 /**
@@ -66,6 +65,7 @@ export const configurePaymentSheet = async (
       // Enable Apple Pay on iOS
       applePay: {
         merchantCountryCode: 'US',
+        merchantId: 'merchant.campuslink.com.campuslink',
       },
       // Enable Google Pay on Android
       googlePay: {
@@ -140,6 +140,7 @@ export const configurePaymentSheetForOrder = async (
       // Enable Apple Pay on iOS
       applePay: {
         merchantCountryCode: 'US',
+        merchantId: 'merchant.campuslink.com.campuslink',
       },
       // Enable Google Pay on Android
       googlePay: {
@@ -185,17 +186,17 @@ export const presentStripePaymentSheet = async (): Promise<PaymentResult> => {
     const { error } = await presentPaymentSheet();
 
     if (error) {
-      console.error('❌ PaymentSheet error:', error);
-      
-      // User cancelled
+      // User cancelled - this is normal, not an error
       if (error.code === 'Canceled') {
+        console.log('ℹ️ Payment cancelled by user');
         return {
           success: false,
           error: 'Payment cancelled',
         };
       }
 
-      // Other error
+      // Actual error
+      console.error('❌ PaymentSheet error:', error);
       return {
         success: false,
         error: error.message || 'Payment failed',
@@ -218,25 +219,20 @@ export const presentStripePaymentSheet = async (): Promise<PaymentResult> => {
 
 // Create Stripe Connect onboarding link
 export const createConnectAccountLink = async (): Promise<string> => {
-  const { data, error } = await supabase.functions.invoke('create-connect-account-link', {
+  // Use HTTPS redirect URLs that Stripe accepts, then redirect to app deep link
+  // This matches the Swift implementation
+  const { data, error } = await supabase.functions.invoke('connect_onboarding', {
     body: { 
-      refreshUrl: 'campuslink://wallet',
-      returnUrl: 'campuslink://wallet',
+      return_url: 'https://stripe-redirect.netlify.app/stripe-return.html',
+      refresh_url: 'https://stripe-redirect.netlify.app/stripe-refresh.html',
     },
   });
 
   if (error) throw error;
-  return data.url;
-};
-
-// Create Stripe Connect account
-export const createConnectAccount = async (): Promise<string> => {
-  const { data, error } = await supabase.functions.invoke('create-connect-account', {
-    body: {},
-  });
-
-  if (error) throw error;
-  return data.accountId;
+  if (data?.onboarding_complete) {
+    throw new Error('Account already set up');
+  }
+  return data.onboarding_url;
 };
 
 // Get Stripe Connect account status
@@ -263,23 +259,11 @@ export const getConnectAccountStatus = async (): Promise<{
   };
 };
 
-// Create a payout
-export const createPayout = async (amount: number): Promise<{ success: boolean }> => {
-  const { data, error } = await supabase.functions.invoke('create-payout', {
-    body: { amount },
-  });
-
-  if (error) throw error;
-  return { success: true };
-};
-
 export default {
   configurePaymentSheet,
   configurePaymentSheetForOrder,
   presentStripePaymentSheet,
   createConnectAccountLink,
-  createConnectAccount,
   getConnectAccountStatus,
-  createPayout,
 };
 

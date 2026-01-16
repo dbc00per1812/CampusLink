@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { decode } from 'base64-arraybuffer';
 import { 
   Button, 
   OrderStatusBadge, 
@@ -152,22 +154,37 @@ const OrderDetailScreen: React.FC = () => {
     }
   };
 
-  const pickDeliveryPhoto = async (): Promise<string | null> => {
+  const pickDeliveryPhoto = async (source: 'camera' | 'library'): Promise<string | null> => {
     try {
-      // Request permissions
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library');
-        return null;
+      // Request appropriate permissions
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please allow access to your camera');
+          return null;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please allow access to your photo library');
+          return null;
+        }
       }
 
-      // Launch image picker
-      const result = await ImagePicker.launchImagePickerAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      // Launch camera or image picker
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+          });
 
       if (result.canceled || !result.assets[0]) {
         return null;
@@ -178,22 +195,36 @@ const OrderDetailScreen: React.FC = () => {
       const asset = result.assets[0];
       const fileName = `delivery_${order?.id}_${Date.now()}.jpg`;
       
-      // Convert to blob for upload
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
+      console.log('📸 Processing delivery photo for upload...');
+      
+      // Use expo-image-manipulator to resize and get base64 (same approach as imageUploadService)
+      const manipResult = await manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1080, height: 1080 } }],
+        { compress: 0.7, format: SaveFormat.JPEG, base64: true }
+      );
+
+      if (!manipResult.base64) {
+        throw new Error('Failed to process image');
+      }
+
+      // Convert base64 to ArrayBuffer for upload (React Native compatible)
+      const arrayBuffer = decode(manipResult.base64);
 
       const { data, error } = await supabase.storage
-        .from('order-photos')
-        .upload(fileName, blob, {
+        .from('delivery-photos')
+        .upload(fileName, arrayBuffer, {
           contentType: 'image/jpeg',
           upsert: false,
         });
 
       if (error) throw error;
 
+      console.log('✅ Delivery photo uploaded successfully');
+
       // Get public URL
       const { data: urlData } = supabase.storage
-        .from('order-photos')
+        .from('delivery-photos')
         .getPublicUrl(data.path);
 
       return urlData.publicUrl;
@@ -209,7 +240,21 @@ const OrderDetailScreen: React.FC = () => {
   const handleMarkDelivered = async () => {
     if (!order) return;
     
-    // Prompt for delivery photo
+    // Helper to complete delivery with optional photo
+    const completeDelivery = async (photoUrl: string) => {
+      setIsProcessing(true);
+      try {
+        await markDelivered(order.id, photoUrl);
+        await loadOrder();
+        showSuccess('Order marked as delivered! Waiting for buyer to confirm receipt.');
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'Failed to mark as delivered');
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    // Prompt for delivery photo with camera and library options
     Alert.alert(
       'Add Delivery Photo',
       'Would you like to add a photo as proof of delivery?',
@@ -217,34 +262,23 @@ const OrderDetailScreen: React.FC = () => {
         {
           text: 'Skip',
           style: 'cancel',
+          onPress: () => completeDelivery(''),
+        },
+        {
+          text: 'Take Photo',
           onPress: async () => {
-            setIsProcessing(true);
-            try {
-              await markDelivered(order.id, '');
-              await loadOrder();
-              showSuccess('Order marked as delivered! Waiting for buyer to confirm receipt.');
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to mark as delivered');
-            } finally {
-              setIsProcessing(false);
+            const photoUrl = await pickDeliveryPhoto('camera');
+            if (photoUrl) {
+              await completeDelivery(photoUrl);
             }
           },
         },
         {
-          text: 'Add Photo',
+          text: 'Choose from Library',
           onPress: async () => {
-            const photoUrl = await pickDeliveryPhoto();
+            const photoUrl = await pickDeliveryPhoto('library');
             if (photoUrl) {
-              setIsProcessing(true);
-              try {
-                await markDelivered(order.id, photoUrl);
-                await loadOrder();
-                showSuccess('Order marked as delivered! Waiting for buyer to confirm receipt.');
-              } catch (error: any) {
-                Alert.alert('Error', error.message || 'Failed to mark as delivered');
-              } finally {
-                setIsProcessing(false);
-              }
+              await completeDelivery(photoUrl);
             }
           },
         },
@@ -376,11 +410,15 @@ const OrderDetailScreen: React.FC = () => {
         throw new Error('Failed to load conversation');
       }
 
-      // Navigate to ChatScreen with the conversation
-      navigation.navigate('Chat', {
-        conversationId: conversation.id,
-        returnScreen: 'OrderDetail',
-        returnParams: { orderId: order.id },
+      // Navigate to Messages tab, then to Chat screen
+      // @ts-ignore - navigating across tabs requires accessing parent navigator
+      navigation.navigate('Messages', {
+        screen: 'Chat',
+        params: {
+          conversationId: conversation.id,
+          returnScreen: 'OrderDetail',
+          returnParams: { orderId: order.id },
+        },
       });
     } catch (error: any) {
       console.error('Error loading conversation:', error);
@@ -549,22 +587,41 @@ const OrderDetailScreen: React.FC = () => {
 
     const escrowStatus = getEscrowStatus(order);
     const isReleased = order.order_status === 'completed';
-    const iconName = isReleased ? 'checkmark-circle' : 'shield-checkmark';
-    const iconColor = isReleased ? '#22C55E' : '#3B82F6';
+    
+    // Status badge color
+    const statusColor = isReleased ? '#22C55E' : '#3B82F6';
+    const statusBgColor = isReleased ? '#22C55E20' : '#3B82F620';
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Payment Protection</Text>
         <View style={styles.escrowCard}>
-          <Ionicons name={iconName} size={32} color={iconColor} />
-          <View style={styles.escrowContent}>
-            <Text style={styles.escrowStatus}>{escrowStatus}</Text>
-            <Text style={styles.escrowDescription}>
-              {isReleased
-                ? 'Funds have been released to the seller'
-                : 'Your payment is safely held in escrow until delivery is confirmed'}
-            </Text>
+          {/* Header with icon and status badge */}
+          <View style={styles.escrowHeader}>
+            <View style={styles.escrowTitleRow}>
+              <Ionicons name="shield-checkmark" size={24} color="#22C55E" />
+              <Text style={styles.escrowTitle}>Escrow Protection</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: statusBgColor }]}>
+              <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+                {isReleased ? 'Released' : 'Active'}
+              </Text>
+            </View>
           </View>
+
+          {/* Escrow details card */}
+          <View style={styles.escrowDetailsCard}>
+            <View style={styles.escrowDetailRow}>
+              <Text style={styles.escrowDetailLabel}>Release Status:</Text>
+              <Text style={[styles.escrowDetailValue, { color: statusColor }]}>{escrowStatus}</Text>
+            </View>
+          </View>
+
+          {/* Info text */}
+          <Text style={styles.escrowInfoText}>
+            {isReleased
+              ? 'Funds have been automatically released to the seller upon order completion.'
+              : 'Funds are held securely in escrow until delivery is confirmed by the buyer.'}
+          </Text>
         </View>
       </View>
     );
@@ -681,8 +738,8 @@ const OrderDetailScreen: React.FC = () => {
       }
     }
 
-    // Cancel option (for certain statuses)
-    if ((order.status === 'placed' || order.status === 'seller_confirmed') && (isBuyer || isSeller)) {
+    // Cancel option (only when order is placed, not after seller confirmation)
+    if (order.status === 'placed' && (isBuyer || isSeller)) {
       actions.push(
         <Button
           key="cancel"
@@ -820,11 +877,13 @@ const OrderDetailScreen: React.FC = () => {
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${((order.price_cents || 0) / 100).toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>${((order.seller_price_cents || order.price_cents || 0) / 100).toFixed(2)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Service Fee</Text>
-              <Text style={styles.summaryValue}>${((order.marketplace_fee_cents || 0) / 100).toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>
+                ${(((order.buyer_price_cents || order.price_cents || 0) - (order.seller_price_cents || order.price_cents || 0)) / 100).toFixed(2)}
+              </Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.summaryRow}>
@@ -1153,29 +1212,62 @@ const styles = StyleSheet.create({
   // Escrow Styles
   escrowCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  escrowContent: {
-    flex: 1,
+  escrowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  escrowStatus: {
-    fontSize: 16,
+  escrowTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  escrowTitle: {
+    fontSize: 17,
     fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: 4,
   },
-  escrowDescription: {
-    fontSize: 13,
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  escrowDetailsCard: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  escrowDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  escrowDetailLabel: {
+    fontSize: 14,
     color: Colors.textSecondary,
+  },
+  escrowDetailValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  escrowInfoText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
     lineHeight: 18,
   },
   // Payment Banner Styles
@@ -1228,7 +1320,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
@@ -1277,15 +1369,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   successButtonSecondary: {
-    backgroundColor: Colors.primary + '15',
+    backgroundColor: '#F3F4F6',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   successButtonSecondaryText: {
     fontSize: 17,
     fontWeight: '600',
-    color: Colors.primary,
+    color: '#374151',
   },
 });
 

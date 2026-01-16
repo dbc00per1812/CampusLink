@@ -1,13 +1,14 @@
 // Modern Listing Card - iOS-aligned design with shadows and badges
+// OPTIMIZED FOR LIGHTNING-FAST PERFORMANCE
 import React, { memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Image,
   Pressable,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../context/ThemeContext';
 import { Typography } from '../utils/typography';
@@ -65,7 +66,12 @@ const ListingCardModern: React.FC<ListingCardModernProps> = memo(({
           <Image
             source={{ uri: imageUrl }}
             style={styles.image}
-            resizeMode="cover"
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
+            priority="high"
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            recyclingKey={listing.id}
           />
         ) : (
           <View style={styles.imagePlaceholder}>

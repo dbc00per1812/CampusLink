@@ -1,5 +1,5 @@
 // Sign Up Screen - Modern iOS-aligned design
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,14 @@ import {
   Platform,
   Alert,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { AuthScreenProps } from '../../navigation/types';
 import { signUpWithEmailConfirmation } from '../../services/authService';
-import { getCampusFromEmail } from '../../types/campus';
+import { getCampusFromEmail, Campus, CampusList, CampusFullName } from '../../types/campus';
 import { useColors } from '../../context/ThemeContext';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Layout } from '../../utils/spacing';
@@ -32,6 +33,9 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedCampus, setSelectedCampus] = useState<Campus | null>(null);
+  const [showCampusPicker, setShowCampusPicker] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   
   // Focus states
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -40,6 +44,16 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+
+  // Auto-select campus based on email domain
+  useEffect(() => {
+    if (email) {
+      const detectedCampus = getCampusFromEmail(email);
+      if (detectedCampus && !selectedCampus) {
+        setSelectedCampus(detectedCampus);
+      }
+    }
+  }, [email]);
 
   const handleSignUp = async () => {
     // Validation
@@ -59,6 +73,15 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
+    // Campus validation
+    if (!selectedCampus) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      Alert.alert('Error', 'Please select your campus');
+      return;
+    }
+
     if (password.length < 6) {
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -75,7 +98,16 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
-    const campus = getCampusFromEmail(email) || '';
+    if (!termsAccepted) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      Alert.alert('Error', 'Please accept the Terms of Service, Privacy Policy, and Community Guidelines to continue');
+      return;
+    }
+
+    // Use selected campus instead of getCampusFromEmail
+    const campus = selectedCampus;
 
     setLoading(true);
     const result = await signUpWithEmailConfirmation(email, password, name, campus);
@@ -96,6 +128,140 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       }
       Alert.alert('Sign Up Failed', result.error?.message || 'Unknown error');
     }
+  };
+
+  const renderCampusPicker = () => {
+    return (
+      <View style={styles.inputContainer}>
+        <Text style={[styles.label, { color: colors.textPrimary }]}>
+          Campus
+        </Text>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+            setShowCampusPicker(true);
+          }}
+          style={[
+            styles.inputWrapper,
+            {
+              backgroundColor: colors.surfaceSecondary,
+              borderColor: 'transparent',
+            },
+          ]}
+        >
+          <Ionicons
+            name="school-outline"
+            size={20}
+            color={selectedCampus ? colors.primary : colors.textTertiary}
+            style={styles.inputIcon}
+          />
+          <Text
+            style={[
+              styles.input,
+              {
+                color: selectedCampus ? colors.textPrimary : colors.textTertiary,
+              },
+            ]}
+          >
+            {selectedCampus ? CampusFullName[selectedCampus] : 'Choose your campus'}
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={20}
+            color={colors.textTertiary}
+          />
+        </Pressable>
+        <Text style={[styles.hint, { color: colors.textTertiary }]}>
+          Select your university to connect with your campus
+        </Text>
+      </View>
+    );
+  };
+
+  const renderCampusPickerModal = () => {
+    return (
+      <Modal
+        visible={showCampusPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCampusPicker(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowCampusPicker(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                Select Your Campus
+              </Text>
+              <Pressable
+                onPress={() => setShowCampusPicker(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={28} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.campusList}>
+              {CampusList.map((campus) => (
+                <Pressable
+                  key={campus}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    }
+                    setSelectedCampus(campus);
+                    setShowCampusPicker(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.campusOption,
+                    {
+                      backgroundColor: pressed
+                        ? colors.surfaceSecondary
+                        : colors.surface,
+                    },
+                  ]}
+                >
+                  <View style={styles.campusOptionContent}>
+                    <Ionicons
+                      name="school"
+                      size={24}
+                      color={selectedCampus === campus ? colors.primary : colors.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.campusOptionText,
+                        {
+                          color: selectedCampus === campus
+                            ? colors.primary
+                            : colors.textPrimary,
+                          fontWeight: selectedCampus === campus ? '600' : '400',
+                        },
+                      ]}
+                    >
+                      {CampusFullName[campus]}
+                    </Text>
+                  </View>
+                  {selectedCampus === campus && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
   };
 
   const renderInput = (
@@ -221,6 +387,8 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
               hint: 'Use your .edu email to verify your student status',
             })}
             
+            {renderCampusPicker()}
+            
             {renderInput('Password', 'Create a password', password, setPassword, 'lock-closed-outline', {
               ref: passwordRef,
               isPassword: true,
@@ -232,6 +400,54 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
               isPassword: true,
             })}
 
+            {/* Terms Acceptance Checkbox */}
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                setTermsAccepted(!termsAccepted);
+              }}
+              style={styles.termsContainer}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    backgroundColor: termsAccepted ? colors.primary : 'transparent',
+                    borderColor: termsAccepted ? colors.primary : colors.textTertiary,
+                  },
+                ]}
+              >
+                {termsAccepted && (
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                )}
+              </View>
+              <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+                I agree to the{' '}
+                <Text
+                  style={{ color: colors.primary, textDecorationLine: 'underline' }}
+                  onPress={() => navigation.navigate('LegalDocument', { documentType: 'terms' })}
+                >
+                  Terms of Service
+                </Text>
+                ,{' '}
+                <Text
+                  style={{ color: colors.primary, textDecorationLine: 'underline' }}
+                  onPress={() => navigation.navigate('LegalDocument', { documentType: 'privacy' })}
+                >
+                  Privacy Policy
+                </Text>
+                , and{' '}
+                <Text
+                  style={{ color: colors.primary, textDecorationLine: 'underline' }}
+                  onPress={() => navigation.navigate('LegalDocument', { documentType: 'community' })}
+                >
+                  Community Guidelines
+                </Text>
+              </Text>
+            </Pressable>
+
             <Button
               title="Create Account"
               onPress={handleSignUp}
@@ -239,12 +455,6 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
               variant="primary"
               size="large"
             />
-
-            <Text style={[styles.terms, { color: colors.textTertiary }]}>
-              By signing up, you agree to our{' '}
-              <Text style={{ color: colors.primary }}>Terms of Service</Text> and{' '}
-              <Text style={{ color: colors.primary }}>Privacy Policy</Text>
-            </Text>
           </View>
 
           {/* Footer */}
@@ -263,6 +473,9 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      
+      {/* Campus Picker Modal */}
+      {renderCampusPickerModal()}
     </SafeAreaView>
   );
 };
@@ -324,9 +537,24 @@ const styles = StyleSheet.create({
   hint: {
     ...Typography.caption2,
   },
-  terms: {
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  termsText: {
     ...Typography.caption1,
-    textAlign: 'center',
+    flex: 1,
     lineHeight: 20,
   },
   footer: {
@@ -341,6 +569,49 @@ const styles = StyleSheet.create({
   footerLink: {
     ...Typography.body,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingBottom: Platform.OS === 'ios' ? 40 : Spacing.xl,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  modalTitle: {
+    ...Typography.title3Bold,
+  },
+  campusList: {
+    paddingHorizontal: Spacing.xl,
+  },
+  campusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginTop: Spacing.sm,
+  },
+  campusOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  campusOptionText: {
+    ...Typography.body,
   },
 });
 

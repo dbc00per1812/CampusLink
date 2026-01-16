@@ -1,7 +1,10 @@
 // UserAvatar Component - Profile picture with initials fallback
+// OPTIMIZED FOR LIGHTNING-FAST PERFORMANCE
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { User } from '../types';
+import { BLURHASH_PLACEHOLDERS, CACHE_POLICY } from '../config/imageConfig';
 
 interface UserAvatarProps {
   user: User | null;
@@ -68,7 +71,11 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
         <Image
           source={{ uri: user!.profile_pic! }}
           style={[styles.image, { width: size, height: size, borderRadius: size / 2 }]}
-          resizeMode="cover"
+          contentFit="cover"
+          transition={150}
+          cachePolicy={CACHE_POLICY.memoryDisk}
+          placeholder={{ blurhash: BLURHASH_PLACEHOLDERS.avatar }}
+          priority="normal"
         />
       ) : (
         <Text

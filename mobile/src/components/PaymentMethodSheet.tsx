@@ -1,4 +1,4 @@
-// Payment Method Selection Sheet - Converted from iOS PaymentMethodSheet.swift
+// Payment Method Selection Sheet - Card/Apple Pay/Google Pay only (wallet removed for payments)
 import React, { useState } from 'react';
 import {
   View,
@@ -16,35 +16,40 @@ import * as Haptics from 'expo-haptics';
 import { useColors } from '../context/ThemeContext';
 import { Typography } from '../utils/typography';
 import { Spacing, BorderRadius, Shadows } from '../utils/spacing';
-import { Wallet, ListingWithUser } from '../types';
+import { ListingWithUser } from '../types';
 
-type PaymentMethod = 'wallet' | 'card' | 'apple_pay' | 'google_pay';
+type PaymentMethod = 'card' | 'apple_pay' | 'google_pay';
 
 interface PaymentMethodSheetProps {
   visible: boolean;
   listing: ListingWithUser;
-  wallet: Wallet | null;
-  isLoadingWallet: boolean;
   onClose: () => void;
   onPaymentMethodSelected: (method: PaymentMethod) => void;
+  // Server-calculated fees passed from parent (from create_payment_intent response)
+  // These take precedence over client-side calculations for accuracy
+  serverBuyerPriceCents?: number;
+  serverSellerPriceCents?: number;
+  serverStripeFeeCents?: number;
 }
 
 const PaymentMethodSheet: React.FC<PaymentMethodSheetProps> = ({
   visible,
   listing,
-  wallet,
-  isLoadingWallet,
   onClose,
   onPaymentMethodSelected,
+  serverBuyerPriceCents,
+  serverSellerPriceCents,
+  serverStripeFeeCents,
 }) => {
   const colors = useColors();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const sellerPriceCents = Math.round((listing.price ?? 0) * 100);
-  const stripeFeeCents = Math.round(sellerPriceCents * 0.029 + 30);
-  const buyerPriceCents = sellerPriceCents + stripeFeeCents;
-  const canUseWallet = wallet ? wallet.available_cents >= buyerPriceCents : false;
+  // Use server-calculated fees when available, fallback to client-side estimate
+  // Server fees are accurate; client-side is only for initial display before payment intent created
+  const sellerPriceCents = serverSellerPriceCents ?? Math.round((listing.price ?? 0) * 100);
+  const stripeFeeCents = serverStripeFeeCents ?? Math.round(sellerPriceCents * 0.029 + 30);
+  const buyerPriceCents = serverBuyerPriceCents ?? (sellerPriceCents + stripeFeeCents);
 
   const formatCurrency = (cents: number): string => {
     return `$${(cents / 100).toFixed(2)}`;
@@ -134,45 +139,6 @@ const PaymentMethodSheet: React.FC<PaymentMethodSheetProps> = ({
 
           {/* Payment Methods */}
           <View style={styles.methodsContainer}>
-            {/* Wallet Payment Option */}
-            <PaymentMethodOption
-              title="Wallet Payment"
-              subtitle={
-                isLoadingWallet
-                  ? 'Loading...'
-                  : wallet
-                  ? `Available: ${formatCurrency(wallet.available_cents)}`
-                  : 'No wallet found'
-              }
-              icon="wallet"
-              iconColor={colors.success}
-              isEnabled={canUseWallet && !isLoadingWallet}
-              isSelected={selectedMethod === 'wallet'}
-              onPress={() => handleSelectMethod('wallet')}
-              colors={colors}
-            />
-
-            {/* Wallet Status Message */}
-            {!isLoadingWallet && wallet && (
-              <View style={styles.walletStatus}>
-                {canUseWallet ? (
-                  <>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={[styles.statusText, { color: colors.success }]}>
-                      Sufficient funds available
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="warning" size={16} color={colors.warning} />
-                    <Text style={[styles.statusText, { color: colors.warning }]}>
-                      Insufficient funds - need {formatCurrency(buyerPriceCents)}
-                    </Text>
-                  </>
-                )}
-              </View>
-            )}
-
             {/* Apple Pay Option (iOS only) */}
             {Platform.OS === 'ios' && (
               <PaymentMethodOption
@@ -268,7 +234,6 @@ const PaymentMethodSheet: React.FC<PaymentMethodSheetProps> = ({
             ) : (
               <Text style={[styles.continueButtonText, { color: colors.textInverse }]}>
                 Continue with {
-                  selectedMethod === 'wallet' ? 'Wallet' : 
                   selectedMethod === 'apple_pay' ? 'Apple Pay' : 
                   selectedMethod === 'google_pay' ? 'Google Pay' :
                   selectedMethod === 'card' ? 'Card' : 
@@ -452,15 +417,6 @@ const styles = StyleSheet.create({
   },
   methodSubtitle: {
     ...Typography.subheadline,
-  },
-  walletStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.lg,
-  },
-  statusText: {
-    ...Typography.caption1,
   },
   escrowCard: {
     padding: Spacing.lg,

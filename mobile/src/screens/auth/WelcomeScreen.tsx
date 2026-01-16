@@ -1,4 +1,4 @@
-// Welcome Screen - Modern beautiful landing page
+// Welcome Screen - Matching Swift version design
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -9,20 +9,23 @@ import {
   Animated,
   Image,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { AuthScreenProps } from '../../navigation/types';
-import { useColors } from '../../context/ThemeContext';
 import { Typography } from '../../utils/typography';
-import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
+import { Spacing, BorderRadius, Shadows } from '../../utils/spacing';
 
 type Props = AuthScreenProps<'Welcome'>;
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// iOS-style blue gradient colors (matching Swift version)
+const GRADIENT_COLORS = ['#0A84FF', '#007AFF', '#0066CC', '#004999'] as const;
+
 const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
-  const colors = useColors();
-  
   // Animation values
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -120,18 +123,17 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Gradient Background */}
+      {/* Gradient Background - Pure blue gradient matching Swift */}
       <LinearGradient
-        colors={[colors.primary, colors.primaryDark, '#1a1a2e']}
+        colors={GRADIENT_COLORS}
         style={styles.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
       
-      {/* Decorative circles */}
-      <View style={[styles.decorCircle1, { backgroundColor: `${colors.primaryLight}20` }]} />
-      <View style={[styles.decorCircle2, { backgroundColor: `${colors.primaryLight}15` }]} />
-      <View style={[styles.decorCircle3, { backgroundColor: `${colors.accent}10` }]} />
+      {/* Decorative circles - Matching Swift version positioning */}
+      <View style={styles.decorCircle1} />
+      <View style={styles.decorCircle2} />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <View style={styles.content}>
@@ -146,14 +148,11 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
                 },
               ]}
             >
-              <View style={[styles.logoGlow, { backgroundColor: colors.primaryLight }]} />
-              <View style={styles.logoWrapper}>
-                <Image
-                  source={require('../../../assets/icon.png')}
-                  style={styles.logo}
-                  resizeMode="contain"
-                />
-              </View>
+              <Image
+                source={require('../../../assets/brand-icon.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
             </Animated.View>
             
             <Animated.Text
@@ -181,7 +180,7 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
             </Animated.Text>
           </View>
 
-          {/* Auth Buttons */}
+          {/* Auth Buttons - Matching Swift button styles */}
           <Animated.View
             style={[
               styles.buttonContainer,
@@ -191,10 +190,10 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
               },
             ]}
           >
+            {/* Primary "Get Started" button - White with blue text */}
             <Pressable
               style={({ pressed }) => [
                 styles.primaryButton,
-                Shadows.lg,
                 { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
               ]}
               onPress={handleGetStarted}
@@ -202,6 +201,7 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.primaryButtonText}>Get Started</Text>
             </Pressable>
 
+            {/* Secondary "Sign In" button - Semi-transparent */}
             <Pressable
               style={({ pressed }) => [
                 styles.secondaryButton,
@@ -209,7 +209,7 @@ const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
               ]}
               onPress={handleSignIn}
             >
-              <Text style={[styles.secondaryButtonText, { color: colors.textInverse }]}>
+              <Text style={styles.secondaryButtonText}>
                 Already have an account? Sign In
               </Text>
             </Pressable>
@@ -232,29 +232,24 @@ const styles = StyleSheet.create({
   gradient: {
     ...StyleSheet.absoluteFillObject,
   },
+  // Decorative circles matching Swift version
   decorCircle1: {
     position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    top: -100,
-    right: -50,
+    width: SCREEN_WIDTH * 0.9,
+    height: SCREEN_WIDTH * 0.9,
+    borderRadius: SCREEN_WIDTH * 0.45,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    top: SCREEN_HEIGHT * 0.08,
+    right: -SCREEN_WIDTH * 0.25,
   },
   decorCircle2: {
     position: 'absolute',
-    width: 400,
-    height: 400,
-    borderRadius: 200,
-    bottom: -150,
-    left: -100,
-  },
-  decorCircle3: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    top: '40%',
-    left: -50,
+    width: SCREEN_WIDTH * 1.1,
+    height: SCREEN_WIDTH * 1.1,
+    borderRadius: SCREEN_WIDTH * 0.55,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    bottom: -SCREEN_WIDTH * 0.3,
+    left: -SCREEN_WIDTH * 0.35,
   },
   safeArea: {
     flex: 1,
@@ -270,71 +265,67 @@ const styles = StyleSheet.create({
     marginBottom: Spacing['5xl'],
   },
   logoContainer: {
-    position: 'relative',
-    marginBottom: Spacing.xl,
-  },
-  logoGlow: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    opacity: 0.3,
-    top: -10,
-    left: -10,
-  },
-  logoWrapper: {
-    width: 120,
-    height: 120,
-    borderRadius: 30,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.xl,
+    marginBottom: Spacing.lg,
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
   },
   title: {
-    ...Typography.largeTitle,
+    fontSize: 36,
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    ...Typography.title3,
-    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 18,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
-    lineHeight: 28,
+    lineHeight: 26,
   },
   buttonContainer: {
     width: '100%',
     gap: Spacing.md,
+    paddingHorizontal: Spacing.md,
   },
   primaryButton: {
     backgroundColor: '#FFFFFF',
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.lg,
+    paddingVertical: 18,
+    borderRadius: 14,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   primaryButtonText: {
-    ...Typography.button,
+    fontSize: 17,
+    fontWeight: '600',
     color: '#007AFF',
   },
   secondaryButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 18,
+    borderRadius: 14,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   secondaryButtonText: {
-    ...Typography.subheadlineBold,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
   footerText: {
-    ...Typography.caption1,
-    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
     marginTop: Spacing['3xl'],
   },

@@ -33,3 +33,5 @@ export * from './search';
 // User interest types
 export * from './userInterest';
 
+// Forum types
+export * from './forum';

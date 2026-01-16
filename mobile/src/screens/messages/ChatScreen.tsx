@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
   Alert,
+  ActionSheetIOS,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,9 @@ import {
   sendMessage,
   markMessagesAsRead,
   subscribeToMessages,
+  deleteMessage,
 } from '../../services/messagingService';
+import { blockUser } from '../../services/userService';
 import { supabase } from '../../config/supabase';
 import { Conversation, Message, User } from '../../types';
 import { useColors } from '../../context/ThemeContext';
@@ -118,7 +121,11 @@ const ChatScreen: React.FC = () => {
 
     try {
       const newMessage = await sendMessage(conversationId, text);
-      setMessages(prev => [...prev, newMessage]);
+      // Duplicate check: realtime subscription may have already added this message
+      setMessages(prev => {
+        if (prev.some(m => m.id === newMessage.id)) return prev;
+        return [...prev, newMessage];
+      });
       
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
@@ -159,6 +166,98 @@ const ChatScreen: React.FC = () => {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await deleteMessage(messageId);
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error: any) {
+      console.error('Error deleting message:', error);
+      Alert.alert('Error', 'Failed to delete message. Please try again.');
+    }
+  };
+
+  const handleMessageLongPress = (message: Message) => {
+    // Only allow deleting own messages
+    if (message.sender_id !== currentUserId) return;
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Delete Message'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            Alert.alert(
+              'Delete Message',
+              'Are you sure you want to delete this message?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Delete', 
+                  style: 'destructive',
+                  onPress: () => handleDeleteMessage(message.id)
+                },
+              ]
+            );
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        'Delete Message',
+        'Are you sure you want to delete this message?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Delete', 
+            style: 'destructive',
+            onPress: () => handleDeleteMessage(message.id)
+          },
+        ]
+      );
+    }
+  };
+
+  const handleBlockUser = async () => {
+    const otherUser = getOtherUser();
+    if (!currentUserId || !otherUser) return;
+
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${otherUser.name || 'this user'}? You won't see their listings or be able to message them.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(currentUserId, otherUser.id);
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              Alert.alert('User Blocked', 'You will no longer see their listings or receive messages from them.', [
+                { text: 'OK', onPress: () => navigation.goBack() }
+              ]);
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMe = item.sender_id === currentUserId;
     const showAvatar = !isMe && (index === 0 || messages[index - 1].sender_id !== item.sender_id);
@@ -178,12 +277,15 @@ const ChatScreen: React.FC = () => {
             </View>
           )}
           
-          <View
-            style={[
+          <Pressable
+            onLongPress={() => handleMessageLongPress(item)}
+            delayLongPress={500}
+            style={({ pressed }) => [
               styles.messageBubble,
               isMe
                 ? [styles.bubbleMe, { backgroundColor: colors.primary }]
                 : [styles.bubbleOther, { backgroundColor: colors.surfaceSecondary }],
+              pressed && isMe && { opacity: 0.8 },
             ]}
           >
             <Text
@@ -194,7 +296,7 @@ const ChatScreen: React.FC = () => {
             >
               {item.content}
             </Text>
-          </View>
+          </Pressable>
         </View>
         
         {showTimestamp && (
@@ -229,13 +331,24 @@ const ChatScreen: React.FC = () => {
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <Pressable
             onPress={() => {
+              // If we came from a specific screen and need to return there
               if (returnScreen === 'ListingDetail' && returnParams?.listingId) {
                 navigation.navigate('Home', {
                   screen: 'ListingDetail',
                   params: { listingId: returnParams.listingId }
                 });
+              } else if (returnScreen === 'OrderDetail' && returnParams?.orderId) {
+                navigation.navigate('Wallet', {
+                  screen: 'OrderDetail',
+                  params: { orderId: returnParams.orderId }
+                });
               } else {
-                navigation.goBack();
+                // Default: navigate to ConversationsList so user sees all messages
+                // This ensures proper navigation even when Chat was accessed directly
+                // (e.g., from Contact Seller button)
+                navigation.navigate('Messages', {
+                  screen: 'ConversationsList'
+                });
               }
             }}
             style={({ pressed }) => [styles.backButton, { opacity: pressed ? 0.5 : 1 }]}
@@ -365,6 +478,7 @@ const ChatScreen: React.FC = () => {
         onClose={() => setShowReportModal(false)}
         reportedUserId={otherUser?.id}
         reportedUserName={otherUser?.name}
+        onBlockUser={handleBlockUser}
       />
     </SafeAreaView>
   );

@@ -79,23 +79,23 @@ async function getPayoutByTransferId(transferId) {
   return data;
 }
 
-async function createOrUpdateOrderFromPayment(paymentIntentId, metadata) {
+// FIX #8: This function ONLY updates existing orders, never creates new ones
+// Order creation is handled by the mobile app after successful payment
+// This prevents duplicate order creation race conditions
+async function updateExistingOrderFromPayment(paymentIntentId, metadata) {
   const supabase = getSupabaseServiceClient();
   try {
-    // Get payment details from METADATA (not payments table - that's not used)
     const listingId = metadata?.listing_id;
     const buyerId = metadata?.buyer_id;
-    const sellerId = metadata?.seller_id;
-    const buyerPriceCents = metadata?.buyer_price_cents;
     
-    if (!listingId || !buyerId || !sellerId) {
-      console.error("Missing required metadata for order creation");
+    if (!listingId || !buyerId) {
+      console.log(`No listing/buyer metadata for payment ${paymentIntentId} - order handled by mobile app`);
       return;
     }
     
-    console.log(`Processing payment ${paymentIntentId} for listing ${listingId}`);
+    console.log(`Checking for existing order to update for payment ${paymentIntentId}`);
     
-    // CHECK IF ORDER ALREADY EXISTS (from accepted offer)
+    // ONLY update existing orders (from accepted offers with pending payment)
     const { data: existingOrders } = await supabase
       .from("orders")
       .select("id, payment_status")
@@ -113,7 +113,7 @@ async function createOrUpdateOrderFromPayment(paymentIntentId, metadata) {
         .from("orders")
         .update({
           stripe_payment_intent_id: paymentIntentId,
-          payment_status: "succeeded",
+          payment_status: "requires_capture", // FIX #1: Use requires_capture, not succeeded
           updated_at: new Date().toISOString()
         })
         .eq("id", existingOrder.id);
@@ -121,7 +121,7 @@ async function createOrUpdateOrderFromPayment(paymentIntentId, metadata) {
       if (updateError) {
         console.error(`Failed to update order ${existingOrder.id}:`, updateError.message);
       } else {
-        console.log(`✅ Order ${existingOrder.id} updated with payment successfully`);
+        console.log(`✅ Order ${existingOrder.id} updated with payment intent`);
         
         // Also update escrow_release_status in payments table to 'held'
         const { error: escrowError } = await supabase
@@ -140,42 +140,112 @@ async function createOrUpdateOrderFromPayment(paymentIntentId, metadata) {
       return;
     }
     
-    // NO EXISTING ORDER: Create new order (normal purchase flow)
-    console.log("No existing order found, creating new order via RPC");
-    const { data: order, error: orderError } = await supabase.rpc("reserve_then_order", {
-      p_listing_id: listingId,
-      p_buyer_id: buyerId,
-      p_seller_id: sellerId,
-      p_price_cents: buyerPriceCents || "0",
-      p_payment_method: "card"
-    });
-    
-    if (orderError) {
-      console.error(`Failed to create order for payment ${paymentIntentId}: ${orderError.message}`);
-    } else {
-      console.log(`✅ Order created successfully for payment ${paymentIntentId}: ${order?.id || 'unknown'}`);
-    }
+    // NO EXISTING ORDER: That's fine - mobile app creates orders
+    // FIX #8: REMOVED order creation via reserve_then_order RPC
+    // This prevents duplicate orders when mobile app and webhook race
+    console.log(`No existing pending order found for payment ${paymentIntentId} - order handled by mobile app`);
   } catch (error) {
-    console.error(`Error handling order from payment ${paymentIntentId}:`, error);
+    console.error(`Error updating order from payment ${paymentIntentId}:`, error);
   }
 }
 
-async function updateConnectAccountStatus(accountId, payoutsEnabled, detailsSubmitted) {
+async function updateConnectAccountStatus(accountId, payoutsEnabled, detailsSubmitted, transfersActive) {
   const supabase = getSupabaseServiceClient();
+  const stripe = getStripe();
+  
   // Find user by stripe_connect_id
-  const { data: user, error: userError } = await supabase.from("users").eq("stripe_connect_id", accountId).single();
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id, stripe_payouts_enabled")
+    .eq("stripe_connect_id", accountId)
+    .single();
+    
   if (userError || !user) {
     console.warn(`No user found with Stripe Connect ID ${accountId}`);
     return;
   }
-  // Update user's Connect account status (could add fields for this if needed)
+  
+  const wasNotEnabled = !user.stripe_payouts_enabled;
+  
+  // Update user's Connect account status
   const { error: updateError } = await supabase.from("users").update({
     stripe_payouts_enabled: payoutsEnabled,
     stripe_details_submitted: detailsSubmitted,
     updated_at: new Date().toISOString()
   }).eq("id", user.id);
+  
   if (updateError) {
     console.error(`Failed to update Connect account status for user ${user.id}: ${updateError.message}`);
+    return;
+  }
+
+  // ===== DEFERRED ONBOARDING: Transfer pending payouts =====
+  // If seller just became enabled and has transfers capability, transfer any pending funds
+  if (transfersActive && wasNotEnabled && payoutsEnabled) {
+    console.log(`🎉 Seller ${user.id} just completed onboarding - checking for pending payouts`);
+    
+    // Get all pending payouts for this seller
+    const { data: pendingPayouts, error: pendingError } = await supabase
+      .from("pending_seller_payouts")
+      .select("id, amount_cents, payment_intent_id, order_id")
+      .eq("seller_id", user.id)
+      .eq("status", "pending");
+
+    if (pendingError) {
+      console.error(`Failed to fetch pending payouts: ${pendingError.message}`);
+      return;
+    }
+
+    if (!pendingPayouts || pendingPayouts.length === 0) {
+      console.log(`No pending payouts for seller ${user.id}`);
+      return;
+    }
+
+    console.log(`📤 Found ${pendingPayouts.length} pending payouts totaling $${pendingPayouts.reduce((sum, p) => sum + p.amount_cents, 0) / 100}`);
+
+    // Transfer each pending payout to seller's Connect account
+    for (const payout of pendingPayouts) {
+      try {
+        console.log(`   Transferring $${payout.amount_cents / 100} for order ${payout.order_id}...`);
+        
+        // Create transfer to seller's Connect account
+        const transfer = await stripe.transfers.create({
+          amount: payout.amount_cents,
+          currency: "usd",
+          destination: accountId,
+          metadata: {
+            order_id: payout.order_id,
+            pending_payout_id: payout.id,
+            type: "deferred_onboarding_transfer",
+          },
+        });
+
+        // Mark as transferred
+        await supabase
+          .from("pending_seller_payouts")
+          .update({
+            status: "transferred",
+            transfer_id: transfer.id,
+            transferred_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", payout.id);
+
+        console.log(`   ✅ Transfer ${transfer.id} created successfully`);
+      } catch (transferError: any) {
+        console.error(`   ❌ Failed to transfer payout ${payout.id}: ${transferError.message}`);
+        
+        // Mark as failed
+        await supabase
+          .from("pending_seller_payouts")
+          .update({
+            status: "failed",
+            error_message: transferError.message,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", payout.id);
+      }
+    }
   }
 }
 
@@ -226,8 +296,9 @@ Deno.serve(async (req)=>{
         {
           const pi = event.data.object;
           await updatePaymentStatusByIntentId(pi.id, "succeeded");
-          // Create or update order when payment succeeds
-          await createOrUpdateOrderFromPayment(pi.id, pi.metadata);
+          // NOTE: Order creation is handled by the mobile app after successful payment
+          // We only update payment status here, not create orders
+          // This prevents duplicate order creation race conditions
           break;
         }
       case "payment_intent.payment_failed":
@@ -268,9 +339,8 @@ Deno.serve(async (req)=>{
           if (paymentIntentId) {
             console.log(`💳 Charge succeeded for payment intent: ${paymentIntentId}`);
             await updatePaymentStatusByIntentId(paymentIntentId, "succeeded");
-            // Also create/update order
-            const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-            await createOrUpdateOrderFromPayment(paymentIntentId, paymentIntent.metadata);
+            // NOTE: Order creation is handled by the mobile app
+            // We only update payment status here to avoid duplicate orders
           }
           break;
         }
@@ -486,9 +556,15 @@ Deno.serve(async (req)=>{
         {
           const account = event.data.object;
           const accountId = account.id;
-          // Update user's Connect account status
-          await updateConnectAccountStatus(accountId, account.payouts_enabled ?? false, account.details_submitted ?? false);
-          console.log(`Account updated: ${accountId}, payouts_enabled: ${account.payouts_enabled}, details_submitted: ${account.details_submitted}`);
+          const transfersActive = account.capabilities?.transfers === 'active';
+          // Update user's Connect account status and transfer any pending payouts
+          await updateConnectAccountStatus(
+            accountId, 
+            account.payouts_enabled ?? false, 
+            account.details_submitted ?? false,
+            transfersActive
+          );
+          console.log(`Account updated: ${accountId}, payouts_enabled: ${account.payouts_enabled}, transfers: ${account.capabilities?.transfers}`);
           break;
         }
       default:

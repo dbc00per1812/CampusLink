@@ -67,7 +67,7 @@ export interface Listing {
   id: string;
   user_id: string;
   title: string;
-  description: string;
+  description: string | null;
   price: number | null;
   category: string;
   photo: string | null;
@@ -97,7 +97,7 @@ export interface ListingWithUser extends Listing {
 // Listing Create (for inserting new listings)
 export interface ListingCreate {
   title: string;
-  description: string;
+  description: string | null;
   price: number | null;
   category: string;
   photo: string | null;

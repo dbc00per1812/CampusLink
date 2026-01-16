@@ -12,7 +12,7 @@ const getCurrentUserId = async (): Promise<string | null> => {
 export const createOffer = async (
   listingId: string,
   sellerId: string,
-  offerAmount: number,
+  offerAmountCents: number,
   message?: string
 ): Promise<Offer> => {
   const userId = await getCurrentUserId();
@@ -24,7 +24,7 @@ export const createOffer = async (
       listing_id: listingId,
       buyer_id: userId,
       seller_id: sellerId,
-      offer_amount: offerAmount,
+      offer_amount: offerAmountCents,
       message,
       status: 'pending',
     })

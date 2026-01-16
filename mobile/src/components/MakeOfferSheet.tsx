@@ -39,8 +39,8 @@ const MakeOfferSheet: React.FC<MakeOfferSheetProps> = ({
 
   // Calculate fees (matches iOS implementation)
   const calculateFees = useCallback((amount: number) => {
-    // Stripe fee: 2.9% + $0.30
-    const stripeFee = Math.ceil(amount * 0.029 + 0.30);
+    // Stripe fee: 2.9% + $0.30, rounded up to the nearest cent
+    const stripeFee = Math.ceil((amount * 0.029 + 0.30) * 100) / 100;
     const totalAmount = amount + stripeFee;
     return { stripeFee, totalAmount };
   }, []);

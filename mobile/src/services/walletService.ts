@@ -1,4 +1,9 @@
 // Wallet Service - Converted from WalletService.swift
+// 
+// IMPORTANT: Stripe is the SINGLE SOURCE OF TRUTH for balance
+// The local 'wallets' table is only used for in-app wallet payment tracking
+// All balance displays should use getWalletBalance() which queries Stripe
+//
 import { supabase } from '../config/supabase';
 import { Wallet, WalletTransaction, Payout, PayoutStatus } from '../types';
 
@@ -55,7 +60,9 @@ export const getOrCreateWallet = async (): Promise<Wallet> => {
   return newWallet;
 };
 
-// Get wallet balance (formatted)
+// Get LOCAL wallet balance (for in-app wallet payments only)
+// ⚠️ DEPRECATED: Use getWalletBalance() for the real balance from Stripe
+// This only shows the local database balance, not actual Stripe funds
 export const getBalance = async (): Promise<{
   available: number;
   escrow: number;
@@ -66,6 +73,9 @@ export const getBalance = async (): Promise<{
     total: string;
   };
 }> => {
+  // For actual balance, use getWalletBalance() which queries Stripe
+  console.warn('⚠️ getBalance() uses local DB. Use getWalletBalance() for Stripe balance (source of truth)');
+  
   const wallet = await getOrCreateWallet();
 
   const available = wallet.available_cents / 100;
@@ -160,15 +170,36 @@ export const requestPayout = async (
     throw new Error(`Insufficient funds. Available: $${stripeBalance.available.toFixed(2)}`);
   }
 
-  // Call RPC to process payout
-  const { data, error } = await supabase.rpc('request_payout', {
+  // Step 1: Call RPC to create payout record
+  const { data: payout, error } = await supabase.rpc('request_payout', {
     p_user_id: userId,
     p_amount_cents: amountCents,
     p_destination: destination,
   });
 
   if (error) throw error;
-  return data;
+
+  // Step 2: Call process-payout edge function to actually process with Stripe
+  // This matches the Swift implementation flow
+  console.log('🔄 Calling process-payout Edge Function for payout:', payout.id);
+  
+  const { data: processResult, error: processError } = await supabase.functions.invoke('process-payout', {
+    body: { payout_id: payout.id },
+  });
+
+  if (processError) {
+    console.error('❌ Payout processing failed:', processError);
+    throw new Error('Failed to initiate payout with Stripe. Please contact support.');
+  }
+
+  if (processResult?.error) {
+    console.error('❌ Payout processing failed:', processResult.error);
+    throw new Error(processResult.error);
+  }
+
+  console.log('✅ Payout processing initiated. Stripe Payout ID:', processResult?.stripe_payout_id);
+  
+  return payout;
 };
 
 // Check if user can withdraw (has completed Stripe onboarding)
@@ -218,24 +249,45 @@ export const getPendingPayoutAmount = async (): Promise<number> => {
   return (data ?? []).reduce((sum, p) => sum + p.amount_cents, 0);
 };
 
-// Alias for getBalance - NOW USES REAL STRIPE BALANCE
+// Get pending payouts for sellers who haven't completed Stripe setup
+// These are funds held in platform account waiting for seller onboarding
+export const getPendingSellerPayouts = async (): Promise<number> => {
+  try {
+    const userId = await getCurrentUserId();
+    
+    const { data, error } = await supabase
+      .from('pending_seller_payouts')
+      .select('amount_cents')
+      .eq('seller_id', userId)
+      .eq('status', 'pending');
+
+    if (error) {
+      console.warn('Could not fetch pending seller payouts:', error);
+      return 0;
+    }
+
+    const totalCents = (data ?? []).reduce((sum, p) => sum + p.amount_cents, 0);
+    return totalCents / 100;
+  } catch (err) {
+    console.warn('Error fetching pending seller payouts:', err);
+    return 0;
+  }
+};
+
+// PRIMARY BALANCE FUNCTION - Uses Stripe as source of truth
+// This is what should be displayed to users in the wallet screen
 export const getWalletBalance = async () => {
-  // Get the REAL balance from Stripe
+  // Get the REAL balance from Stripe Connect account
+  // This is the actual money available for payout
   const stripeBalance = await getStripeBalance();
   
-  // Fallback to local wallet for escrow info only
-  let escrow = 0;
-  try {
-    const wallet = await getWallet();
-    escrow = wallet ? wallet.escrow_cents / 100 : 0;
-  } catch (e) {
-    console.warn('Could not fetch local wallet:', e);
-  }
+  // Also check for pending payouts (funds held before Stripe onboarding)
+  const pendingPayouts = await getPendingSellerPayouts();
   
   return { 
     available: stripeBalance.available, 
-    pending: stripeBalance.pending, 
-    escrow 
+    pending: stripeBalance.pending,
+    pendingOnboarding: pendingPayouts, // Funds waiting for Stripe setup
   };
 };
 

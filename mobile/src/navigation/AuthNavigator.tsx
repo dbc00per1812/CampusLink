@@ -10,6 +10,7 @@ import SignUpScreen from '../screens/auth/SignUpScreen';
 import OTPVerificationScreen from '../screens/auth/OTPVerificationScreen';
 import InterestSelectionScreen from '../screens/auth/InterestSelectionScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import LegalDocumentScreen from '../screens/legal/LegalDocumentScreen';
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
 
@@ -28,6 +29,7 @@ export const AuthNavigator: React.FC = () => {
       <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} />
       <Stack.Screen name="InterestSelection" component={InterestSelectionScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="LegalDocument" component={LegalDocumentScreen} />
     </Stack.Navigator>
   );
 };

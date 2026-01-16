@@ -4,6 +4,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 
+// Legal Document Type
+export type LegalDocumentType = 'terms' | 'privacy' | 'community';
+
 // Auth Stack
 export type AuthStackParamList = {
   Welcome: undefined;
@@ -13,6 +16,7 @@ export type AuthStackParamList = {
   InterestSelection: undefined;
   ForgotPassword: undefined;
   ResetPassword: { email: string };
+  LegalDocument: { documentType: LegalDocumentType };
 };
 
 // Home Stack
@@ -44,8 +48,8 @@ export type MessagesStackParamList = {
   ConversationsList: undefined;
   Chat: { 
     conversationId: string;
-    returnScreen?: 'ListingDetail' | 'ConversationsList';
-    returnParams?: { listingId?: string };
+    returnScreen?: 'ListingDetail' | 'ConversationsList' | 'OrderDetail';
+    returnParams?: { listingId?: string; orderId?: string };
   };
 };
 
@@ -65,9 +69,12 @@ export type ProfileStackParamList = {
   Settings: undefined;
   MyListings: undefined;
   MyOffers: undefined;
+  OfferDetail: { offerId: string };
   EditProfile: undefined;
   EditInterests: undefined;
   Notifications: undefined;
+  BlockedUsers: undefined;
+  LegalDocument: { documentType: LegalDocumentType };
 };
 
 // Main Tab Navigator

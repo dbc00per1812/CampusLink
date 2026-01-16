@@ -138,6 +138,7 @@ export interface OrderCreate {
   time_slot_id?: string | null;
   quantity?: number;
   stripe_payment_intent_id?: string;
+  payment_status?: 'pending' | 'requires_capture'; // pending = awaiting payment, requires_capture = authorized
 }
 
 // Order Insert (for database operations)
@@ -203,8 +204,10 @@ export const hasEscrowAccount = (order: Order): boolean => {
 };
 
 export const getEscrowStatus = (order: Order): string => {
-  if (order.stripe_escrow_account_id === null) return 'No Escrow';
+  // All CampusLink orders use escrow protection by default
+  // Status is based on order status, not the presence of a specific account ID
   if (order.order_status === 'completed') return 'Released';
+  if (order.order_status === 'cancelled' || order.order_status === 'refunded') return 'Refunded';
   return 'Held in Escrow';
 };
 

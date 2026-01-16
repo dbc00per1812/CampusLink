@@ -16,7 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Button, ImagePickerComponent, LoadingSpinner } from '../../components';
+import { 
+  Button, 
+  ImagePickerComponent, 
+  LoadingSpinner,
+  ProductVerificationInfo,
+  ServiceVerificationInfo,
+  TicketGuaranteeInfo,
+} from '../../components';
 import { getListing, updateListing, deleteListing } from '../../services/listingService';
 import { uploadMultipleImages } from '../../services/imageUploadService';
 import { ListingType, ListingIntent, DeliveryMethod, ServiceLocation, ListingWithUser } from '../../types';
@@ -90,7 +97,7 @@ const EditListingScreen: React.FC = () => {
 
       setOriginalListing(listing);
       setTitle(listing.title);
-      setDescription(listing.description);
+      setDescription(listing.description ?? '');
       setPrice(listing.price?.toString() ?? '');
       setSelectedCategory(listing.category);
       setListingType(listing.listing_type);
@@ -135,7 +142,7 @@ const EditListingScreen: React.FC = () => {
 
   // Validation
   const isFormValid = (): boolean => {
-    if (!title.trim() || !description.trim()) return false;
+    if (!title.trim()) return false;
     if (!selectedCategory) return false;
     if (selectedCategory === 'Other' && !customCategory.trim()) return false;
     
@@ -143,12 +150,27 @@ const EditListingScreen: React.FC = () => {
       if (!budgetMax.trim()) return false;
     } else {
       if (!price.trim()) return false;
+      // Require at least one photo for offer listings (selling/offering)
+      if (images.length === 0 && newImages.length === 0) return false;
     }
     
     return true;
   };
 
   const handleSubmit = async () => {
+    // Provide specific error messages for missing fields
+    if (!title.trim()) {
+      Alert.alert('Missing Information', 'Please fill in the title.');
+      return;
+    }
+    if (!selectedCategory) {
+      Alert.alert('Missing Information', 'Please select a category.');
+      return;
+    }
+    if (intent !== 'seek' && images.length === 0 && newImages.length === 0) {
+      Alert.alert('Photos Required', 'Please add at least one photo of your item or service.');
+      return;
+    }
     if (!isFormValid()) {
       Alert.alert('Missing Information', 'Please fill in all required fields.');
       return;
@@ -175,7 +197,7 @@ const EditListingScreen: React.FC = () => {
       // Build update data
       const updateData = {
         title: title.trim(),
-        description: description.trim(),
+        description: description.trim() || null,
         category: selectedCategory === 'Other' ? customCategory.trim() : selectedCategory,
         price: intent === 'offer' ? parseFloat(price) : null,
         photo: allPhotoUrls[0] || null,
@@ -339,6 +361,27 @@ const EditListingScreen: React.FC = () => {
                 placeholder="Enter custom category"
                 placeholderTextColor={Colors.textTertiary}
               />
+            )}
+            
+            {/* Ticket Transaction Info */}
+            {selectedCategory === 'Tickets' && intent === 'offer' && (
+              <View style={styles.infoViewContainer}>
+                <TicketGuaranteeInfo isOwnListing={true} />
+              </View>
+            )}
+            
+            {/* Product Transaction Info (non-ticket products) */}
+            {listingType === 'product' && selectedCategory !== 'Tickets' && selectedCategory !== '' && intent === 'offer' && (
+              <View style={styles.infoViewContainer}>
+                <ProductVerificationInfo isForSeller={true} />
+              </View>
+            )}
+            
+            {/* Service Transaction Info */}
+            {listingType === 'service' && selectedCategory !== '' && intent === 'offer' && (
+              <View style={styles.infoViewContainer}>
+                <ServiceVerificationInfo isForSeller={true} />
+              </View>
             )}
           </View>
 
@@ -658,6 +701,9 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   customCategoryInput: {
+    marginTop: 12,
+  },
+  infoViewContainer: {
     marginTop: 12,
   },
   segmentedControl: {
