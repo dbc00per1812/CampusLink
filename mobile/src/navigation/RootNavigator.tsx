@@ -1,5 +1,5 @@
 // Root Navigator - Handles Auth State
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
@@ -15,9 +15,24 @@ import { registerUserForNotifications } from '../services/notificationService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// Track if splash has been hidden to prevent multiple calls
+let splashHidden = false;
+
+const hideSplashScreen = async () => {
+  if (splashHidden) return;
+  splashHidden = true;
+  try {
+    await SplashScreen.hideAsync();
+    console.log('✅ Splash screen hidden');
+  } catch (error) {
+    // Ignore - splash might already be hidden
+  }
+};
+
 export const RootNavigator: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigationReady = useRef(false);
 
   // Verify user has a valid profile in the database
   const verifyUserProfile = async (userId: string): Promise<boolean> => {
@@ -108,11 +123,29 @@ export const RootNavigator: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Hide splash screen once loading completes
-  const onLayoutRootView = useCallback(async () => {
+  // Failsafe: Hide splash screen after 3 seconds no matter what
+  useEffect(() => {
+    const failsafeTimeout = setTimeout(() => {
+      console.log('⏰ Splash screen failsafe timeout triggered');
+      hideSplashScreen();
+    }, 3000);
+
+    return () => clearTimeout(failsafeTimeout);
+  }, []);
+
+  // Hide splash when both conditions are met: loading complete AND navigation ready
+  useEffect(() => {
+    if (!loading && navigationReady.current) {
+      hideSplashScreen();
+    }
+  }, [loading]);
+
+  // Called when NavigationContainer is ready
+  const onNavigationReady = useCallback(() => {
+    navigationReady.current = true;
+    // If loading is already complete, hide splash now
     if (!loading) {
-      // Hide the splash screen once the app is ready
-      await SplashScreen.hideAsync();
+      hideSplashScreen();
     }
   }, [loading]);
 
@@ -126,7 +159,7 @@ export const RootNavigator: React.FC = () => {
   }
 
   return (
-    <NavigationContainer onReady={onLayoutRootView}>
+    <NavigationContainer onReady={onNavigationReady}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {session ? (
           <Stack.Screen name="Main" component={TabNavigator} />

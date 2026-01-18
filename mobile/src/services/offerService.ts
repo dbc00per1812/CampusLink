@@ -24,6 +24,10 @@ export const createOffer = async (
       listing_id: listingId,
       buyer_id: userId,
       seller_id: sellerId,
+      // Also populate the directional fields for database compatibility
+      offer_from_user_id: userId,
+      offer_to_user_id: sellerId,
+      listing_type: 'regular',
       offer_amount: offerAmountCents,
       message,
       status: 'pending',
@@ -135,6 +139,60 @@ export const withdrawOffer = async (offerId: string): Promise<void> => {
   if (error) throw error;
 };
 
+// Update offer with order ID after payment (links offer to created order)
+export const updateOfferWithOrder = async (
+  offerId: string,
+  orderId: string
+): Promise<Offer> => {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('offers')
+    .update({
+      order_id: orderId,
+      status: 'paid_pending_acceptance',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', offerId)
+    .eq('buyer_id', userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// Get buyer's sent offers
+export const getBuyerOffers = async (): Promise<Offer[]> => {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*, listing:listings(*), seller:users!seller_id(*)')
+    .eq('buyer_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+};
+
+// Get seller's received offers
+export const getSellerOffers = async (): Promise<Offer[]> => {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*, listing:listings(*), buyer:users!buyer_id(*)')
+    .eq('seller_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+};
+
 export default {
   createOffer,
   getOffer,
@@ -143,5 +201,8 @@ export default {
   declineOffer,
   counterOffer,
   withdrawOffer,
+  updateOfferWithOrder,
+  getBuyerOffers,
+  getSellerOffers,
 };
 

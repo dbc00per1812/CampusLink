@@ -143,6 +143,9 @@ export interface Offer {
   order_id: string | null;
   created_at: string;
   updated_at: string;
+  // Counter offer fields
+  counter_amount: number | null;
+  counter_message: string | null;
   // Joined data
   listing?: Listing | null;
   buyer?: User | null;

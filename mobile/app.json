@@ -53,12 +53,13 @@
             ]
           }
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "CampusLink uses your location to show nearby campus listings and help you find items close to you."
       },
       "entitlements": {
         "aps-environment": "production"
       },
-      "buildNumber": "26",
+      "buildNumber": "34",
       "bitcode": false
     },
     "android": {
@@ -73,6 +74,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "assetBundlePatterns": [
+      "**/*",
+      "assets/legal/*.pdf"
+    ],
     "extra": {
       "eas": {
         "projectId": "b0d32018-e9db-4736-8c4f-2b28965d609f"

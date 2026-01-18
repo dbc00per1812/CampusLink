@@ -1,15 +1,20 @@
 // LegalDocumentScreen - Display legal documents in-app using WebView
-import React from 'react';
+// Supports both PDF files (preferred) and embedded HTML content (fallback)
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
+import * as FileSystem from 'expo-file-system';
+import { Asset } from 'expo-asset';
 import { useColors } from '../../context/ThemeContext';
 
 type DocumentType = 'terms' | 'privacy' | 'community';
@@ -22,6 +27,13 @@ const DOCUMENT_TITLES = {
   terms: 'Terms of Service',
   privacy: 'Privacy Policy',
   community: 'Community Guidelines',
+};
+
+// PDF assets - loaded from mobile/assets/legal/ folder
+const PDF_ASSETS: Record<DocumentType, any> = {
+  terms: require('../../../assets/legal/terms.pdf'),
+  privacy: require('../../../assets/legal/privacy.pdf'),
+  community: require('../../../assets/legal/community-guidelines.pdf'),
 };
 
 // Generate themed HTML wrapper
@@ -667,15 +679,133 @@ const DOCUMENT_CONTENT: Record<DocumentType, string> = {
   community: COMMUNITY_CONTENT,
 };
 
+// Generate PDF viewer HTML using PDF.js CDN
+const generatePdfViewerHtml = (pdfBase64: string, colors: any): string => {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      background-color: ${colors.background}; 
+      padding: 0;
+      overflow-x: hidden;
+    }
+    #pdf-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      padding-bottom: 80px;
+    }
+    canvas {
+      max-width: 100%;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .loading {
+      color: ${colors.textSecondary};
+      padding: 40px;
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .error {
+      color: ${colors.error || '#ff0000'};
+      padding: 40px;
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="pdf-container">
+    <div class="loading">Loading document...</div>
+  </div>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    
+    async function renderPdf() {
+      const container = document.getElementById('pdf-container');
+      try {
+        const pdfData = atob('${pdfBase64}');
+        const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+        const pdf = await loadingTask.promise;
+        
+        container.innerHTML = '';
+        
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const scale = (window.innerWidth - 32) / page.getViewport({ scale: 1 }).width;
+          const viewport = page.getViewport({ scale: Math.min(scale, 2) });
+          
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
+          container.appendChild(canvas);
+        }
+      } catch (error) {
+        container.innerHTML = '<div class="error">Error loading document. Please try again.</div>';
+        console.error(error);
+      }
+    }
+    
+    renderPdf();
+  </script>
+</body>
+</html>
+`;
+};
+
 const LegalDocumentScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<LegalDocumentRouteParams, 'LegalDocument'>>();
   const colors = useColors();
   const { documentType } = route.params;
+  
+  const [loading, setLoading] = useState(true);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [usePdf, setUsePdf] = useState(false);
 
   const title = DOCUMENT_TITLES[documentType];
+
+  // Try to load PDF first, fall back to HTML content
+  useEffect(() => {
+    const loadPdf = async () => {
+      try {
+        const pdfAsset = PDF_ASSETS[documentType];
+        if (pdfAsset) {
+          const asset = Asset.fromModule(pdfAsset);
+          await asset.downloadAsync();
+          
+          if (asset.localUri) {
+            const base64 = await FileSystem.readAsStringAsync(asset.localUri, {
+              encoding: 'base64',
+            });
+            setPdfBase64(base64);
+            setUsePdf(true);
+          }
+        }
+      } catch (error) {
+        console.log('PDF not available, using HTML fallback');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPdf();
+  }, [documentType]);
+
   const content = DOCUMENT_CONTENT[documentType];
-  const htmlContent = generateHtml(content, colors);
+  const htmlContent = usePdf && pdfBase64 
+    ? generatePdfViewerHtml(pdfBase64, colors)
+    : generateHtml(content, colors);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
@@ -689,16 +819,38 @@ const LegalDocumentScreen: React.FC = () => {
       </View>
 
       {/* Content */}
-      <WebView
-        source={{ html: htmlContent }}
-        style={styles.webView}
-        originWhitelist={['*']}
-        scrollEnabled={true}
-        showsVerticalScrollIndicator={false}
-        scalesPageToFit={false}
-        javaScriptEnabled={false}
-        domStorageEnabled={false}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <WebView
+          source={{ html: htmlContent }}
+          style={styles.webView}
+          originWhitelist={['*']}
+          scrollEnabled={true}
+          showsVerticalScrollIndicator={true}
+          showsHorizontalScrollIndicator={false}
+          scalesPageToFit={false}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={true}
+          renderLoading={() => (
+            <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+          onError={(syntheticEvent) => {
+            console.warn('WebView error:', syntheticEvent.nativeEvent);
+          }}
+          // Improve scrolling on iOS
+          bounces={true}
+          decelerationRate="normal"
+          // Allow content to expand properly
+          contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
+          automaticallyAdjustContentInsets={false}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -724,6 +876,12 @@ const styles = StyleSheet.create({
   },
   webView: {
     flex: 1,
+    backgroundColor: 'transparent',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

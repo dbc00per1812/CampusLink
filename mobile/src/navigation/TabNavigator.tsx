@@ -27,6 +27,7 @@ import WalletScreen from '../screens/wallet/WalletScreen';
 import PayoutRequestScreen from '../screens/wallet/PayoutRequestScreen';
 import PayoutHistoryScreen from '../screens/wallet/PayoutHistoryScreen';
 import OffersScreen from '../screens/offers/OffersScreen';
+import OfferDetailScreen from '../screens/offers/OfferDetailScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -134,6 +135,11 @@ const ProfileNavigator: React.FC = () => (
     <ProfileStack.Screen
       name="MyOffers"
       component={OffersScreen}
+      options={{ headerShown: false }}
+    />
+    <ProfileStack.Screen
+      name="OfferDetail"
+      component={OfferDetailScreen}
       options={{ headerShown: false }}
     />
     <ProfileStack.Screen

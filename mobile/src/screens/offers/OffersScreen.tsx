@@ -134,7 +134,7 @@ const OffersScreen: React.FC = () => {
             {item.listing?.title || 'Unknown Item'}
           </Text>
           <Text style={styles.offerAmount}>
-            ${item.offer_amount.toFixed(2)}
+            ${(item.offer_amount / 100).toFixed(2)}
             {item.listing?.price && (
               <Text style={styles.originalPrice}> (was ${item.listing.price.toFixed(2)})</Text>
             )}

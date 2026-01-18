@@ -43,8 +43,10 @@ LogBox.ignoreLogs([
 export default function App() {
   useEffect(() => {
     // Initialize OneSignal for push notifications
-    initializeNotifications().catch((error) => {
-      console.error('Failed to initialize notifications:', error);
+    // Note: OneSignal requires native modules - won't work in Expo Go
+    // Use `npx expo run:ios` for development build or TestFlight for testing
+    initializeNotifications().catch(() => {
+      // Silently fail - expected on Expo Go/Simulator
     });
 
     // Configure image cache on app start for lightning-fast loading
