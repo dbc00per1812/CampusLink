@@ -230,9 +230,9 @@ final class OrderService: ObservableObject {
                 throw OrderServiceError.unauthorizedAction
             }
             
-            // Verify order is in correct status for marking as delivered
-            guard [.placed, .inProgress].contains(order.orderStatus) else {
-                throw OrderServiceError.invalidOrderStatus("Cannot mark as delivered. Order status must be 'placed' or 'in progress', but current status is '\(order.orderStatus.displayName)'")
+            // Verify order is in correct status for marking as delivered (must be accepted first)
+            guard order.orderStatus == .inProgress else {
+                throw OrderServiceError.invalidOrderStatus("Cannot mark as delivered - order must be accepted first")
             }
             
             // Update order status to seller confirmed (ready for buyer confirmation)

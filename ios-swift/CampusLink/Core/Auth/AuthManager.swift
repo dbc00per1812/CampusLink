@@ -95,6 +95,12 @@ class AuthManager: ObservableObject {
     }
 
     func signUp(email: String, password: String, name: String) async -> Result<Void, AuthError> {
+        // Validate .edu email requirement
+        guard email.lowercased().hasSuffix(".edu") else {
+            print("❌ Signup rejected: email does not end with .edu")
+            return .failure(.invalidEmail)
+        }
+        
         do {
             print("🔄 Starting signup process for \(email)")
             
@@ -203,6 +209,12 @@ class AuthManager: ObservableObject {
     
     /// Verify email OTP and complete signup process
     func verifyEmailAndCompleteSignup(email: String, otp: String, name: String) async -> Result<Void, AuthError> {
+        // Validate .edu email requirement (defense in depth)
+        guard email.lowercased().hasSuffix(".edu") else {
+            print("❌ Email verification rejected: email does not end with .edu")
+            return .failure(.invalidEmail)
+        }
+        
         do {
             print("🔄 Verifying email OTP and completing signup...")
             

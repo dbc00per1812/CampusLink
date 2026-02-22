@@ -5,6 +5,7 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider } from './src/context/ThemeContext';
 import { OrderMonitorProvider } from './src/context/OrderMonitorContext';
+import { OfferMonitorProvider } from './src/context/OfferMonitorContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RootNavigator from './src/navigation/RootNavigator';
 import { configureImageCache } from './src/config/imageConfig';
@@ -63,12 +64,14 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <OrderMonitorProvider>
-              <StatusBar
-                barStyle="dark-content"
-                backgroundColor="transparent"
-                translucent={Platform.OS === 'android'}
-              />
-              <RootNavigator />
+              <OfferMonitorProvider>
+                <StatusBar
+                  barStyle="dark-content"
+                  backgroundColor="transparent"
+                  translucent={Platform.OS === 'android'}
+                />
+                <RootNavigator />
+              </OfferMonitorProvider>
             </OrderMonitorProvider>
           </ThemeProvider>
         </QueryClientProvider>

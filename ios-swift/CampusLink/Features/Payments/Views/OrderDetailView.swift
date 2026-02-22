@@ -58,7 +58,8 @@ struct OrderDetailView: View {
     }
     
     private var canMarkDelivered: Bool {
-        isSeller && (currentOrder.orderStatus == .placed || currentOrder.orderStatus == .inProgress)
+        // Seller can only mark delivered after accepting the order (status must be in_progress)
+        isSeller && currentOrder.orderStatus == .inProgress
     }
     
     private var canCancelOrder: Bool {
@@ -746,9 +747,9 @@ struct OrderDetailView: View {
                     }
                 }
                 
-                // Show PIN entry button for sellers with service orders
+                // Show PIN entry button for sellers with service orders (only when in_progress)
                 if isSeller && currentOrder.listing?.listingType == .service && 
-                   (currentOrder.orderStatus == .placed || currentOrder.orderStatus == .inProgress) &&
+                   currentOrder.orderStatus == .inProgress &&
                    currentOrder.verificationPin != nil {
                     
                     Button(action: { showPINEntrySheet = true }) {

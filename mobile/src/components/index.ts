@@ -16,6 +16,7 @@ export { default as FilterChips, HOME_FILTER_CHIPS, CATEGORY_CHIPS } from './Fil
 export type { FilterChip } from './FilterChips';
 export { default as SearchBarWithFilters } from './SearchBarWithFilters';
 export { default as ActiveOrderBanner } from './ActiveOrderBanner';
+export { default as ActiveOfferBanner } from './ActiveOfferBanner';
 export { default as ImageGallery } from './ImageGallery';
 
 // Info Dropdown Components

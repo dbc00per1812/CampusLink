@@ -671,7 +671,8 @@ const OrderDetailScreen: React.FC = () => {
         );
       }
       
-      if (order.status === 'seller_confirmed' || order.status === 'in_progress') {
+      // Seller can only mark delivered when order is in_progress (already accepted)
+      if (order.status === 'in_progress') {
         if (isService) {
           actions.push(
             <View key="pin-section" style={styles.pinSection}>

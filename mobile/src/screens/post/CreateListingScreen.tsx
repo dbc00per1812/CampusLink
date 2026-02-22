@@ -124,10 +124,25 @@ const CreateListingScreen: React.FC = () => {
       return;
     }
 
+    // Validate minimum price (Stripe requires at least $0.50)
+    const MINIMUM_PRICE = 0.50;
+    
+    if (intent === 'offer') {
+      const priceValue = parseFloat(price);
+      if (priceValue < MINIMUM_PRICE) {
+        Alert.alert('Minimum Price Required', `Price must be at least $${MINIMUM_PRICE.toFixed(2)} to process payments.`);
+        return;
+      }
+    }
+
     // Validate budget for seek
     if (intent === 'seek') {
       const min = budgetMin ? parseFloat(budgetMin) : 0;
       const max = parseFloat(budgetMax);
+      if (max < MINIMUM_PRICE) {
+        Alert.alert('Minimum Budget Required', `Maximum budget must be at least $${MINIMUM_PRICE.toFixed(2)} to process payments.`);
+        return;
+      }
       if (min > max) {
         Alert.alert('Invalid Budget', 'Minimum budget cannot be greater than maximum budget.');
         return;
@@ -410,7 +425,7 @@ const CreateListingScreen: React.FC = () => {
                   keyboardType="decimal-pad"
                 />
               </View>
-              <Text style={styles.helperText}>Amount you'll receive</Text>
+              <Text style={styles.helperText}>Minimum $0.50 • Amount you'll receive</Text>
             </View>
           ) : (
             <View style={styles.section}>

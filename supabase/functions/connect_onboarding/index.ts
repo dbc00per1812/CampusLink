@@ -173,6 +173,24 @@ serve(async (req) => {
 
     if (onboardingComplete) {
       console.log("✅ Onboarding already complete!");
+      
+      // IMPORTANT: Sync database with Stripe's actual status
+      // This ensures the app shows the correct UI even if webhooks are delayed/missed
+      const { error: syncError } = await supabaseAdmin
+        .from("users")
+        .update({
+          stripe_payouts_enabled: true,
+          stripe_details_submitted: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+      
+      if (syncError) {
+        console.error("Failed to sync stripe status to database:", syncError);
+      } else {
+        console.log("✅ Database synced with Stripe status");
+      }
+      
       return new Response(
         JSON.stringify({
           onboarding_complete: true,

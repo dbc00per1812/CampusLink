@@ -74,7 +74,8 @@ const WalletScreen: React.FC = () => {
         .single();
       
       setHasStripeAccount(!!userData?.stripe_connect_id);
-      setStripeAccountEnabled(userData?.stripe_payouts_enabled ?? false);
+      // Don't overwrite enabled with false from a stale read (e.g. after "already set up" response)
+      setStripeAccountEnabled(prev => (userData?.stripe_payouts_enabled === true ? true : prev));
 
       // Get wallet balance
       const walletData = await getWalletBalance();
@@ -180,6 +181,12 @@ const WalletScreen: React.FC = () => {
       if (data?.onboarding_url) {
         Linking.openURL(data.onboarding_url);
       } else if (data?.onboarding_complete) {
+        // Onboarding is complete - update local state immediately so UI shows Request Payout
+        // The edge function syncs the DB; refetch may still return stale false, so we set state first
+        setHasStripeAccount(true);
+        setStripeAccountEnabled(true);
+        // Refresh balance/transactions; stripe status is already correct above
+        loadWalletData();
         Alert.alert('Success', 'Your payout account is already set up!');
       }
     } catch (error: any) {

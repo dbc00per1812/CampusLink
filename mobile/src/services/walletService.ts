@@ -171,8 +171,8 @@ export const requestPayout = async (
   }
 
   // Step 1: Call RPC to create payout record
+  // Note: auth.uid() is used server-side for security — no need to pass user ID
   const { data: payout, error } = await supabase.rpc('request_payout', {
-    p_user_id: userId,
     p_amount_cents: amountCents,
     p_destination: destination,
   });

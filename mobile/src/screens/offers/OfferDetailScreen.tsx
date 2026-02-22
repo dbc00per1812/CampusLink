@@ -112,8 +112,13 @@ const OfferDetailScreen: React.FC = () => {
     }
   };
 
-  const isBuyer = currentUserId === offer?.buyer_id;
-  const isSeller = currentUserId === offer?.seller_id;
+  // For regular listings: offer_from is buyer, offer_to is seller
+  // For seek listings: offer_from is seller, offer_to is buyer (seeker)
+  const isOfferSender = currentUserId === offer?.offer_from_user_id;
+  const isOfferRecipient = currentUserId === offer?.offer_to_user_id;
+  // Keep these for backwards compatibility in the UI
+  const isBuyer = offer?.listing_type === 'seek' ? isOfferRecipient : isOfferSender;
+  const isSeller = offer?.listing_type === 'seek' ? isOfferSender : isOfferRecipient;
 
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
@@ -125,7 +130,7 @@ const OfferDetailScreen: React.FC = () => {
 
     Alert.alert(
       'Accept Offer',
-      `Accept this offer of $${(offer.offer_amount / 100).toFixed(2)}?`,
+      `Accept this offer of $${((offer.price_cents ?? 0) / 100).toFixed(2)}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -247,8 +252,8 @@ const OfferDetailScreen: React.FC = () => {
     let pendingOrderId: string | null = null;
 
     try {
-      // Calculate prices - offer_amount is already in cents
-      const sellerPriceCents = offer.offer_amount;
+      // Calculate prices - price_cents is already in cents
+      const sellerPriceCents = offer.price_cents ?? 0;
       const stripeFeeCents = Math.round(sellerPriceCents * 0.029 + 30);
       const buyerPriceCents = sellerPriceCents + stripeFeeCents;
 
@@ -256,11 +261,18 @@ const OfferDetailScreen: React.FC = () => {
       console.log(`   Offer amount: $${sellerPriceCents / 100}`);
       console.log(`   Buyer pays: $${buyerPriceCents / 100}`);
 
+      // Determine seller based on listing type
+      // For regular listings: offer_to is the seller
+      // For seek listings: offer_from is the seller
+      const sellerId = offer.listing_type === 'seek' 
+        ? offer.offer_from_user_id 
+        : offer.offer_to_user_id;
+
       // Create order
       const pendingOrder = await createOrder({
         listing_id: offer.listing_id,
         buyer_id: currentUserId,
-        seller_id: offer.seller_id,
+        seller_id: sellerId,
         price_cents: sellerPriceCents,
         seller_price_cents: sellerPriceCents,
         buyer_price_cents: buyerPriceCents,
@@ -637,7 +649,7 @@ const OfferDetailScreen: React.FC = () => {
             <View style={styles.offerRow}>
               <Text style={styles.offerLabel}>Offer Amount</Text>
               <Text style={styles.offerAmount}>
-                ${(offer.offer_amount / 100).toFixed(2)}
+                ${((offer.price_cents ?? 0) / 100).toFixed(2)}
               </Text>
             </View>
             {offer.message && (

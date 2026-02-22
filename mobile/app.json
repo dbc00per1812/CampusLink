@@ -44,7 +44,7 @@
           "bitmoji-sdk",
           "instagram-stories"
         ],
-        "SCSDKClientId": "238ff824-004b-4df6-8a8d-ec8e067a5cf5",
+        "SCSDKClientId": "891fc9fd-66a8-466f-8761-7c38212d14d7",
         "SCSDKRedirectUrl": "campuslink://snapkit/oauth2",
         "CFBundleURLTypes": [
           {
@@ -59,7 +59,7 @@
       "entitlements": {
         "aps-environment": "production"
       },
-      "buildNumber": "34",
+      "buildNumber": "43",
       "bitcode": false
     },
     "android": {

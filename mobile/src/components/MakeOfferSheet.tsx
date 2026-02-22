@@ -8,9 +8,11 @@ import {
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
+  ScrollView,
   Platform,
   ActivityIndicator,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -45,9 +47,10 @@ const MakeOfferSheet: React.FC<MakeOfferSheetProps> = ({
     return { stripeFee, totalAmount };
   }, []);
 
+  const MINIMUM_OFFER = 0.50; // Stripe minimum
   const numericAmount = parseFloat(offerAmount) || 0;
   const { stripeFee, totalAmount } = calculateFees(numericAmount);
-  const isValidOffer = numericAmount > 0;
+  const isValidOffer = numericAmount >= MINIMUM_OFFER;
 
   const handleSubmit = async () => {
     if (!isValidOffer || !listing) return;
@@ -107,7 +110,13 @@ const MakeOfferSheet: React.FC<MakeOfferSheetProps> = ({
         </View>
 
         {/* Content */}
-        <View style={styles.content}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={Keyboard.dismiss}
+        >
           {/* Listing Info */}
           <View style={[styles.listingInfo, { backgroundColor: colors.surfaceSecondary }]}>
             <Text style={[styles.listingTitle, { color: colors.textPrimary }]} numberOfLines={2}>
@@ -136,12 +145,15 @@ const MakeOfferSheet: React.FC<MakeOfferSheetProps> = ({
                 style={[styles.amountInput, { color: colors.textPrimary }]}
                 value={offerAmount}
                 onChangeText={setOfferAmount}
-                placeholder="0.00"
+                placeholder="0.50"
                 placeholderTextColor={colors.textTertiary}
                 keyboardType="decimal-pad"
                 autoFocus
               />
             </View>
+            <Text style={[styles.minimumNote, { color: colors.textTertiary }]}>
+              Minimum offer: $0.50
+            </Text>
           </View>
 
           {/* Fee Preview */}
@@ -230,7 +242,7 @@ const MakeOfferSheet: React.FC<MakeOfferSheetProps> = ({
               The seller can accept, decline, or counter your offer. You'll be notified of their response.
             </Text>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -258,8 +270,10 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 36,
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     padding: Spacing.lg,
     gap: Spacing.lg,
   },
@@ -298,6 +312,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 24,
     fontWeight: '600',
+  },
+  minimumNote: {
+    ...Typography.caption1,
+    marginTop: Spacing.xs,
   },
   feePreview: {
     padding: Spacing.lg,

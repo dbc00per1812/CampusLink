@@ -124,32 +124,31 @@ export const isOutOfStock = (listing: Listing): boolean => {
   return (listing.quantity_available ?? 1) <= 0;
 };
 
-// Offer interface
+// Offer interface - matches database schema
 export interface Offer {
   id: string;
   listing_id: string;
   listing_type: OfferListingType;
-  offer_listing_id: string | null;
+  // Directional fields (primary)
   offer_from_user_id: string;
   offer_to_user_id: string;
   parent_offer_id: string | null;
-  buyer_id: string;
-  seller_id: string;
+  // Legacy fields (kept for backwards compatibility)
+  seek_listing_id?: string | null;
+  offer_listing_id?: string | null;
+  seeker_id?: string | null;
+  seller_id?: string | null;
   // Standard fields
   message: string | null;
   status: string;
   price_cents: number | null;
-  offer_amount: number;
   order_id: string | null;
   created_at: string;
   updated_at: string;
-  // Counter offer fields
-  counter_amount: number | null;
-  counter_message: string | null;
-  // Joined data
+  // Joined data (field names depend on the query)
   listing?: Listing | null;
-  buyer?: User | null;
-  seller?: User | null;
+  offer_from?: User | null;
+  offer_to?: User | null;
 }
 
 // Offer helpers

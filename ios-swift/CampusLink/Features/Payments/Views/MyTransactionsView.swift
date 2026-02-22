@@ -721,7 +721,8 @@ struct FilterSheet: View {
                     .disabled(!canConfirm)
                 }
 
-                if !isBuyer {
+                // Only show Mark Delivered button for sellers when order is in_progress
+                if !isBuyer && order.orderStatus == .inProgress {
                     Button(action: { onMarkDelivered?() }) {
                         Text("Mark Delivered")
                             .font(.caption)

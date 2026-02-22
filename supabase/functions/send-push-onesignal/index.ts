@@ -79,10 +79,12 @@ serve(async (req) => {
     }
 
     // Prepare OneSignal notification payload
+    // Using include_aliases for OneSignal API v2 (external_id is set via OneSignal.login())
     const oneSignalPayload = {
       app_id: ONESIGNAL_APP_ID,
-      // Target user by external user ID (Supabase user ID)
-      include_external_user_ids: [user_id],
+      // Target user by external_id (set when user logs in via OneSignal.login(userId))
+      include_aliases: { external_id: [user_id] },
+      target_channel: 'push',
       headings: { en: title },
       contents: { en: body },
       data: data || {},

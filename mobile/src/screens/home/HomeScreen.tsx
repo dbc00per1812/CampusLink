@@ -26,6 +26,7 @@ import { getCurrentUserId } from '../../services/authService';
 import { ListingWithUser } from '../../types';
 import { useColors } from '../../context/ThemeContext';
 import { useOrderMonitor } from '../../context/OrderMonitorContext';
+import { useOfferMonitor } from '../../context/OfferMonitorContext';
 import { supabase } from '../../config/supabase';
 import { Typography } from '../../utils/typography';
 import { Spacing, BorderRadius, Shadows, Layout } from '../../utils/spacing';
@@ -35,6 +36,7 @@ import {
   HOME_FILTER_CHIPS,
   SearchBarWithFilters,
   ActiveOrderBanner,
+  ActiveOfferBanner,
   ListingGridSkeleton,
 } from '../../components';
 import { prefetchListingImages } from '../../hooks/useImagePrefetch';
@@ -53,6 +55,7 @@ const PAGE_SIZE = 20; // Match iOS implementation
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const colors = useColors();
   const { activeOrderCount, activeOrders } = useOrderMonitor();
+  const { pendingReceivedCount, pendingSentCount } = useOfferMonitor();
   const flatListRef = useRef<FlatList>(null);
   const [listings, setListings] = useState<ListingWithUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -224,6 +227,14 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       navigation.navigate('Wallet', { screen: 'OrdersList' });
     }
   }, [navigation, activeOrders]);
+
+  const handleActiveOfferPress = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    // Navigate to the My Offers screen in Profile stack
+    navigation.navigate('Profile', { screen: 'MyOffers' });
+  }, [navigation]);
 
   const handleSellNow = useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -419,6 +430,15 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         <ActiveOrderBanner
           orderCount={activeOrderCount}
           onPress={handleActiveOrderPress}
+        />
+      )}
+      
+      {/* Active Offer Banner - shows when there are pending offers */}
+      {(pendingReceivedCount > 0 || pendingSentCount > 0) && (
+        <ActiveOfferBanner
+          receivedCount={pendingReceivedCount}
+          sentCount={pendingSentCount}
+          onPress={handleActiveOfferPress}
         />
       )}
       

@@ -137,6 +137,8 @@ CREATE TABLE public.offers (
   offer_to_user_id uuid,
   parent_offer_id uuid,
   listing_id uuid NOT NULL,
+  counter_amount integer,
+  counter_message text,
   CONSTRAINT offers_pkey PRIMARY KEY (id),
   CONSTRAINT offers_seek_listing_id_fkey FOREIGN KEY (seek_listing_id) REFERENCES public.listings(id),
   CONSTRAINT offers_offer_listing_id_fkey FOREIGN KEY (offer_listing_id) REFERENCES public.listings(id),

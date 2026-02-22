@@ -15,24 +15,44 @@ import { registerUserForNotifications } from '../services/notificationService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-// Track if splash has been hidden to prevent multiple calls
-let splashHidden = false;
+// Auth initialization timeout (5 seconds max)
+const AUTH_TIMEOUT_MS = 5000;
 
-const hideSplashScreen = async () => {
-  if (splashHidden) return;
-  splashHidden = true;
-  try {
-    await SplashScreen.hideAsync();
-    console.log('✅ Splash screen hidden');
-  } catch (error) {
-    // Ignore - splash might already be hidden
-  }
+// Helper to create a timeout promise
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Auth timeout')), ms)
+    ),
+  ]);
 };
 
 export const RootNavigator: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const navigationReady = useRef(false);
+  const [isReady, setIsReady] = useState(false);
+  const splashHiddenRef = useRef(false);
+  const navigationReadyRef = useRef(false);
+  const authInitializedRef = useRef(false);
+
+  // Hide splash screen once - uses ref to prevent multiple calls
+  const hideSplash = useCallback(async () => {
+    if (splashHiddenRef.current) return;
+    splashHiddenRef.current = true;
+    try {
+      await SplashScreen.hideAsync();
+      console.log('✅ Splash screen hidden');
+    } catch (error) {
+      // Splash might already be hidden - that's fine
+    }
+  }, []);
+
+  // Try to hide splash when both auth and navigation are ready
+  const tryHideSplash = useCallback(() => {
+    if (authInitializedRef.current && navigationReadyRef.current) {
+      hideSplash();
+    }
+  }, [hideSplash]);
 
   // Verify user has a valid profile in the database
   const verifyUserProfile = async (userId: string): Promise<boolean> => {
@@ -69,88 +89,132 @@ export const RootNavigator: React.FC = () => {
   };
 
   useEffect(() => {
-    // Get initial session
+    let isMounted = true;
+
+    // Get initial session with timeout protection
     const initializeAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log('🔐 Starting auth initialization...');
+        
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_TIMEOUT_MS
+        );
+        
+        if (!isMounted) return;
         
         if (session?.user) {
           // Verify profile exists before allowing app access
-          const profileExists = await verifyUserProfile(session.user.id);
-          if (profileExists) {
-            setSession(session);
-            // Register user for push notifications
-            registerUserForNotifications(session.user.id).catch((error) => {
-              console.error('Failed to register for notifications:', error);
-            });
-          } else {
-            setSession(null);
+          // Use a shorter timeout for profile check
+          try {
+            const profileExists = await withTimeout(
+              verifyUserProfile(session.user.id),
+              3000
+            );
+            
+            if (!isMounted) return;
+            
+            if (profileExists) {
+              setSession(session);
+              // Register for push notifications in background
+              registerUserForNotifications(session.user.id).catch((error) => {
+                console.error('Failed to register for notifications:', error);
+              });
+            } else {
+              setSession(null);
+            }
+          } catch (profileError) {
+            console.error('❌ Profile verification timeout:', profileError);
+            // On timeout, allow access anyway - they have a valid session
+            if (isMounted) {
+              setSession(session);
+            }
           }
         } else {
-          setSession(session);
+          setSession(null);
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
-        setSession(null);
+        if (isMounted) {
+          setSession(null);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          authInitializedRef.current = true;
+          setIsReady(true);
+          tryHideSplash();
+          console.log('✅ Auth initialization complete');
+        }
       }
     };
 
     initializeAuth();
 
-    // Listen for auth changes
+    // Listen for auth changes (after initial load)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
+      async (_event, newSession) => {
+        if (!isMounted) return;
+        
+        if (newSession?.user) {
           // Verify profile exists for new sessions
-          const profileExists = await verifyUserProfile(session.user.id);
-          if (profileExists) {
-            setSession(session);
-            // Register user for push notifications
-            registerUserForNotifications(session.user.id).catch((error) => {
-              console.error('Failed to register for notifications:', error);
-            });
-          } else {
-            setSession(null);
+          try {
+            const profileExists = await withTimeout(
+              verifyUserProfile(newSession.user.id),
+              3000
+            );
+            
+            if (!isMounted) return;
+            
+            if (profileExists) {
+              setSession(newSession);
+              registerUserForNotifications(newSession.user.id).catch((error) => {
+                console.error('Failed to register for notifications:', error);
+              });
+            } else {
+              setSession(null);
+            }
+          } catch (error) {
+            // On timeout, allow access - they have a valid session
+            if (isMounted) {
+              setSession(newSession);
+            }
           }
         } else {
-          setSession(session);
+          setSession(newSession);
         }
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [tryHideSplash]);
 
-  // Failsafe: Hide splash screen after 3 seconds no matter what
+  // Failsafe: Hide splash after 4 seconds AND mark as ready
+  // This ensures the app is usable even if something hangs
   useEffect(() => {
     const failsafeTimeout = setTimeout(() => {
-      console.log('⏰ Splash screen failsafe timeout triggered');
-      hideSplashScreen();
-    }, 3000);
+      if (!authInitializedRef.current) {
+        console.log('⏰ Auth failsafe timeout - forcing ready state');
+        authInitializedRef.current = true;
+        setIsReady(true);
+      }
+      hideSplash();
+    }, 4000);
 
     return () => clearTimeout(failsafeTimeout);
-  }, []);
-
-  // Hide splash when both conditions are met: loading complete AND navigation ready
-  useEffect(() => {
-    if (!loading && navigationReady.current) {
-      hideSplashScreen();
-    }
-  }, [loading]);
+  }, [hideSplash]);
 
   // Called when NavigationContainer is ready
   const onNavigationReady = useCallback(() => {
-    navigationReady.current = true;
-    // If loading is already complete, hide splash now
-    if (!loading) {
-      hideSplashScreen();
-    }
-  }, [loading]);
+    console.log('🧭 Navigation ready');
+    navigationReadyRef.current = true;
+    tryHideSplash();
+  }, [tryHideSplash]);
 
-  // Show a loading indicator while initializing (fallback if splash hides early)
-  if (loading) {
+  // Show a loading indicator while initializing
+  if (!isReady) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#FFFFFF" />

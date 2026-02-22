@@ -80,10 +80,10 @@ serve(async (req) => {
       throw new Error("return_url and refresh_url are required");
     }
 
-    // Get user's profile
+    // Get user's profile (using 'name' column, not 'full_name')
     const { data: userProfile, error: profileError } = await supabaseAdmin
       .from("users")
-      .select("stripe_connect_id, email, full_name")
+      .select("stripe_connect_id, email, name")
       .eq("id", userId)
       .single();
 
@@ -174,6 +174,24 @@ serve(async (req) => {
 
     if (onboardingComplete) {
       console.log("✅ Onboarding already complete!");
+      
+      // IMPORTANT: Sync database with Stripe's actual status
+      // This ensures the app shows the correct UI even if webhooks are delayed/missed
+      const { error: syncError } = await supabaseAdmin
+        .from("users")
+        .update({
+          stripe_payouts_enabled: true,
+          stripe_details_submitted: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+      
+      if (syncError) {
+        console.error("Failed to sync stripe status to database:", syncError);
+      } else {
+        console.log("✅ Database synced with Stripe status");
+      }
+      
       return new Response(
         JSON.stringify({
           onboarding_complete: true,

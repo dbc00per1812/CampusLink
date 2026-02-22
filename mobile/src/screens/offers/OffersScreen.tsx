@@ -15,6 +15,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LoadingSpinner, EmptyState, UnifiedHeader } from '../../components';
 import { supabase } from '../../config/supabase';
+import { useOfferMonitor } from '../../context/OfferMonitorContext';
 import { Offer } from '../../types';
 import Colors from '../../utils/colors';
 
@@ -22,6 +23,7 @@ type Tab = 'received' | 'sent';
 
 const OffersScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const { refreshOffers: refreshOfferMonitor } = useOfferMonitor();
   const [activeTab, setActiveTab] = useState<Tab>('received');
   const [receivedOffers, setReceivedOffers] = useState<Offer[]>([]);
   const [sentOffers, setSentOffers] = useState<Offer[]>([]);
@@ -37,8 +39,10 @@ const OffersScreen: React.FC = () => {
     useCallback(() => {
       if (currentUserId) {
         loadOffers();
+        // Also refresh the offer monitor to keep banner in sync
+        refreshOfferMonitor();
       }
-    }, [currentUserId])
+    }, [currentUserId, refreshOfferMonitor])
   );
 
   const loadUserId = async () => {
@@ -50,18 +54,20 @@ const OffersScreen: React.FC = () => {
     if (!currentUserId) return;
     
     try {
-      // Load received offers (where I'm the seller)
+      // Load received offers (where I'm the offer recipient)
+      // Use explicit FK name because offers has 3 FKs to listings
       const { data: received } = await supabase
         .from('offers')
-        .select('*, listing:listings(*), buyer:users!buyer_id(*)')
-        .eq('seller_id', currentUserId)
+        .select('*, listing:listings!offers_listing_id_fkey(*), offer_from:users!offer_from_user_id(*)')
+        .eq('offer_to_user_id', currentUserId)
         .order('created_at', { ascending: false });
       
-      // Load sent offers (where I'm the buyer)
+      // Load sent offers (where I'm the offer sender)
+      // Use explicit FK name because offers has 3 FKs to listings
       const { data: sent } = await supabase
         .from('offers')
-        .select('*, listing:listings(*), seller:users!seller_id(*)')
-        .eq('buyer_id', currentUserId)
+        .select('*, listing:listings!offers_listing_id_fkey(*), offer_to:users!offer_to_user_id(*)')
+        .eq('offer_from_user_id', currentUserId)
         .order('created_at', { ascending: false });
 
       setReceivedOffers(received ?? []);
@@ -110,7 +116,9 @@ const OffersScreen: React.FC = () => {
   };
 
   const renderOffer = ({ item }: { item: Offer }) => {
-    const otherUser = activeTab === 'received' ? item.buyer : item.seller;
+    // Use the correct joined fields based on which tab we're on
+    const otherUser = activeTab === 'received' ? (item as any).offer_from : (item as any).offer_to;
+    const offerAmount = item.price_cents ?? 0;
     
     return (
       <TouchableOpacity
@@ -134,7 +142,7 @@ const OffersScreen: React.FC = () => {
             {item.listing?.title || 'Unknown Item'}
           </Text>
           <Text style={styles.offerAmount}>
-            ${(item.offer_amount / 100).toFixed(2)}
+            ${(offerAmount / 100).toFixed(2)}
             {item.listing?.price && (
               <Text style={styles.originalPrice}> (was ${item.listing.price.toFixed(2)})</Text>
             )}

@@ -1,8 +1,17 @@
 -- ============================================================================
--- ONESIGNAL NOTIFICATION TRIGGERS
+-- ONESIGNAL NOTIFICATION TRIGGERS (FIXED)
 -- ============================================================================
 -- Run this in Supabase SQL Editor to enable automatic push notifications
 -- via OneSignal for all key events.
+--
+-- FIXED: Updated column names to match actual database schema:
+--   - users.name (not full_name or username)
+--   - conversations.buyer_id/seller_id (not user1_id/user2_id)
+--   - orders.price_cents (not total_amount)
+--   - offers.price_cents (not offer_amount)
+--   - offers.offer_from_user_id/offer_to_user_id
+--   - ratings.rated_id (not rated_user_id)
+--   - payouts.amount_cents (not amount)
 --
 -- Prerequisites:
 -- 1. pg_net extension enabled (Dashboard > Database > Extensions > pg_net)
@@ -58,22 +67,44 @@ RETURNS TRIGGER AS $$
 DECLARE
     sender_name TEXT;
     recipient_id UUID;
+    conversation_exists BOOLEAN;
 BEGIN
-    -- Get sender name
-    SELECT COALESCE(full_name, username, 'Someone') INTO sender_name
+    -- Check if conversation exists
+    SELECT EXISTS(SELECT 1 FROM conversations WHERE id = NEW.conversation_id) 
+    INTO conversation_exists;
+    
+    IF NOT conversation_exists THEN
+        RAISE WARNING 'Conversation % does not exist for message %', NEW.conversation_id, NEW.id;
+        RETURN NEW;
+    END IF;
+    
+    -- Get sender name (using 'name' column from users table)
+    SELECT COALESCE(name, 'Someone') INTO sender_name
     FROM users WHERE id = NEW.sender_id;
     
     -- Get recipient (the other participant in the conversation)
+    -- conversations table uses buyer_id and seller_id
     SELECT 
         CASE 
-            WHEN c.user1_id = NEW.sender_id THEN c.user2_id 
-            ELSE c.user1_id 
+            WHEN c.buyer_id = NEW.sender_id THEN c.seller_id 
+            ELSE c.buyer_id 
         END INTO recipient_id
     FROM conversations c
     WHERE c.id = NEW.conversation_id;
     
-    -- Don't notify if recipient is the sender
-    IF recipient_id IS NOT NULL AND recipient_id != NEW.sender_id THEN
+    -- Don't notify if recipient is NULL or the sender
+    IF recipient_id IS NULL THEN
+        RAISE WARNING 'Could not determine recipient for message % in conversation %', NEW.id, NEW.conversation_id;
+        RETURN NEW;
+    END IF;
+    
+    IF recipient_id = NEW.sender_id THEN
+        -- Don't notify if sender is sending to themselves (shouldn't happen, but safety check)
+        RETURN NEW;
+    END IF;
+    
+    -- Send notification with error handling
+    BEGIN
         PERFORM send_onesignal_notification(
             recipient_id,
             sender_name,
@@ -85,7 +116,10 @@ BEGIN
                 'screen', 'Chat'
             )
         );
-    END IF;
+    EXCEPTION WHEN OTHERS THEN
+        -- Log error but don't fail the insert
+        RAISE WARNING 'Failed to send notification for message %: %', NEW.id, SQLERRM;
+    END;
     
     RETURN NEW;
 END;
@@ -110,29 +144,31 @@ DECLARE
     listing_title TEXT;
     offer_amount_dollars TEXT;
 BEGIN
-    -- Get buyer name
-    SELECT COALESCE(full_name, username, 'A buyer') INTO buyer_name
-    FROM users WHERE id = NEW.buyer_id;
+    -- Get buyer name (offer_from_user_id is the person making the offer)
+    SELECT COALESCE(name, 'A buyer') INTO buyer_name
+    FROM users WHERE id = NEW.offer_from_user_id;
     
     -- Get listing title
     SELECT title INTO listing_title
     FROM listings WHERE id = NEW.listing_id;
     
-    -- Format offer amount
-    offer_amount_dollars := '$' || (NEW.offer_amount / 100.0)::TEXT;
+    -- Format offer amount (price_cents is the column name)
+    offer_amount_dollars := '$' || ROUND((NEW.price_cents / 100.0)::numeric, 2)::TEXT;
     
-    -- Notify seller
-    PERFORM send_onesignal_notification(
-        NEW.seller_id,
-        'New Offer Received',
-        buyer_name || ' offered ' || offer_amount_dollars || ' for "' || LEFT(listing_title, 30) || '"',
-        jsonb_build_object(
-            'type', 'new_offer',
-            'offer_id', NEW.id,
-            'listing_id', NEW.listing_id,
-            'screen', 'ListingDetail'
-        )
-    );
+    -- Notify seller (offer_to_user_id is the recipient)
+    IF NEW.offer_to_user_id IS NOT NULL THEN
+        PERFORM send_onesignal_notification(
+            NEW.offer_to_user_id,
+            'New Offer Received',
+            buyer_name || ' offered ' || offer_amount_dollars || ' for "' || LEFT(listing_title, 30) || '"',
+            jsonb_build_object(
+                'type', 'new_offer',
+                'offer_id', NEW.id,
+                'listing_id', NEW.listing_id,
+                'screen', 'ListingDetail'
+            )
+        );
+    END IF;
     
     RETURN NEW;
 END;
@@ -156,6 +192,7 @@ DECLARE
     listing_title TEXT;
     notification_title TEXT;
     notification_body TEXT;
+    notify_user_id UUID;
 BEGIN
     -- Only trigger on status change
     IF OLD.status = NEW.status THEN
@@ -166,32 +203,34 @@ BEGIN
     SELECT title INTO listing_title
     FROM listings WHERE id = NEW.listing_id;
     
+    -- Determine who to notify (the person who made the offer)
+    notify_user_id := NEW.offer_from_user_id;
+    
     -- Set notification content based on status
     IF NEW.status = 'accepted' THEN
         notification_title := 'Offer Accepted! 🎉';
         notification_body := 'Your offer for "' || LEFT(listing_title, 30) || '" was accepted! Complete your purchase now.';
-    ELSIF NEW.status = 'rejected' THEN
+    ELSIF NEW.status = 'declined' THEN
         notification_title := 'Offer Declined';
         notification_body := 'Your offer for "' || LEFT(listing_title, 30) || '" was not accepted.';
-    ELSIF NEW.status = 'countered' THEN
-        notification_title := 'Counter Offer Received';
-        notification_body := 'The seller sent a counter offer for "' || LEFT(listing_title, 30) || '"';
     ELSE
         RETURN NEW;
     END IF;
     
-    -- Notify buyer
-    PERFORM send_onesignal_notification(
-        NEW.buyer_id,
-        notification_title,
-        notification_body,
-        jsonb_build_object(
-            'type', 'offer_' || NEW.status,
-            'offer_id', NEW.id,
-            'listing_id', NEW.listing_id,
-            'screen', 'ListingDetail'
-        )
-    );
+    -- Notify the offer maker
+    IF notify_user_id IS NOT NULL THEN
+        PERFORM send_onesignal_notification(
+            notify_user_id,
+            notification_title,
+            notification_body,
+            jsonb_build_object(
+                'type', 'offer_' || NEW.status,
+                'offer_id', NEW.id,
+                'listing_id', NEW.listing_id,
+                'screen', 'ListingDetail'
+            )
+        );
+    END IF;
     
     RETURN NEW;
 END;
@@ -216,16 +255,16 @@ DECLARE
     listing_title TEXT;
     order_amount TEXT;
 BEGIN
-    -- Get buyer name
-    SELECT COALESCE(full_name, username, 'A buyer') INTO buyer_name
+    -- Get buyer name (using 'name' column)
+    SELECT COALESCE(name, 'A buyer') INTO buyer_name
     FROM users WHERE id = NEW.buyer_id;
     
     -- Get listing title
     SELECT title INTO listing_title
     FROM listings WHERE id = NEW.listing_id;
     
-    -- Format amount
-    order_amount := '$' || (NEW.total_amount / 100.0)::TEXT;
+    -- Format amount (price_cents is the column name)
+    order_amount := '$' || ROUND((NEW.price_cents / 100.0)::numeric, 2)::TEXT;
     
     -- Notify seller
     PERFORM send_onesignal_notification(
@@ -278,7 +317,7 @@ BEGIN
     CASE NEW.order_status
         WHEN 'seller_confirmed' THEN
             -- Notify buyer that seller confirmed
-            SELECT COALESCE(full_name, username, 'Seller') INTO other_party_name
+            SELECT COALESCE(name, 'Seller') INTO other_party_name
             FROM users WHERE id = NEW.seller_id;
             
             notify_user_id := NEW.buyer_id;
@@ -367,8 +406,8 @@ BEGIN
         RETURN NEW;
     END IF;
     
-    -- Format amount
-    payout_amount := '$' || (NEW.amount / 100.0)::TEXT;
+    -- Format amount (amount_cents is the column name)
+    payout_amount := '$' || ROUND((NEW.amount_cents / 100.0)::numeric, 2)::TEXT;
     
     -- Handle different statuses
     CASE NEW.status
@@ -419,16 +458,16 @@ DECLARE
     rater_name TEXT;
     stars_text TEXT;
 BEGIN
-    -- Get rater name
-    SELECT COALESCE(full_name, username, 'Someone') INTO rater_name
+    -- Get rater name (using 'name' column)
+    SELECT COALESCE(name, 'Someone') INTO rater_name
     FROM users WHERE id = NEW.rater_id;
     
     -- Format stars
     stars_text := NEW.rating || ' star' || CASE WHEN NEW.rating > 1 THEN 's' ELSE '' END;
     
-    -- Notify rated user
+    -- Notify rated user (rated_id is the column name, not rated_user_id)
     PERFORM send_onesignal_notification(
-        NEW.rated_user_id,
+        NEW.rated_id,
         'New Review ⭐',
         rater_name || ' gave you ' || stars_text || CASE WHEN NEW.comment IS NOT NULL THEN ': "' || LEFT(NEW.comment, 50) || '"' ELSE '' END,
         jsonb_build_object(
@@ -477,7 +516,7 @@ ORDER BY tgrelid::regclass::text;
 -- Push notifications are now enabled for:
 -- ✅ New messages
 -- ✅ New offers
--- ✅ Offer accepted/rejected/countered
+-- ✅ Offer accepted/rejected
 -- ✅ Order placed
 -- ✅ Order status changes (confirmed, in_progress, delivered, completed, cancelled)
 -- ✅ Payout status (processing, completed, failed)

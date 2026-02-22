@@ -13,3 +13,7 @@ export {
   useOrderMonitor,
 } from './OrderMonitorContext';
 
+export {
+  OfferMonitorProvider,
+  useOfferMonitor,
+} from './OfferMonitorContext';

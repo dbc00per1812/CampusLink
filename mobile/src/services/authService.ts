@@ -39,6 +39,18 @@ export const signUp = async (
   password: string,
   name: string
 ): Promise<AuthResult> => {
+  // Validate .edu email requirement
+  if (!email.toLowerCase().endsWith('.edu')) {
+    console.log('❌ Signup rejected: email does not end with .edu');
+    return {
+      success: false,
+      error: {
+        type: 'invalidEmail',
+        message: 'Please use a valid .edu email address',
+      },
+    };
+  }
+
   try {
     console.log('🔄 Starting signup process for', email);
     
@@ -184,6 +196,18 @@ export const verifyEmailAndCompleteSignup = async (
   name: string,
   campus: string
 ): Promise<AuthResult> => {
+  // Validate .edu email requirement (defense in depth)
+  if (!email.toLowerCase().endsWith('.edu')) {
+    console.log('❌ Email verification rejected: email does not end with .edu');
+    return {
+      success: false,
+      error: {
+        type: 'invalidEmail',
+        message: 'Please use a valid .edu email address',
+      },
+    };
+  }
+
   try {
     console.log('🔄 Verifying email OTP...');
 
